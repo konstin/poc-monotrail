@@ -1,0 +1,105 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ] #, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      # Install all the pythons
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.6"
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.7"
+      # 3.8 is activated below
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "pypy-3.7"
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "pypy-3.8"
+      # Make this the active python
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.8"
+
+      - name: Install virtualenv
+        run: pip install -U pip virtualenv
+      - uses: actions-rs/toolchain@v1
+        id: rustup
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Install hyperfine
+        run: |
+          curl -L https://github.com/sharkdp/hyperfine/releases/download/v1.12.0/hyperfine-v1.12.0-x86_64-unknown-linux-musl.tar.gz | tar -zxv --strip-components 1 hyperfine-v1.12.0-x86_64-unknown-linux-musl/hyperfine
+
+      # Caching
+      # Install gnu-tar because BSD tar is buggy
+      # https://github.com/actions/cache/issues/403
+      - name: Install GNU tar (Macos)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v1
+        with:
+          key: install-wheel-rs-${{ runner.os }}
+
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - name: Compare tqdm
+        run: | 
+          pip download -d wheels tqdm==4.62.3
+          test/compare.py target/release/install-wheel-rs tqdm-4.62.3
+
+      - name: Test tqdm
+        run: python test/run_tqdm_test.py
+
+      - name: Benchmark
+        run: |
+          virtualenv .venv-benchmark
+          
+          VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+            "target/release/install-wheel-rs install-file wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+            ".venv-benchmark/bin/pip install --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
+          
+          VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+            "target/release/install-wheel-rs install-file --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+            ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
+          
+          rm -r .venv-benchmark
+
+      - name: Download popular wheels
+        run: pip download -d wheels -r popular.txt
+
+      - name: Compare popular wheels
+        run: test/test_popular.py target/debug/install-wheel-rs

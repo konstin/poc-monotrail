@@ -1,0 +1,12 @@
+*.whl
+.cargo
+.venv
+.venv*
+__pycache__
+airtravel_stats
+flamegraph*.svg
+perf.data*
+target
+test-venvs
+venv
+wheels
