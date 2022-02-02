@@ -106,4 +106,4 @@ jobs:
       - name: Download popular wheels
         run: pip download -d wheels -r popular.txt
       - name: Compare popular wheels
-        run: test/test_popular.py target/debug/install-wheel-rs
+        run: python -m test.test_popular target/debug/install-wheel-rs
