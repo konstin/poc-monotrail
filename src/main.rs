@@ -3,6 +3,7 @@ use clap::Parser;
 use configparser::ini::Ini;
 use fs_err as fs;
 use fs_err::{DirEntry, File};
+use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -747,7 +748,7 @@ fn install_wheel(
     venv_base: &Path,
     wheel_path: &Path,
     compile: bool,
-) -> Result<(), WheelInstallerError> {
+) -> Result<(String, String), WheelInstallerError> {
     let filename = wheel_path
         .file_name()
         .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
@@ -863,8 +864,7 @@ fn install_wheel(
     for entry in record {
         record_writer.serialize(entry)?;
     }
-    info!("Installed {} {}", name, version);
-    Ok(())
+    Ok((name.to_string(), version.to_string()))
 }
 
 #[derive(Parser)]
@@ -876,8 +876,8 @@ enum Cli {
         #[clap(long)]
         no_compile: bool,
     },
-    InstallFile {
-        file: PathBuf,
+    InstallFiles {
+        files: Vec<PathBuf>,
         #[clap(long)]
         no_compile: bool,
     },
@@ -901,12 +901,32 @@ fn run() -> anyhow::Result<()> {
         } => {
             let wheel_path = package_index::download_wheel(&name, version.as_deref())
                 .with_context(|| format!("Failed to download {} from pypi", name))?;
-            install_wheel(&venv_base, &wheel_path, !no_compile)?;
+            let (name, version) = install_wheel(&venv_base, &wheel_path, !no_compile)?;
+            info!("Installed {} {}", name, version);
+
             Ok(())
         }
-        Cli::InstallFile { file, no_compile } => install_wheel(&venv_base, &file, !no_compile)
-            .with_context(|| format!("Failed to install {}", file.display())),
-    }
+        Cli::InstallFiles { files, no_compile } => match files.as_slice() {
+            [file] => {
+                let (name, version) = install_wheel(&venv_base, file, !no_compile)
+                    .with_context(|| format!("Failed to install {}", file.display()))?;
+                info!("Installed {} {}", name, version);
+            }
+            _ => {
+                files
+                    .par_iter()
+                    .map(|file| {
+                        println!("Installing {}", file.display());
+                        let (name, version) = install_wheel(&venv_base, file, !no_compile)
+                            .with_context(|| format!("Failed to install {}", file.display()))?;
+                        info!("Installed {} {}", name, version);
+                        Ok(())
+                    })
+                    .collect::<Result<Vec<()>, anyhow::Error>>()?;
+            }
+        },
+    };
+    Ok(())
 }
 
 #[inline(never)]
@@ -970,6 +990,6 @@ mod test {
             base-executable = /usr/bin/python3
             ",
         };
-        assert_eq!(get_python_version(&pyvenv_cfg).unwrap(), (3, 8));
+        assert_eq!(get_python_version(pyvenv_cfg).unwrap(), (3, 8));
     }
 }

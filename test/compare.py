@@ -8,24 +8,16 @@ from argparse import ArgumentParser
 from pathlib import Path
 from shutil import rmtree
 from subprocess import check_call, DEVNULL
+from typing import List
 
 
 def compare_installer(
-    distribution: str,
-    install_wheel_rs: str,
+    env_name: str,
+    wheels: List[str],
+    install_wheel_rs: Path,
     clear_rs: bool = True,
     clear_pip: bool = False,
 ):
-    env_name = distribution.split("-")[0]
-    try:
-        [wheel] = (
-            Path(__file__)
-            .parent.parent.joinpath("wheels")
-            .glob(f"{distribution}-*.whl")
-        )
-    except ValueError:
-        print(f"Missing wheel for {distribution}")
-        sys.exit(1)
     test_venvs = Path("test-venvs")
     test_venvs.mkdir(exist_ok=True)
     env = test_venvs.joinpath(f"{env_name}")
@@ -39,7 +31,7 @@ def compare_installer(
         check_call(["virtualenv", env], stdout=DEVNULL)
         start_pip = time.time()
         check_call(
-            [env.joinpath("bin").joinpath("pip"), "install", "-q", "--no-deps", wheel]
+            [env.joinpath("bin").joinpath("pip"), "install", "-q", "--no-deps", *wheels]
         )
         stop_pip = time.time()
         env.rename(env_py)
@@ -54,7 +46,7 @@ def compare_installer(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [install_wheel_rs, "install-file", wheel],
+        [install_wheel_rs, "install-files", *wheels],
         stdout=DEVNULL,
         env=dict(os.environ, VIRTUAL_ENV=env),
     )
@@ -97,10 +89,21 @@ def main():
     parser.add_argument("distribution")
     args = parser.parse_args()
 
-    install_wheel_rs = args.install_wheel_rs
+    install_wheel_rs = Path(args.install_wheel_rs)
     distribution = args.distribution
 
-    compare_installer(distribution, install_wheel_rs)
+    env_name = distribution.split("-")[0]
+    try:
+        [wheel] = (
+            Path(__file__)
+            .parent.parent.joinpath("wheels")
+            .glob(f"{distribution}-*.whl")
+        )
+    except ValueError:
+        print(f"Missing wheel for {distribution}")
+        sys.exit(1)
+
+    compare_installer(env_name, [wheel], install_wheel_rs)
 
 
 if __name__ == "__main__":

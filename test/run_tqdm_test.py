@@ -32,7 +32,7 @@ def main():
     check_call(
         [
             "target/release/install-wheel-rs",
-            "install-file",
+            "install-files",
             "wheels/tqdm-4.62.3-py2.py3-none-any.whl",
         ],
         env=env,

@@ -163,8 +163,11 @@ def main():
         print("Using debug")
         bin = debug_bin
 
-    with ThreadPoolExecutor() as executor:
-        list(executor.map(compare_installer, wheels, itertools.repeat(bin)))
+    wheels_paths = []
+    for wheel in wheels:
+        [wheel] = Path(__file__).parent.parent.joinpath("wheels").glob(f"{wheel}-*.whl")
+        wheels_paths.append(wheel)
+    compare_installer(".venv-diff", wheels_paths, bin)
 
 
 if __name__ == "__main__":
