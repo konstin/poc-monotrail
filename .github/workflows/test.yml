@@ -84,22 +84,20 @@ jobs:
       - name: Test tqdm
         run: python test/run_tqdm_test.py
 
-      - name: Benchmark
-        run: |
-          virtualenv .venv-benchmark
-          
-          VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
-            "target/release/install-wheel-rs install-file wheels/plotly-5.5.0-py2.py3-none-any.whl" \
-            ".venv-benchmark/bin/pip install --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
-          
-          VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
-            "target/release/install-wheel-rs install-file --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
-            ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
-          
-          rm -r .venv-benchmark
-
-      - name: Download popular wheels
-        run: pip download -d wheels -r popular.txt
-
-      - name: Compare popular wheels
-        run: test/test_popular.py target/debug/install-wheel-rs
+      #- name: Benchmark
+      #  run: |
+      #    virtualenv .venv-benchmark
+      #
+      #    VIRTUAL_ENV=.venv-benchmark ./hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+      #      "target/release/install-wheel-rs install-file wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+      #      ".venv-benchmark/bin/pip install --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
+      #
+      #    VIRTUAL_ENV=.venv-benchmark ./hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+      #      "target/release/install-wheel-rs install-file --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+      #      ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
+      #
+      #    rm -r .venv-benchmark
+      #- name: Download popular wheels
+      #  run: pip download -d wheels -r popular.txt
+      #- name: Compare popular wheels
+      #  run: test/test_popular.py target/debug/install-wheel-rs
