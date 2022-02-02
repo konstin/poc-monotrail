@@ -76,6 +76,9 @@ jobs:
           command: build
           args: --release
 
+      - name: install virtualenv
+        run: pip install -U pip virtualenv
+
       - name: Compare tqdm
         run: | 
           pip download -d wheels tqdm==4.62.3
@@ -86,6 +89,8 @@ jobs:
 
       - name: Benchmark
         run: |
+          pip download -d wheels plotly==5.5.0
+          
           virtualenv .venv-benchmark
       
           VIRTUAL_ENV=.venv-benchmark ./hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
