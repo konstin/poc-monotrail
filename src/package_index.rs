@@ -1,6 +1,7 @@
-use crate::WheelInstallerError;
+use crate::install::WheelInstallerError;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{io, result};
