@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::{env, io};
 use thiserror::Error;
-use tracing::{debug, span, trace, Level};
+use tracing::{debug, span, trace, warn, Level};
 use walkdir::WalkDir;
 use zip::result::ZipError;
 use zip::ZipArchive;
@@ -228,7 +228,17 @@ fn unpack_wheel_files(
 
         // This is the RECORD file that contains the hashes so naturally it can't contain it's own
         // hash and size (but it does contain an entry with two empty fields)
-        if relative == Path::new(record_path) {
+        // > 6. RECORD.jws is used for digital signatures. It is not mentioned in RECORD.
+        // > 7. RECORD.p7s is allowed as a courtesy to anyone who would prefer to use S/MIME
+        // >    signatures to secure their wheel files. It is not mentioned in RECORD.
+        let record_path = PathBuf::from(&record_path);
+        if vec![
+            record_path.clone(),
+            record_path.with_extension("jws"),
+            record_path.with_extension("p7s"),
+        ]
+        .contains(&relative)
+        {
             continue;
         }
 
@@ -320,6 +330,12 @@ fn parse_wheel_version(wheel_text: &str) -> Result<(), WheelInstallerError> {
     let wheel_version = wheel_version.split_once(".").ok_or_else(|| {
         WheelInstallerError::InvalidWheel("Invalid Wheel-Version in WHEEL file".to_string())
     })?;
+    // pip has some test wheels that use that ancient version,
+    // and technically we only need to check that the version is not higher
+    if wheel_version == ("0", "1") {
+        warn!("Ancient wheel version 0.1 (expected is 1.0)");
+        return Ok(());
+    }
     // Check that installer is compatible with Wheel-Version. Warn if minor version is greater, abort if major version is greater.
     // Wheel-Version: 1.0
     if wheel_version.0 != "1" {
