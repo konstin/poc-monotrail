@@ -48,9 +48,17 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: Install hyperfine
+      - name: Install hyperfine (linux)
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          curl -L https://github.com/sharkdp/hyperfine/releases/download/v1.12.0/hyperfine-v1.12.0-x86_64-unknown-linux-musl.tar.gz | tar -zxv --strip-components 1 hyperfine-v1.12.0-x86_64-unknown-linux-musl/hyperfine
+          mkdir -p .local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          hyperfine_version="v1.12.0"
+          hyperfine_url="https://github.com/sharkdp/hyperfine/releases/download/$hyperfine_version/hyperfine-$hyperfine_version-x86_64-unknown-linux-musl.tar.gz"
+          curl -L $hyperfine_url | tar -zxv --strip-components 1 -C .local/bin hyperfine-$hyperfine_version-x86_64-unknown-linux-musl/hyperfine
+      - name: Install hyperfine (mac)
+        if: matrix.os == 'macos-latest'
+        run: brew install hyperfine
 
       # Caching
       # Install gnu-tar because BSD tar is buggy
@@ -100,11 +108,11 @@ jobs:
           
           virtualenv .venv-benchmark
           
-          VIRTUAL_ENV=.venv-benchmark ./hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+          VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
             "target/release/install-wheel-rs install-files wheels/plotly-5.5.0-py2.py3-none-any.whl" \
             ".venv-benchmark/bin/pip install --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
           
-          #VIRTUAL_ENV=.venv-benchmark ./hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+          #VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
           #  "target/release/install-wheel-rs install-files --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
           #  ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
           

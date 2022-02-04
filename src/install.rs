@@ -720,6 +720,10 @@ fn get_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError>
 }
 
 /// Install the given wheel to the given venv
+///
+/// https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
+///
+/// Wheel 1.0: https://www.python.org/dev/peps/pep-0427/
 pub(crate) fn install_wheel(
     venv_base: &Path,
     wheel_path: &Path,
@@ -810,7 +814,6 @@ pub(crate) fn install_wheel(
         )?;
         // 2.c If applicable, update scripts starting with #!python to point to the correct interpreter.
         // Script are unsupported through data
-        // TODO
         // 2.e Remove empty distribution-1.0.data directory.
         fs::remove_dir_all(data_dir)?;
     } else {
