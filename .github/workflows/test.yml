@@ -11,7 +11,7 @@ jobs:
     name: Test
     strategy:
       matrix:
-        os: [ ubuntu-latest ] #, macos-latest, windows-latest ]
+        os: [ ubuntu-latest, macos-latest ] #, windows-latest ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
@@ -82,7 +82,7 @@ jobs:
           virtualenv --upgrade-embed-wheels
 
       - name: Compare tqdm
-        run: | 
+        run: |
           pip download -d wheels tqdm==4.62.3
           test/compare.py target/release/install-wheel-rs tqdm-4.62.3
 
@@ -99,13 +99,13 @@ jobs:
           pip download -d wheels plotly==5.5.0
           
           virtualenv .venv-benchmark
-      
+          
           VIRTUAL_ENV=.venv-benchmark ./hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
             "target/release/install-wheel-rs install-files wheels/plotly-5.5.0-py2.py3-none-any.whl" \
             ".venv-benchmark/bin/pip install --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
-      
+          
           #VIRTUAL_ENV=.venv-benchmark ./hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
           #  "target/release/install-wheel-rs install-files --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
           #  ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
-      
+          
           rm -r .venv-benchmark
