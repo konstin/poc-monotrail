@@ -51,11 +51,15 @@ jobs:
       - name: Install hyperfine (linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          mkdir -p .local/bin
+          mkdir -p $HOME/.local/bin
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           hyperfine_version="v1.12.0"
           hyperfine_url="https://github.com/sharkdp/hyperfine/releases/download/$hyperfine_version/hyperfine-$hyperfine_version-x86_64-unknown-linux-musl.tar.gz"
           curl -L $hyperfine_url | tar -zxv --strip-components 1 -C $HOME/.local/bin hyperfine-$hyperfine_version-x86_64-unknown-linux-musl/hyperfine
+      - if: matrix.os == 'ubuntu-latest'
+        run: |
+          ls $HOME/.local/bin
+          echo $PATH
       - name: Install hyperfine (mac)
         if: matrix.os == 'macos-latest'
         run: brew install hyperfine
