@@ -595,6 +595,7 @@ fn install_script(
 }
 
 /// Move the files from the .data directory to the right location in the venv
+#[allow(clippy::too_many_arguments)]
 fn install_data(
     venv_base: &Path,
     site_packages: &Path,
@@ -773,16 +774,8 @@ fn get_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError>
     Ok(python_version)
 }
 
-/// Install the given wheel to the given venv
-///
-/// https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
-///
-/// Wheel 1.0: https://www.python.org/dev/peps/pep-0427/
-pub fn install_wheel(
-    venv_base: &Path,
-    wheel_path: &Path,
-    compile: bool,
-) -> Result<(String, String), WheelInstallerError> {
+/// Helper to split the wheel filename
+pub(crate) fn get_name_from_path(wheel_path: &Path) -> Result<String, WheelInstallerError> {
     let filename = wheel_path
         .file_name()
         .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
@@ -794,6 +787,20 @@ pub fn install_wheel(
         })?
         .0
         .to_owned();
+    Ok(name)
+}
+
+/// Install the given wheel to the given venv
+///
+/// https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
+///
+/// Wheel 1.0: https://www.python.org/dev/peps/pep-0427/
+pub fn install_wheel(
+    venv_base: &Path,
+    wheel_path: &Path,
+    compile: bool,
+) -> Result<(String, String), WheelInstallerError> {
+    let name = get_name_from_path(wheel_path)?;
     let _my_span = span!(Level::DEBUG, "install_wheel", name = name.as_str());
 
     let pyvenv_cfg = venv_base.join("pyvenv.cfg");

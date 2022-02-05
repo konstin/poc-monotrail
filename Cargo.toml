@@ -27,6 +27,7 @@ zip = "0.5.13"
 csv = "1.1.6"
 base64 = "0.13.0"
 rayon = "1.5.1"
+indicatif = "0.16.2"
 
 [features]
 default = []
