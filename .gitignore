@@ -6,7 +6,8 @@ __pycache__
 airtravel_stats
 flamegraph*.svg
 perf.data*
+pip
+popular-wheels
 target
 test-venvs
 venv
-wheels

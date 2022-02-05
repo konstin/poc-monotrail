@@ -8,17 +8,43 @@ from argparse import ArgumentParser
 from pathlib import Path
 from shutil import rmtree
 from subprocess import check_call, DEVNULL
-from typing import List
+from typing import List, Union
+
+
+def get_root() -> Path:
+    return Path(__file__).parent.parent
+
+
+def get_bin() -> Path:
+    release_bin = get_root().joinpath("target/release/install-wheel-rs")
+    if release_bin.is_file():
+        release_ctime = release_bin.stat().st_ctime
+    else:
+        release_ctime = 0
+    debug_bin = get_root().joinpath("target/debug/install-wheel-rs")
+    if debug_bin.is_file():
+        debug_ctime = debug_bin.stat().st_ctime
+    else:
+        debug_ctime = 0
+
+    if release_ctime > debug_ctime:
+        print("Using release")
+        bin = release_bin
+    else:
+        print("Using debug")
+        bin = debug_bin
+
+    return bin
 
 
 def compare_installer(
     env_name: str,
-    wheels: List[str],
+    wheels: List[Union[str, Path]],
     install_wheel_rs: Path,
     clear_rs: bool = True,
     clear_pip: bool = False,
 ):
-    test_venvs = Path("test-venvs")
+    test_venvs = get_root().joinpath("test-venvs")
     test_venvs.mkdir(exist_ok=True)
     env = test_venvs.joinpath(f"{env_name}")
     env_rs = test_venvs.joinpath(f"{env_name}-rs")
@@ -36,9 +62,7 @@ def compare_installer(
         stop_pip = time.time()
         env.rename(env_py)
 
-        print(
-            f"{env_name} pip install took {stop_pip - start_pip:.2f}s"
-        )
+        print(f"{env_name} pip install took {stop_pip - start_pip:.2f}s")
 
     # rust install
     if env_rs.exists():
@@ -53,9 +77,7 @@ def compare_installer(
     stop_rs = time.time()
     env.rename(env_rs)
 
-    print(
-        f"{env_name} rs install took {stop_rs - start_rs:.2f}s"
-    )
+    print(f"{env_name} rs install took {stop_rs - start_rs:.2f}s")
 
     # Filter out paths created by invoking pip and pip itself
     pattern = (
@@ -85,25 +107,13 @@ def compare_installer(
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("install_wheel_rs")
-    parser.add_argument("distribution")
+    parser.add_argument("wheel")
     args = parser.parse_args()
 
-    install_wheel_rs = Path(args.install_wheel_rs)
-    distribution = args.distribution
+    wheel = Path(args.wheel)
 
-    env_name = distribution.split("-")[0]
-    try:
-        [wheel] = (
-            Path(__file__)
-            .parent.parent.joinpath("wheels")
-            .glob(f"{distribution}-*.whl")
-        )
-    except ValueError:
-        print(f"Missing wheel for {distribution}")
-        sys.exit(1)
-
-    compare_installer(env_name, [wheel], install_wheel_rs)
+    env_name = wheel.name.split("-")[0]
+    compare_installer(env_name, [wheel], get_bin())
 
 
 if __name__ == "__main__":

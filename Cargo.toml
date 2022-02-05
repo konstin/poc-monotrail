@@ -35,3 +35,6 @@ package_index = ["ureq"]
 # zip implementation
 [profile.dev.package.adler]
 opt-level = 3
+
+[dev-dependencies]
+tempfile = "3.2.0"

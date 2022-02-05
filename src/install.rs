@@ -88,32 +88,12 @@ if __name__ == '__main__':
     )
 }
 
-/// Parses the entry_points.txt entry in the wheel for console scripts
-fn parse_console_scripts(
-    archive: &mut ZipArchive<File>,
-    dist_info_dir: &str,
-) -> Result<Vec<(String, String, String)>, WheelInstallerError> {
-    let entry_points_path = format!("{}/entry_points.txt", dist_info_dir);
-    let entry_points_mapping = match archive.by_name(&entry_points_path) {
-        Ok(mut file) => {
-            let mut ini_text = String::new();
-            file.read_to_string(&mut ini_text)?;
-            Ini::new().read(ini_text).map_err(|err| {
-                WheelInstallerError::InvalidWheel(format!("entry_points.txt is invalid: {}", err))
-            })?
-        }
-        Err(ZipError::FileNotFound) => return Ok(Vec::new()),
-        Err(err) => return Err(err.into()),
-    };
-
-    // TODO: handle extras
-    let console_scripts_section = match entry_points_mapping.get("console_scripts") {
-        Some(console_scripts) => console_scripts,
-        None => return Ok(Vec::new()),
-    };
-
-    let mut console_scripts = Vec::new();
-    for (script_name, python_location) in console_scripts_section.iter() {
+fn read_scripts_from_section(
+    scripts_section: &HashMap<String, Option<String>>,
+    section_name: &str,
+) -> Result<Vec<Script>, WheelInstallerError> {
+    let mut scripts = Vec::new();
+    for (script_name, python_location) in scripts_section.iter() {
         match python_location {
             Some(value) => {
                 if value.contains(' ') {
@@ -123,26 +103,65 @@ fn parse_console_scripts(
                 }
                 let (module, function) = value.split_once(":").ok_or_else(|| {
                     WheelInstallerError::InvalidWheel(format!(
-                        "console_scripts is invalid: console script key {} must contain a colon",
-                        script_name
+                        "{} is invalid: console script key {} must contain a colon",
+                        section_name, script_name
                     ))
                 })?;
-                console_scripts.push((
-                    script_name.to_string(),
-                    module.to_string(),
-                    function.to_string(),
-                ));
+                scripts.push(Script {
+                    script_name: script_name.to_string(),
+                    module: module.to_string(),
+                    function: function.to_string(),
+                });
             }
             None => {
                 return Err(WheelInstallerError::InvalidWheel(format!(
-                    "[console_script] key {} must have a value",
-                    script_name
+                    "[{}] key {} must have a value",
+                    section_name, script_name
                 )));
             }
         }
     }
+    Ok(scripts)
+}
 
-    Ok(console_scripts)
+#[derive(Debug)]
+struct Script {
+    script_name: String,
+    module: String,
+    function: String,
+}
+
+/// Parses the entry_points.txt entry in the wheel for console scripts
+///
+/// Returns (script_name, module, function)
+fn parse_scripts(
+    archive: &mut ZipArchive<File>,
+    dist_info_dir: &str,
+) -> Result<(Vec<Script>, Vec<Script>), WheelInstallerError> {
+    let entry_points_path = format!("{}/entry_points.txt", dist_info_dir);
+    let entry_points_mapping = match archive.by_name(&entry_points_path) {
+        Ok(mut file) => {
+            let mut ini_text = String::new();
+            file.read_to_string(&mut ini_text)?;
+            Ini::new_cs().read(ini_text).map_err(|err| {
+                WheelInstallerError::InvalidWheel(format!("entry_points.txt is invalid: {}", err))
+            })?
+        }
+        Err(ZipError::FileNotFound) => return Ok((Vec::new(), Vec::new())),
+        Err(err) => return Err(err.into()),
+    };
+
+    // TODO: handle extras
+    let console_scripts = match entry_points_mapping.get("console_scripts") {
+        Some(console_scripts) => read_scripts_from_section(console_scripts, "console_scripts")?,
+        None => Vec::new(),
+    };
+    let gui_scripts = match entry_points_mapping.get("gui_scripts") {
+        Some(gui_scripts) => read_scripts_from_section(gui_scripts, "gui_scripts")?,
+        None => Vec::new(),
+    };
+
+    Ok((console_scripts, gui_scripts))
 }
 
 /// Shamelessly stolen (and updated for recent sha2)
@@ -269,17 +288,17 @@ fn unpack_wheel_files(
 /// Create the wrapper scripts in the bin folder of the venv for launching console scripts
 ///
 /// We also pass venv_base so we can write the same path as pip does
-fn write_entrypoints(
+fn write_script_entrypoints(
     site_packages: &Path,
     venv_base: &Path,
-    entrypoints: Vec<(String, String, String)>,
+    entrypoints: &[Script],
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
     for entrypoint in entrypoints {
-        let entrypoint_relative = Path::new("../../../bin").join(entrypoint.0);
+        let entrypoint_relative = Path::new("../../../bin").join(&entrypoint.script_name);
         let launcher_python_script = get_script_launcher(
-            &entrypoint.1,
-            &entrypoint.2,
+            &entrypoint.module,
+            &entrypoint.function,
             // canonicalize on python would resolve the symlink
             &venv_base.canonicalize()?.join("bin").join("python"),
         );
@@ -582,6 +601,8 @@ fn install_data(
     data_dir: &Path,
     dist_name: &str,
     python_version: (u8, u8),
+    console_scripts: &[Script],
+    gui_scripts: &[Script],
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
     for data_entry in fs::read_dir(data_dir)? {
@@ -594,6 +615,23 @@ fn install_data(
             Some("scripts") => {
                 for file in fs::read_dir(data_entry.path())? {
                     let file = file?;
+
+                    // Couldn't find any docs for this, took it directly from
+                    // https://github.com/pypa/pip/blob/b5457dfee47dd9e9f6ec45159d9d410ba44e5ea1/src/pip/_internal/operations/install/wheel.py#L565-L583
+                    let name = file.file_name().to_string_lossy().to_string();
+                    let match_name = name
+                        .strip_suffix(".exe")
+                        .or_else(|| name.strip_suffix("-script.py"))
+                        .or_else(|| name.strip_suffix(".pya"))
+                        .unwrap_or(&name);
+                    if console_scripts
+                        .iter()
+                        .chain(gui_scripts)
+                        .any(|script| script.script_name == match_name)
+                    {
+                        continue;
+                    }
+
                     install_script(venv_base, site_packages, record, file)?;
                 }
             }
@@ -604,11 +642,11 @@ fn install_data(
                 ));
                 move_folder_recorded(&data_entry.path(), &target_path, site_packages, record)?;
             }
+
             Some("purelib" | "platlib") => {
-                // TODO
-                return Err(WheelInstallerError::InvalidWheel(
-                    "purelib/platlib wheel data that is not supported yet".to_string(),
-                ));
+                // purelib and platlib locations are not relevant when using venvs
+                // https://stackoverflow.com/a/27882460/3549270
+                move_folder_recorded(&data_entry.path(), site_packages, site_packages, record)?;
             }
             _ => {
                 return Err(WheelInstallerError::InvalidWheel(format!(
@@ -740,7 +778,7 @@ fn get_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError>
 /// https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
 ///
 /// Wheel 1.0: https://www.python.org/dev/peps/pep-0427/
-pub(crate) fn install_wheel(
+pub fn install_wheel(
     venv_base: &Path,
     wheel_path: &Path,
     compile: bool,
@@ -779,7 +817,7 @@ pub(crate) fn install_wheel(
         .replace_all(&dist.metadata().name, "_");
     if escaped_name != name {
         return Err(WheelInstallerError::InvalidWheel(format!(
-            "Inconsistent package name: {} vs {}",
+            "Inconsistent package name: {} (wheel metadata) vs {} (filename)",
             dist.metadata().name,
             name
         )));
@@ -815,6 +853,11 @@ pub(crate) fn install_wheel(
         unpacked_paths.len()
     );
 
+    debug!(name = name.as_str(), "Writing entrypoints");
+    let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir)?;
+    write_script_entrypoints(&site_packages, venv_base, &console_scripts, &mut record)?;
+    write_script_entrypoints(&site_packages, venv_base, &gui_scripts, &mut record)?;
+
     let data_dir = site_packages.join(format!("{}-{}.data", escaped_name, version));
     // 2.a Unpacked archive includes distribution-1.0.dist-info/ and (if there is data) distribution-1.0.data/.
     // 2.b Move each subtree of distribution-1.0.data/ onto its destination path. Each subdirectory of distribution-1.0.data/ is a key into a dict of destination directories, such as distribution-1.0.data/(purelib|platlib|headers|scripts|data). The initially supported paths are taken from distutils.command.install.
@@ -826,6 +869,8 @@ pub(crate) fn install_wheel(
             &data_dir,
             &name,
             python_version,
+            &console_scripts,
+            &gui_scripts,
             &mut record,
         )?;
         // 2.c If applicable, update scripts starting with #!python to point to the correct interpreter.
@@ -842,12 +887,7 @@ pub(crate) fn install_wheel(
         bytecode_compile(&site_packages, unpacked_paths, python_version, &mut record)?;
     }
 
-    debug!(
-        name = name.as_str(),
-        "Writing entrypoint and extra metadata"
-    );
-    let entrypoints = parse_console_scripts(&mut archive, &dist_info_dir)?;
-    write_entrypoints(&site_packages, venv_base, entrypoints, &mut record)?;
+    debug!(name = name.as_str(), "Writing extra metadata");
 
     extra_dist_info(
         &site_packages,
