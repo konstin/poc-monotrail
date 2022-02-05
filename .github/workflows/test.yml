@@ -72,35 +72,35 @@ jobs:
         with:
           key: install-wheel-rs-${{ runner.os }}
 
-      - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --release
       - name: cargo build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
 
+      - name: Download pip repo
+        run: git clone --depth 1 --branch 22.0.3 -q https://github.com/pypa/pip
+      - name: Download popular wheels
+        run: pip download -d popular-wheels -r popular.txt
+
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release
+
       # quick test, includes package and console script
       - name: Compare tqdm
-        run: |
-          pip download -d wheels tqdm==4.62.3
-          test/compare.py target/release/install-wheel-rs tqdm-4.62.3
+        run: python -m test.compare popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl
       - name: Test tqdm
-        run: python test/test_tqdm.py
+        run: python -m test.test_tqdm
 
       - name: Test purelib/pathlib
         run: python -m test.compare wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl
 
-      - name: Download pip repo
-        run: git clone --depth 1 --branch 22.0.3 -q https://github.com/pypa/pip
       - name: Compare pip test wheels
         run: python -m test.test_piptests
 
-      - name: Download popular wheels
-        run: pip download -d popular-wheels -r popular.txt
       - name: Compare popular wheels
         run: python -m test.test_popular
 
