@@ -82,7 +82,7 @@ def compare_installer(
     # Filter out paths created by invoking pip and pip itself
     pattern = (
         r"^("
-        r"lib/python3\.8/site-packages/(__pycache__|pip|pip-[^/]+.dist-info|_distutils_hack/__pycache__)"
+        r"lib/python3\.8/site-packages/(__pycache__|pip|pip-[^/]+.dist-info|setuptools|pkg_resources|_distutils_hack/__pycache__)"
         r"|bin/__pycache__"
         r")"
     )
