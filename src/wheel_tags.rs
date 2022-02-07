@@ -7,11 +7,11 @@ use fs_err as fs;
 use goblin::elf::Elf;
 use platform_info::{PlatformInfo, Uname};
 use regex::Regex;
-
+use serde::Deserialize;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
-use std::{fmt};
 
 #[derive(Debug)]
 pub struct WheelFilename {
@@ -183,8 +183,39 @@ impl Os {
                 Os::Macos { major, minor }
             }
             target_lexicon::OperatingSystem::Darwin => {
-                let platform_info = PlatformInfo::new()?;
-                panic!("TODO: {}", platform_info.version());
+                // This is actually what python does
+                // https://github.com/python/cpython/blob/cb2b3c8d3566ae46b3b8d0718019e1c98484589e/Lib/platform.py#L409-L428
+                #[derive(Deserialize)]
+                #[serde(rename_all = "PascalCase")]
+                struct SystemVersion {
+                    product_version: String,
+                }
+                let system_version: SystemVersion =
+                    plist::from_file("/System/Library/CoreServices/SystemVersion.plist")
+                        .map_err(|err| WheelInstallerError::OsVersionDetectionError(err.into()))?;
+
+                let invalid_mac_os_version = || {
+                    WheelInstallerError::OsVersionDetectionError(anyhow!(
+                        "Invalid mac os version {}",
+                        system_version.product_version
+                    ))
+                };
+                let (major, minor) = match system_version
+                    .product_version
+                    .split('.')
+                    .collect::<Vec<&str>>()
+                    .as_slice()
+                {
+                    [major, minor] | [major, minor, _] => {
+                        let major = major.parse::<u16>().map_err(|_| invalid_mac_os_version())?;
+                        let minor = minor.parse::<u16>().map_err(|_| invalid_mac_os_version())?;
+                        (major, minor)
+                    }
+                    _ => {
+                        return Err(invalid_mac_os_version());
+                    }
+                };
+                Os::Macos { major, minor }
             }
             target_lexicon::OperatingSystem::Netbsd => Os::NetBsd {
                 release: PlatformInfo::new()?.release().to_string(),
