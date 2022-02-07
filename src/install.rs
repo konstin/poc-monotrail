@@ -1,3 +1,5 @@
+use crate::wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
+use crate::WheelInstallerError;
 use configparser::ini::Ini;
 use fs_err as fs;
 use fs_err::{DirEntry, File};
@@ -9,39 +11,12 @@ use std::ffi::OsString;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::str::FromStr;
 use std::{env, io};
-use thiserror::Error;
 use tracing::{debug, span, trace, warn, Level};
 use walkdir::WalkDir;
 use zip::result::ZipError;
 use zip::ZipArchive;
-
-#[derive(Error, Debug)]
-pub enum WheelInstallerError {
-    #[error(transparent)]
-    IOError(#[from] io::Error),
-    /// This shouldn't actually be possible to occur
-    #[error("Failed to serialize direct_url.json ಠ_ಠ")]
-    DirectUrlSerdeJsonError(#[source] serde_json::Error),
-    /// The wheel is broken
-    #[error("The wheel is invalid: {0}")]
-    InvalidWheel(String),
-    /// The wheel is broken, but in python pkginfo
-    #[error("The wheel is broken")]
-    PkgInfoError(#[from] python_pkginfo::Error),
-    #[error("Failed to read the wheel file")]
-    ZipError(#[from] ZipError),
-    #[error("Failed to run python subcommand")]
-    PythonSubcommandError(#[source] io::Error),
-    #[error("Failed to move data files")]
-    WalkDirError(#[source] walkdir::Error),
-    #[error("RECORD file doesn't match wheel contents: {0}")]
-    RecordFileError(String),
-    #[error("RECORD file is invalid")]
-    RecordCsvError(#[from] csv::Error),
-    #[error("Broken virtualenv: {0}")]
-    BrokenVenv(String),
-}
 
 /// Line in a RECORD file
 /// https://www.python.org/dev/peps/pep-0376/#record
@@ -66,6 +41,13 @@ struct RecordEntry {
 struct DirectUrl {
     archive_info: HashMap<(), ()>,
     url: String,
+}
+
+#[derive(Debug)]
+struct Script {
+    script_name: String,
+    module: String,
+    function: String,
 }
 
 /// Wrapper script template function
@@ -122,13 +104,6 @@ fn read_scripts_from_section(
         }
     }
     Ok(scripts)
-}
-
-#[derive(Debug)]
-struct Script {
-    script_name: String,
-    module: String,
-    function: String,
 }
 
 /// Parses the entry_points.txt entry in the wheel for console scripts
@@ -735,7 +710,19 @@ fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelIns
 }
 
 /// Parse pyvenv.cfg from the root of the virtual env and returns the python major and minor version
-fn get_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError> {
+fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerError> {
+    let pyvenv_cfg = venv.join("pyvenv.cfg");
+    if !pyvenv_cfg.is_file() {
+        return Err(WheelInstallerError::BrokenVenv(format!(
+            "The virtual environment needs to have a pyvenv.cfg, but {} doesn't exist",
+            pyvenv_cfg.display(),
+        )));
+    }
+    get_pyvenv_cfg_python_version(&fs::read_to_string(pyvenv_cfg)?)
+}
+
+/// Parse pyvenv.cfg from the root of the virtual env and returns the python major and minor version
+fn get_pyvenv_cfg_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError> {
     let pyvenv_cfg: HashMap<String, String> = pyvenv_cfg
         .lines()
         // Actual pyvenv.cfg doesn't have trailing newlines, but some program might insert some
@@ -780,14 +767,7 @@ pub(crate) fn get_name_from_path(wheel_path: &Path) -> Result<String, WheelInsta
         .file_name()
         .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
         .to_string_lossy();
-    let name = filename
-        .split_once("-")
-        .ok_or_else(|| {
-            WheelInstallerError::InvalidWheel(format!("Not a valid wheel filename: {}", filename))
-        })?
-        .0
-        .to_owned();
-    Ok(name)
+    Ok(WheelFilename::from_str(&filename)?.distribution)
 }
 
 /// Install the given wheel to the given venv
@@ -800,17 +780,21 @@ pub fn install_wheel(
     wheel_path: &Path,
     compile: bool,
 ) -> Result<(String, String), WheelInstallerError> {
-    let name = get_name_from_path(wheel_path)?;
+    let filename = wheel_path
+        .file_name()
+        .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
+        .to_string_lossy();
+    let filename = WheelFilename::from_str(&filename)?;
+    let name = &filename.distribution;
     let _my_span = span!(Level::DEBUG, "install_wheel", name = name.as_str());
 
-    let pyvenv_cfg = venv_base.join("pyvenv.cfg");
-    if !pyvenv_cfg.is_file() {
-        return Err(WheelInstallerError::BrokenVenv(format!(
-            "The virtual environment needs to have a pyvenv.cfg, but {} doesn't exist",
-            pyvenv_cfg.display(),
-        )));
+    let python_version = get_venv_python_version(venv_base)?;
+    let os = Os::current()?;
+    let arch = Arch::current().expect("Couldn't read os"); // TODO: error handling
+    let compatible_tags = compatible_tags(python_version, &os, &arch)?;
+    if !filename.is_compatible(&compatible_tags) {
+        return Err(WheelInstallerError::IncompatibleWheel);
     }
-    let python_version = get_python_version(&fs::read_to_string(pyvenv_cfg)?)?;
 
     let site_packages = venv_base
         .join("lib")
@@ -822,7 +806,7 @@ pub fn install_wheel(
     let escaped_name = Regex::new(r"[^\w\d.]+")
         .unwrap()
         .replace_all(&dist.metadata().name, "_");
-    if escaped_name != name {
+    if &escaped_name != name {
         return Err(WheelInstallerError::InvalidWheel(format!(
             "Inconsistent package name: {} (wheel metadata) vs {} (filename)",
             dist.metadata().name,
@@ -874,7 +858,7 @@ pub fn install_wheel(
             venv_base,
             &site_packages,
             &data_dir,
-            &name,
+            name,
             python_version,
             &console_scripts,
             &gui_scripts,
@@ -918,7 +902,7 @@ pub fn install_wheel(
 
 #[cfg(test)]
 mod test {
-    use super::{get_python_version, parse_wheel_version};
+    use super::{get_pyvenv_cfg_python_version, parse_wheel_version};
     use indoc::{formatdoc, indoc};
 
     #[test]
@@ -953,6 +937,6 @@ mod test {
             base-executable = /usr/bin/python3
             ",
         };
-        assert_eq!(get_python_version(pyvenv_cfg).unwrap(), (3, 8));
+        assert_eq!(get_pyvenv_cfg_python_version(pyvenv_cfg).unwrap(), (3, 8));
     }
 }

@@ -2,11 +2,13 @@ use crate::install::get_name_from_path;
 use crate::install_wheel;
 #[cfg(feature = "package_index")]
 use crate::package_index;
+
 use anyhow::Context;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::path::{Path, PathBuf};
+
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 

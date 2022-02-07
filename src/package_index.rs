@@ -1,4 +1,6 @@
-use crate::install::WheelInstallerError;
+//! Basic downloading from pypi
+
+use crate::WheelInstallerError;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use serde::Deserialize;

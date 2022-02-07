@@ -57,7 +57,7 @@ fn test_invalid() -> Result<()> {
         "invalid.whl",
         &[
             "Failed to install pip/tests/data/packages/invalid.whl",
-            "The wheel is invalid: Not a valid wheel filename: invalid.whl",
+            "The wheel filename \"invalid.whl\" is invalid: Expected four \"-\" in the filename",
         ],
     )
 }
