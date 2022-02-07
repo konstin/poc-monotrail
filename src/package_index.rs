@@ -9,7 +9,11 @@ use std::path::PathBuf;
 use std::{io, result};
 use tracing::{debug, info};
 
-fn search_wheel(name: &str, version: Option<&str>) -> Result<(PypiRelease, String)> {
+fn search_wheel(
+    name: &str,
+    version: Option<&str>,
+    compatible_tags: &[(String, String, String)],
+) -> Result<(PypiRelease, String)> {
     debug!("Getting Releases");
     let url = format!("https://pypi.org/pypi/{}/json", name);
     let pypi_project: PypiProject = ureq::get(&url)

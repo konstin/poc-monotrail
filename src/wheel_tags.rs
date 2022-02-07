@@ -8,10 +8,10 @@ use goblin::elf::Elf;
 use platform_info::{PlatformInfo, Uname};
 use regex::Regex;
 
-use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
+use std::{fmt};
 
 #[derive(Debug)]
 pub struct WheelFilename {
@@ -182,6 +182,10 @@ impl Os {
             target_lexicon::OperatingSystem::MacOSX { major, minor, .. } => {
                 Os::Macos { major, minor }
             }
+            target_lexicon::OperatingSystem::Darwin => {
+                let platform_info = PlatformInfo::new()?;
+                panic!("TODO: {}", platform_info.version());
+            }
             target_lexicon::OperatingSystem::Netbsd => Os::NetBsd {
                 release: PlatformInfo::new()?.release().to_string(),
             },
@@ -204,7 +208,6 @@ impl Os {
             target_lexicon::OperatingSystem::Haiku => Os::Haiku {
                 release: PlatformInfo::new()?.release().to_string(),
             },
-            target_lexicon::OperatingSystem::Darwin => todo!(),
             unsupported => {
                 return Err(WheelInstallerError::OsVersionDetectionError(anyhow!(
                     "The operating system {:?} is not supported",
