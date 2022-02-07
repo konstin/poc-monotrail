@@ -1,4 +1,4 @@
-use crate::install::get_name_from_path;
+use crate::install::{get_name_from_path};
 use crate::install_wheel;
 #[cfg(feature = "package_index")]
 use crate::package_index;
@@ -8,6 +8,7 @@ use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::path::{Path, PathBuf};
+
 
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
@@ -36,9 +37,14 @@ pub fn run(cli: Cli, venv_base: &Path) -> anyhow::Result<()> {
             version,
             no_compile,
         } => {
-            let wheel_path = package_index::download_wheel(&name, version.as_deref())
-                .with_context(|| format!("Failed to download {} from pypi", name))?;
-            let (name, version) = install_wheel(&venv_base, &wheel_path, !no_compile)?;
+            let python_version = get_venv_python_version(venv_base)?;
+            let os = Os::current()?;
+            let arch = Arch::current()?;
+            let compatible_tags = compatible_tags(python_version, &os, &arch)?;
+            let wheel_path =
+                package_index::download_wheel(&name, version.as_deref(), &compatible_tags)
+                    .with_context(|| format!("Failed to download {} from pypi", name))?;
+            let (name, version) = install_wheel(venv_base, &wheel_path, !no_compile)?;
             info!("Installed {} {}", name, version);
         }
         Cli::InstallFiles { files, no_compile } => match files.as_slice() {
@@ -85,16 +91,3 @@ pub fn run(cli: Cli, venv_base: &Path) -> anyhow::Result<()> {
     };
     Ok(())
 }
-
-/*
-  Compiling strsim v0.10.0
-  Compiling percent-encoding v2.1.0
-  Compiling camino v1.0.7
-  Compiling gimli v0.26.1
-  Compiling crossbeam-utils v0.8.6
-  Compiling semver v1.0.4
-  Compiling itoa v1.0.1
-  Compiling ppv-lite86 v0.2.16
-  Compiling bitflags v1.3.2
-  Building [===>                      ] 41/224: strsim, ppv-lite86, unicode-bidi, bitfl...
-*/

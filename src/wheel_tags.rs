@@ -183,38 +183,7 @@ impl Os {
                 Os::Macos { major, minor }
             }
             target_lexicon::OperatingSystem::Darwin => {
-                // This is actually what python does
-                // https://github.com/python/cpython/blob/cb2b3c8d3566ae46b3b8d0718019e1c98484589e/Lib/platform.py#L409-L428
-                #[derive(Deserialize)]
-                #[serde(rename_all = "PascalCase")]
-                struct SystemVersion {
-                    product_version: String,
-                }
-                let system_version: SystemVersion =
-                    plist::from_file("/System/Library/CoreServices/SystemVersion.plist")
-                        .map_err(|err| WheelInstallerError::OsVersionDetectionError(err.into()))?;
-
-                let invalid_mac_os_version = || {
-                    WheelInstallerError::OsVersionDetectionError(anyhow!(
-                        "Invalid mac os version {}",
-                        system_version.product_version
-                    ))
-                };
-                let (major, minor) = match system_version
-                    .product_version
-                    .split('.')
-                    .collect::<Vec<&str>>()
-                    .as_slice()
-                {
-                    [major, minor] | [major, minor, _] => {
-                        let major = major.parse::<u16>().map_err(|_| invalid_mac_os_version())?;
-                        let minor = minor.parse::<u16>().map_err(|_| invalid_mac_os_version())?;
-                        (major, minor)
-                    }
-                    _ => {
-                        return Err(invalid_mac_os_version());
-                    }
-                };
+                let (major, minor) = get_mac_os_version()?;
                 Os::Macos { major, minor }
             }
             target_lexicon::OperatingSystem::Netbsd => Os::NetBsd {
@@ -325,6 +294,39 @@ impl Arch {
     }
 }
 
+fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
+    // This is actually what python does
+    // https://github.com/python/cpython/blob/cb2b3c8d3566ae46b3b8d0718019e1c98484589e/Lib/platform.py#L409-L428
+    #[derive(Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct SystemVersion {
+        product_version: String,
+    }
+    let system_version: SystemVersion =
+        plist::from_file("/System/Library/CoreServices/SystemVersion.plist")
+            .map_err(|err| WheelInstallerError::OsVersionDetectionError(err.into()))?;
+
+    let invalid_mac_os_version = || {
+        WheelInstallerError::OsVersionDetectionError(anyhow!(
+            "Invalid mac os version {}",
+            system_version.product_version
+        ))
+    };
+    match system_version
+        .product_version
+        .split('.')
+        .collect::<Vec<&str>>()
+        .as_slice()
+    {
+        [major, minor] | [major, minor, _] => {
+            let major = major.parse::<u16>().map_err(|_| invalid_mac_os_version())?;
+            let minor = minor.parse::<u16>().map_err(|_| invalid_mac_os_version())?;
+            Ok((major, minor))
+        }
+        _ => Err(invalid_mac_os_version()),
+    }
+}
+
 /// Find musl libc path from executable's ELF header
 pub fn find_libc() -> anyhow::Result<PathBuf> {
     let buffer =
@@ -392,15 +394,48 @@ pub(crate) fn compatible_platform_tags(
             platform_tags
         }
         (Os::Macos { major, minor }, Arch::X86_64) => {
-            let mut platform_tags = vec![format!("macosx_{}_{}_universal2", major, minor)];
-            platform_tags
-                .extend((0..=minor).map(|minor| format!("macosx_{}_{}_x86_64", major, minor)));
+            assert!(major == 10 || major == 11);
+            let mut platform_tags = vec![];
+            match major {
+                10 => {
+                    platform_tags.extend(
+                        (0..=minor).map(|minor| format!("macosx_{}_{}_x86_64", major, minor)),
+                    );
+                    platform_tags.extend(
+                        (0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)),
+                    );
+                }
+                11 => {
+                    platform_tags.extend(
+                        (0..=minor).map(|minor| format!("macosx_{}_{}_x86_64", major, minor)),
+                    );
+                    platform_tags.extend(
+                        (0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)),
+                    );
+                    // Mac os 10 backwards compatibility
+                    platform_tags
+                        .extend((0..=15).map(|minor| format!("macosx_{}_{}_x86_64", 10, minor)));
+                    platform_tags.extend(
+                        (0..=15).map(|minor| format!("macosx_{}_{}_universal2", 10, minor)),
+                    );
+                }
+                _ => {
+                    return Err(WheelInstallerError::OsVersionDetectionError(anyhow!(
+                        "Unsupported mac os version: {}",
+                        major,
+                    )));
+                }
+            }
             platform_tags
         }
         (Os::Macos { major, minor }, Arch::Aarch64) => {
-            let mut platform_tags = vec![format!("macosx_{}_{}_universal2", major, minor)];
+            // arm64 (aka apple silicon) needs mac os 11
+            assert_eq!(major, 11);
+            let mut platform_tags = vec![];
             platform_tags
                 .extend((0..=minor).map(|minor| format!("macosx_{}_{}_arm64", major, minor)));
+            platform_tags
+                .extend((0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)));
             platform_tags
         }
         (Os::Windows, Arch::X86) => {

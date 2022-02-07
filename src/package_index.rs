@@ -1,11 +1,13 @@
 //! Basic downloading from pypi
 
+use crate::wheel_tags::WheelFilename;
 use crate::WheelInstallerError;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::{io, result};
 use tracing::{debug, info};
 
@@ -27,15 +29,16 @@ fn search_wheel(
             .releases
             .get(version)
             .with_context(|| format!("{} {} not found on pypi", name, version))?;
+        let pypi_releases = pypi_releases
+            .iter()
+            .filter(|release| release.packagetype == PackageType::BdistWheel)
+            .map(|release| Ok((WheelFilename::from_str(&release.filename)?, release)))
+            .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, WheelInstallerError>>()?;
         let picked_wheel = pypi_releases
             .iter()
-            .find(|release| {
-                release.python_version == "py2.py3"
-                    && release.packagetype == PackageType::BdistWheel
-            })
-            .with_context(|| {
-                format!("Couldn't find compatible release for {} {}", name, version)
-            })?;
+            .find(|(filename, _)| filename.is_compatible(compatible_tags))
+            .with_context(|| format!("Couldn't find compatible release for {} {}", name, version))?
+            .1;
         Ok((picked_wheel.clone(), version.to_string()))
     } else {
         let mut releases = pypi_project.releases.iter().collect::<Vec<_>>();
@@ -45,29 +48,38 @@ fn search_wheel(
         let mut picked_wheel = None;
         for (version, release) in releases {
             // TODO: Actually parse versions
-            if let Some(picked_wheel_) = release.iter().find(|release| {
-                release.python_version == "py2.py3"
-                    && release.packagetype == PackageType::BdistWheel
-            }) {
+            let release = release
+                .iter()
+                .filter(|release| release.packagetype == PackageType::BdistWheel)
+                .map(|release| Ok((WheelFilename::from_str(&release.filename)?, release)))
+                .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, WheelInstallerError>>()?;
+            if let Some((_, picked_wheel_)) = release
+                .iter()
+                .find(|(filename, _)| filename.is_compatible(compatible_tags))
+            {
                 picked_wheel = Some((picked_wheel_.to_owned(), version.to_string()));
                 break;
             } else {
-                eprint!(
+                eprintln!(
                     "⚠️ No compatible package found for {} version {}",
                     name, version
                 );
             }
         }
         if let Some((picked_wheel, version)) = picked_wheel {
-            Ok((picked_wheel, version))
+            Ok((picked_wheel.clone(), version))
         } else {
             bail!("No matching version found for {}", name);
         }
     }
 }
 
-pub fn download_wheel(name: &str, version: Option<&str>) -> Result<PathBuf> {
-    let (picked_wheel, version) = search_wheel(name, version)?;
+pub fn download_wheel(
+    name: &str,
+    version: Option<&str>,
+    compatible_tags: &[(String, String, String)],
+) -> Result<PathBuf> {
+    let (picked_wheel, version) = search_wheel(name, version, compatible_tags)?;
     let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
     let target_file = target_dir.join(&picked_wheel.filename);
 

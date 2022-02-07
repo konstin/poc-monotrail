@@ -1,4 +1,5 @@
 pub use crate::install::install_wheel;
+use crate::wheel_tags::{Arch, Os};
 pub use cli::{run, Cli};
 use std::io;
 use thiserror::Error;
@@ -18,8 +19,8 @@ pub enum WheelInstallerError {
     #[error("Failed to serialize direct_url.json ಠ_ಠ")]
     DirectUrlSerdeJsonError(#[source] serde_json::Error),
     /// Tags/metadata didn't match platform
-    #[error("The wheel is incompatible with the current platform")]
-    IncompatibleWheel,
+    #[error("The wheel is incompatible with the current platform {os} {arch}")]
+    IncompatibleWheel { os: Os, arch: Arch },
     /// The wheel is broken
     #[error("The wheel is invalid: {0}")]
     InvalidWheel(String),

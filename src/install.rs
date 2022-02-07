@@ -710,7 +710,7 @@ fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelIns
 }
 
 /// Parse pyvenv.cfg from the root of the virtual env and returns the python major and minor version
-fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerError> {
+pub fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerError> {
     let pyvenv_cfg = venv.join("pyvenv.cfg");
     if !pyvenv_cfg.is_file() {
         return Err(WheelInstallerError::BrokenVenv(format!(
@@ -790,10 +790,13 @@ pub fn install_wheel(
 
     let python_version = get_venv_python_version(venv_base)?;
     let os = Os::current()?;
-    let arch = Arch::current().expect("Couldn't read os"); // TODO: error handling
+    let arch = Arch::current()?;
     let compatible_tags = compatible_tags(python_version, &os, &arch)?;
     if !filename.is_compatible(&compatible_tags) {
-        return Err(WheelInstallerError::IncompatibleWheel);
+        return Err(WheelInstallerError::IncompatibleWheel {
+            os,
+            arch,
+        });
     }
 
     let site_packages = venv_base
