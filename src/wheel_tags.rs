@@ -583,9 +583,10 @@ mod test {
                 "numpy-1.22.2-cp38-cp38-macosx_10_14_x86_64.whl",
                 (
                     (3, 8),
+                    // Test backwards compatibility here
                     Os::Macos {
-                        major: 10,
-                        minor: 15,
+                        major: 11,
+                        minor: 0,
                     },
                     Arch::X86_64,
                 ),
