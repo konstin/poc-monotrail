@@ -6,12 +6,46 @@ use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{io, result};
 use tracing::{debug, info};
 
-fn search_wheel(
+/// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
+#[derive(Deserialize, Clone, Debug)]
+struct PypiProject {
+    releases: HashMap<String, Vec<PypiRelease>>,
+}
+
+/// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
+#[derive(Deserialize, Clone, Debug)]
+#[allow(dead_code)]
+struct PypiRelease {
+    filename: String,
+    packagetype: PackageType,
+    python_version: String,
+    size: usize,
+    url: String,
+}
+
+/// https://github.com/pypa/warehouse/blob/4d4c7940063db51e8ee03de78afdff6d4e9140ae/warehouse/filters.py#L33-L41
+#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum PackageType {
+    BdistDmg,
+    BdistDumb,
+    BdistEgg,
+    BdistMsi,
+    BdistRpm,
+    BdistWheel,
+    BdistWininst,
+    Sdist,
+}
+
+/// Finds a matching wheel from pages like https://pypi.org/pypi/tqdm/json
+///
+/// https://warehouse.pypa.io/api-reference/json.html
+fn search_release(
     name: &str,
     version: Option<&str>,
     compatible_tags: &[(String, String, String)],
@@ -74,26 +108,44 @@ fn search_wheel(
     }
 }
 
-pub fn download_wheel(
+/// Finds a matching wheel
+///
+/// Returns url, filename, version
+pub fn search_wheel(
     name: &str,
     version: Option<&str>,
     compatible_tags: &[(String, String, String)],
+) -> Result<(String, String, String)> {
+    let (picked_wheel, version) = search_release(name, version, compatible_tags)?;
+    Ok((picked_wheel.url, picked_wheel.filename, version))
+}
+
+pub fn download_wheel_cached(
+    name: &str,
+    version: &str,
+    filename: &str,
+    url: &str,
 ) -> Result<PathBuf> {
-    let (picked_wheel, version) = search_wheel(name, version, compatible_tags)?;
     let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
-    let target_file = target_dir.join(&picked_wheel.filename);
+    let target_file = target_dir.join(&filename);
 
     if target_file.is_file() {
         info!("Using cached download at {}", target_file.display());
         return Ok(target_file);
     }
 
+    download_wheel(url, &target_dir, &target_file)?;
+
+    Ok(target_file)
+}
+
+fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -> Result<()> {
     info!("Downloading wheel to {}", target_file.display());
     fs::create_dir_all(&target_dir).context("Couldn't create cache dir")?;
     // temp file so we don't clash with other processes running in parallel
     let mut temp_file = tempfile::NamedTempFile::new_in(&target_dir)
         .context("Couldn't create file for download")?;
-    let request_for_file = ureq::get(&picked_wheel.url)
+    let request_for_file = ureq::get(url)
         .set("User-Agent", "install-wheel-rs (konstin@mailbox.org)")
         .call()
         .context("Failed to download file from pypi")?;
@@ -102,39 +154,7 @@ pub fn download_wheel(
     temp_file
         .persist(&target_file)
         .context("Failed to moved wheel to target position")?;
-
-    Ok(target_file)
-}
-
-/// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
-#[derive(Deserialize, Clone, Debug)]
-struct PypiProject {
-    releases: HashMap<String, Vec<PypiRelease>>,
-}
-
-/// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
-#[derive(Deserialize, Clone, Debug)]
-#[allow(dead_code)]
-struct PypiRelease {
-    filename: String,
-    packagetype: PackageType,
-    python_version: String,
-    size: usize,
-    url: String,
-}
-
-/// https://github.com/pypa/warehouse/blob/4d4c7940063db51e8ee03de78afdff6d4e9140ae/warehouse/filters.py#L33-L41
-#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-enum PackageType {
-    BdistDmg,
-    BdistDumb,
-    BdistEgg,
-    BdistMsi,
-    BdistRpm,
-    BdistWheel,
-    BdistWininst,
-    Sdist,
+    Ok(())
 }
 
 fn cache_dir() -> result::Result<PathBuf, WheelInstallerError> {

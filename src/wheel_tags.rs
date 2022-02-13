@@ -1,5 +1,6 @@
 //! Parses the wheel filename, the current host os/arch and checks wheels for compatibility
 
+use crate::venv_parser::get_venv_python_version;
 use crate::WheelInstallerError;
 use anyhow::Context;
 use anyhow::{anyhow, Result};
@@ -63,6 +64,16 @@ impl WheelFilename {
         }
         false
     }
+}
+
+pub fn current_compatible_tags(
+    venv: &Path,
+) -> Result<Vec<(String, String, String)>, WheelInstallerError> {
+    compatible_tags(
+        get_venv_python_version(venv)?,
+        &Os::current()?,
+        &Arch::current()?,
+    )
 }
 
 /// Returns the compatible tags in a (python_tag, abi_tag, platform_tag) format

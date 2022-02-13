@@ -12,11 +12,8 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let venv = temp_dir.path().join(".venv");
     Command::new("virtualenv").arg(&venv).output()?;
     let wheel = Path::new("pip/tests/data/packages").join(name);
-    let cli: Cli = Cli::try_parse_from(&[
-        "install-wheel-rs",
-        "install-files",
-        &wheel.display().to_string(),
-    ])?;
+    let cli: Cli =
+        Cli::try_parse_from(&["install-wheel-rs", "install", &wheel.display().to_string()])?;
     if let Err(err) = run(cli, &venv) {
         let err: Error = err;
         let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
@@ -55,10 +52,7 @@ fn test_corruptwheel() -> Result<()> {
 fn test_invalid() -> Result<()> {
     check_error(
         "invalid.whl",
-        &[
-            "Failed to install pip/tests/data/packages/invalid.whl",
-            "The wheel filename \"invalid.whl\" is invalid: Expected four \"-\" in the filename",
-        ],
+        &["The wheel filename \"invalid.whl\" is invalid: Expected four \"-\" in the filename"],
     )
 }
 

@@ -34,7 +34,7 @@ def test_tqdm():
     check_call(
         [
             get_root().joinpath("target/release/install-wheel-rs"),
-            "install-files",
+            "install",
             get_root().joinpath("popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl"),
         ],
         env=env,

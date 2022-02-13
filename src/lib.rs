@@ -7,8 +7,9 @@ use zip::result::ZipError;
 
 mod cli;
 mod install;
-#[cfg(feature = "package_index")]
 mod package_index;
+mod poetry_lock;
+mod venv_parser;
 mod wheel_tags;
 
 #[derive(Error, Debug)]
@@ -44,4 +45,6 @@ pub enum WheelInstallerError {
     BrokenVenv(String),
     #[error("Failed to detect the operating system version")]
     OsVersionDetectionError(#[source] anyhow::Error),
+    #[error("Invalid version specification, only none or == is supported")]
+    Pep440,
 }

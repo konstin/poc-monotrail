@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use install_wheel_rs::{run, Cli};
 use std::env;
@@ -6,14 +6,25 @@ use std::path::PathBuf;
 use tracing::debug;
 
 fn cli() -> Result<()> {
+    let cli = Cli::parse();
     debug!("VIRTUAL_ENV: {:?}", env::var_os("VIRTUAL_ENV"));
     let venv = if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
         PathBuf::from(virtual_env)
+    } else if let Cli::PoetryInstall { lockfile, .. } = &cli {
+        let venv = lockfile
+            .parent()
+            .context("Invalid lockfile path")?
+            .join(".venv");
+        if venv.join("pyvenv.cfg").is_file() {
+            venv
+        } else {
+            bail!("No venv activate or next to lockfile");
+        }
     } else {
         bail!("Will only install in a virtualenv");
     };
 
-    run(Cli::parse(), &venv)
+    run(cli, &venv)
 }
 
 fn main() {

@@ -1,5 +1,5 @@
 use crate::wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
-use crate::WheelInstallerError;
+use crate::{venv_parser, WheelInstallerError};
 use configparser::ini::Ini;
 use fs_err as fs;
 use fs_err::{DirEntry, File};
@@ -709,67 +709,6 @@ fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelIns
         .collect()
 }
 
-/// Parse pyvenv.cfg from the root of the virtual env and returns the python major and minor version
-pub fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerError> {
-    let pyvenv_cfg = venv.join("pyvenv.cfg");
-    if !pyvenv_cfg.is_file() {
-        return Err(WheelInstallerError::BrokenVenv(format!(
-            "The virtual environment needs to have a pyvenv.cfg, but {} doesn't exist",
-            pyvenv_cfg.display(),
-        )));
-    }
-    get_pyvenv_cfg_python_version(&fs::read_to_string(pyvenv_cfg)?)
-}
-
-/// Parse pyvenv.cfg from the root of the virtual env and returns the python major and minor version
-fn get_pyvenv_cfg_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError> {
-    let pyvenv_cfg: HashMap<String, String> = pyvenv_cfg
-        .lines()
-        // Actual pyvenv.cfg doesn't have trailing newlines, but some program might insert some
-        .filter(|line| !line.is_empty())
-        .map(|line| {
-            line.split_once(" = ")
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-                .ok_or_else(|| WheelInstallerError::BrokenVenv("Invalid pyvenv.cfg".to_string()))
-        })
-        .collect::<Result<HashMap<String, String>, WheelInstallerError>>()?;
-
-    let version_info = pyvenv_cfg.get("version_info").ok_or_else(|| {
-        WheelInstallerError::BrokenVenv("Missing version_info in pyvenv.cfg".to_string())
-    })?;
-    let python_version: (u8, u8) = match &version_info.split('.').collect::<Vec<_>>()[..] {
-        [major, minor, ..] => (
-            major.parse().map_err(|err| {
-                WheelInstallerError::BrokenVenv(format!(
-                    "Invalid major version_info in pyvenv.cfg: {}",
-                    err
-                ))
-            })?,
-            minor.parse().map_err(|err| {
-                WheelInstallerError::BrokenVenv(format!(
-                    "Invalid minor version_info in pyvenv.cfg: {}",
-                    err
-                ))
-            })?,
-        ),
-        _ => {
-            return Err(WheelInstallerError::BrokenVenv(
-                "Invalid version_info in pyvenv.cfg".to_string(),
-            ))
-        }
-    };
-    Ok(python_version)
-}
-
-/// Helper to split the wheel filename
-pub(crate) fn get_name_from_path(wheel_path: &Path) -> Result<String, WheelInstallerError> {
-    let filename = wheel_path
-        .file_name()
-        .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
-        .to_string_lossy();
-    Ok(WheelFilename::from_str(&filename)?.distribution)
-}
-
 /// Install the given wheel to the given venv
 ///
 /// https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
@@ -788,15 +727,12 @@ pub fn install_wheel(
     let name = &filename.distribution;
     let _my_span = span!(Level::DEBUG, "install_wheel", name = name.as_str());
 
-    let python_version = get_venv_python_version(venv_base)?;
+    let python_version = venv_parser::get_venv_python_version(venv_base)?;
     let os = Os::current()?;
     let arch = Arch::current()?;
     let compatible_tags = compatible_tags(python_version, &os, &arch)?;
     if !filename.is_compatible(&compatible_tags) {
-        return Err(WheelInstallerError::IncompatibleWheel {
-            os,
-            arch,
-        });
+        return Err(WheelInstallerError::IncompatibleWheel { os, arch });
     }
 
     let site_packages = venv_base
@@ -905,7 +841,8 @@ pub fn install_wheel(
 
 #[cfg(test)]
 mod test {
-    use super::{get_pyvenv_cfg_python_version, parse_wheel_version};
+    use super::parse_wheel_version;
+    use crate::venv_parser::get_pyvenv_cfg_python_version;
     use indoc::{formatdoc, indoc};
 
     #[test]

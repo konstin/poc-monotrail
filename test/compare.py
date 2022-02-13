@@ -70,7 +70,7 @@ def compare_installer(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [install_wheel_rs, "install-files", *wheels],
+        [install_wheel_rs, "install", *wheels],
         stdout=DEVNULL,
         env=dict(os.environ, VIRTUAL_ENV=env),
     )

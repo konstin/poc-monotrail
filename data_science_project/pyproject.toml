@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "data_science_project"
+version = "0.1.0"
+description = ""
+authors = ["konstin <konstin@mailbox.org>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+numpy = "^1.22.2"
+pandas = "^1.4.0"
+matplotlib = "^3.5.1"
+tqdm = { version = "^4.62.3", optional = true }
+
+[extras]
+tqdm_features = ["tqdm"]
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
