@@ -120,6 +120,7 @@ pub fn search_wheel(
     Ok((picked_wheel.url, picked_wheel.filename, version))
 }
 
+/// Builds cache filename, downloads if not present, returns cache filename
 pub fn download_wheel_cached(
     name: &str,
     version: &str,
@@ -139,6 +140,7 @@ pub fn download_wheel_cached(
     Ok(target_file)
 }
 
+/// Just wraps ureq
 fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -> Result<()> {
     info!("Downloading wheel to {}", target_file.display());
     fs::create_dir_all(&target_dir).context("Couldn't create cache dir")?;
@@ -157,6 +159,7 @@ fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -> Result<()
     Ok(())
 }
 
+/// `~/.cache/install-wheel-rs`
 fn cache_dir() -> result::Result<PathBuf, WheelInstallerError> {
     Ok(dirs::cache_dir()
         .ok_or_else(|| {

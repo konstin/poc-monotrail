@@ -9,6 +9,7 @@ mod cli;
 mod install;
 mod package_index;
 mod poetry_lock;
+mod spec;
 mod venv_parser;
 mod wheel_tags;
 

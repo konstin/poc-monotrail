@@ -70,6 +70,7 @@ if __name__ == '__main__':
     )
 }
 
+/// Part of entrypoints parsing
 fn read_scripts_from_section(
     scripts_section: &HashMap<String, Option<String>>,
     section_name: &str,
