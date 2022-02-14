@@ -19,7 +19,7 @@ pub struct Spec {
 
 impl Spec {
     /// Parses "package_name", "package_name==version" and "some/path/tqdm-4.62.3-py2.py3-none-any.whl"
-    fn from_requested(requested: impl AsRef<str>) -> Result<Self, WheelInstallerError> {
+    pub fn from_requested(requested: impl AsRef<str>) -> Result<Self, WheelInstallerError> {
         if requested.as_ref().ends_with(".whl") {
             let file_path = PathBuf::from(requested.as_ref());
             let filename = file_path

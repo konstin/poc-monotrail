@@ -1,18 +1,17 @@
 use crate::package_index::{download_wheel_cached, search_wheel};
 use crate::poetry_lock::specs_from_lockfile;
 use crate::spec::Spec;
-use crate::wheel_tags::{current_compatible_tags, WheelFilename};
+use crate::wheel_tags::{current_compatible_tags};
 use crate::{install_wheel, WheelInstallerError};
 use anyhow::Context;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use regex::Regex;
+
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
-
 #[derive(Parser)]
 pub enum Cli {
     Install {
@@ -130,7 +129,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let compatible_tags = current_compatible_tags(venv)?;
             let specs = targets
                 .iter()
-                .map(parse_spec)
+                .map(Spec::from_requested)
                 .collect::<Result<Vec<Spec>, WheelInstallerError>>()?;
             install_specs(&specs, venv, &compatible_tags, no_compile)?;
         }

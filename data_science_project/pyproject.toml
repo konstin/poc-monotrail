@@ -11,8 +11,8 @@ pandas = "^1.4.0"
 matplotlib = "^3.5.1"
 tqdm = { version = "^4.62.3", optional = true }
 
-[extras]
-tqdm_features = ["tqdm"]
+[tool.poetry.extras]
+tqdm_feature = ["tqdm"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
