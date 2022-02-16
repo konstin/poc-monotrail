@@ -5,7 +5,7 @@ Test with the top 100 pypi wheels and some more
 from pathlib import Path
 from subprocess import check_call
 
-from test.compare import compare_installer, get_bin, get_root
+from test.compare import compare_with_pip, get_bin, get_root
 
 
 def test_popular():
@@ -24,7 +24,7 @@ def test_popular():
         )
     bin = get_bin()
     wheels_paths = list(wheels_dir.glob(f"*.whl"))
-    compare_installer(".venv-popular", wheels_paths, bin)
+    compare_with_pip(".venv-popular", wheels_paths, bin)
 
 
 if __name__ == "__main__":

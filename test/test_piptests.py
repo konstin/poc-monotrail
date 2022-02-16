@@ -6,7 +6,7 @@ Use the wheels from pip's tests to cover the edge cases
 from pathlib import Path
 from subprocess import check_call, DEVNULL
 
-from test.compare import compare_installer, get_bin, get_root
+from test.compare import compare_with_pip, get_bin, get_root
 
 
 def test_piptests():
@@ -41,7 +41,7 @@ def test_piptests():
         "simplewheel-2.0-py3-fakeabi-fakeplat.whl",
     ]:
         wheel_paths.remove(pip_dir.joinpath("tests/data/packages/").joinpath(invalid))
-    compare_installer("venv-piptests", wheel_paths, bin)
+    compare_with_pip("venv-piptests", wheel_paths, bin)
 
 
 if __name__ == "__main__":

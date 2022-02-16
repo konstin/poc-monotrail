@@ -1,7 +1,7 @@
 use crate::package_index::{download_wheel_cached, search_wheel};
 use crate::poetry_lock::specs_from_lockfile;
 use crate::spec::Spec;
-use crate::wheel_tags::{current_compatible_tags};
+use crate::wheel_tags::current_compatible_tags;
 use crate::{install_wheel, WheelInstallerError};
 use anyhow::Context;
 use clap::Parser;
@@ -69,7 +69,7 @@ fn install_specs(
                     current.lock().unwrap().push(spec.name.clone());
                     pb.set_message(current.lock().unwrap().join(","));
                     if pb.is_hidden() {
-                        pb.println(&spec.name);
+                        pb.println(&spec.requested);
                     }
 
                     let (wheel_path, version) = match &spec.file_path {

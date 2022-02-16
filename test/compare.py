@@ -37,7 +37,7 @@ def get_bin() -> Path:
     return bin
 
 
-def compare_installer(
+def compare_with_pip(
     env_name: str,
     wheels: List[Union[str, Path]],
     install_wheel_rs: Path,
@@ -76,15 +76,28 @@ def compare_installer(
     )
     stop_rs = time.time()
     env.rename(env_rs)
+    rust_time = stop_rs - start_rs
 
-    print(f"{env_name} rs install took {stop_rs - start_rs:.2f}s")
+    print(f"{env_name} rs install took {rust_time :.2f}s")
 
+    diff_envs(env_name, env_py, env_rs)
+
+    if clear_rs:
+        shutil.rmtree(env_rs)
+
+
+def diff_envs(env_name: str, env_py: Path, env_rs: Path):
     # Filter out paths created by invoking pip and pip itself
+    dirs = [
+        r"__pycache__",
+        r"pip",
+        r"pip-[^/]+.dist-info",
+        r"setuptools",
+        r"pkg_resources",
+        r"_distutils_hack/__pycache__",
+    ]
     pattern = (
-        r"^("
-        r"lib/python3\.8/site-packages/(__pycache__|pip|pip-[^/]+.dist-info|setuptools|pkg_resources|_distutils_hack/__pycache__)"
-        r"|bin/__pycache__"
-        r")"
+        r"^(lib/python3\.8/site-packages/(" + "|".join(dirs) + r")|bin/__pycache__)"
     )
     env_rs_entries = set()
     for i in env_rs.glob("**/*"):
@@ -101,9 +114,6 @@ def compare_installer(
         print(env_name, symmetric_difference)
         sys.exit(1)
 
-    if clear_rs:
-        shutil.rmtree(env_rs)
-
 
 def main():
     parser = ArgumentParser()
@@ -113,7 +123,7 @@ def main():
     wheel = Path(args.wheel)
 
     env_name = wheel.name.split("-")[0]
-    compare_installer(env_name, [wheel], get_bin())
+    compare_with_pip(env_name, [wheel], get_bin())
 
 
 if __name__ == "__main__":
