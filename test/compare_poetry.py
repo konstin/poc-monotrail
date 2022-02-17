@@ -22,18 +22,18 @@ def compare_with_poetry(
     test_venvs.mkdir(exist_ok=True)
     env = test_venvs.joinpath(f"{env_name}")
     env_rs = test_venvs.joinpath(f"{env_name}-rs")
-    env_py = test_venvs.joinpath(f"{env_name}-pip")
+    env_poetry = test_venvs.joinpath(f"{env_name}-poetry")
 
     # poetry install
-    if clear_poetry and env_py.exists():
-        rmtree(env_py)
-    if not env_py.exists():
+    if clear_poetry and env_poetry.exists():
+        rmtree(env_poetry)
+    if not env_poetry.exists():
         check_call(["virtualenv", env], stdout=DEVNULL)
         env_vars = {**os.environ, "VIRTUAL_ENV": env}
         start_pip = time.time()
-        check_call(["poetry", "install", "--no-root"], env=env_vars, cwd=poetry_dir)
+        check_call(["poetry", "install", "--no-root", "--no-dev"], env=env_vars, cwd=poetry_dir)
         stop_pip = time.time()
-        env.rename(env_py)
+        env.rename(env_poetry)
 
         print(f"{env_name} pip install took {stop_pip - start_pip:.2f}s")
 
@@ -53,7 +53,7 @@ def compare_with_poetry(
 
     print(f"{env_name} rs install took {rust_time :.2f}s")
 
-    diff_envs(env_name, env_py, env_rs)
+    diff_envs(env_name, env_poetry, env_rs)
 
     if clear_rs:
         shutil.rmtree(env_rs)

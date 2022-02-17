@@ -4,6 +4,7 @@ use anyhow::Context;
 use fs_err as fs;
 use serde::Deserialize;
 use std::collections::HashMap;
+
 use std::path::Path;
 use std::str::FromStr;
 
@@ -27,6 +28,26 @@ pub struct Package {
     python_versions: String,
     #[serde(default)]
     extras: HashMap<String, Vec<String>>,
+    dependencies: Option<HashMap<String, Dependency>>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+#[serde(untagged)]
+pub enum Dependency {
+    Compact(String),
+    Expanded { version: String, markers: String },
+}
+
+#[allow(dead_code)]
+impl Dependency {
+    pub fn get_version(&self) -> &str {
+        match self {
+            Dependency::Compact(version) => version,
+            Dependency::Expanded { version, .. } => version,
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -94,6 +115,41 @@ fn filename_and_url(
     );
     Ok((filename, url))
 }
+/*
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct PoetryPyprojectToml {
+    tool: ToolSection,
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct ToolSection {
+    poetry: PoetrySection,
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+pub enum Dependency2 {
+    Compact(String),
+    Expanded { version: String, optional: bool },
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct PoetrySection {
+    dependencies: HashMap<String, Dependency2>,
+    extras: HashMap<String, Vec<String>>,
+}
+
+/// Parses a poetry lockfile
+pub fn specs_from_poetry(pyproject_toml: &Path, compatible_tags: &[(String, String, String)]) {
+    let poetry_pyproject_toml: PoetryPyprojectToml = toml::from_str(&fs::read_to_string(lockfile)?)
+        .with_context(|| format!("Invalid poetry pyproject.toml: {}", lockfile.display()))?;
+
+    poetry_pyproject_toml.tool.poetry.dependencies
+}
+*/
 
 /// Parses a poetry lockfile
 pub fn specs_from_lockfile(
@@ -104,6 +160,10 @@ pub fn specs_from_lockfile(
         .with_context(|| format!("Invalid lockfile: {}", lockfile.display()))?;
     let mut specs = Vec::new();
     for package in &lockfile.package {
+        // TODO: extras
+        if package.category != "main" || package.optional {
+            continue;
+        }
         let (_filename, url) = filename_and_url(&lockfile, package, compatible_tags)?;
         let spec = Spec {
             requested: format!("{} {}", package.name, package.version),
