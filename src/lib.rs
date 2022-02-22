@@ -8,7 +8,7 @@ use zip::result::ZipError;
 mod cli;
 mod install;
 mod package_index;
-mod poetry_lock;
+mod poetry;
 mod spec;
 mod venv_parser;
 mod wheel_tags;

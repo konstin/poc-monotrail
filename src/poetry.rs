@@ -115,41 +115,66 @@ fn filename_and_url(
     );
     Ok((filename, url))
 }
-/*
+
+/// ```toml
+/// [tool]
+/// ```
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 struct PoetryPyprojectToml {
     tool: ToolSection,
 }
 
+/// ```toml
+/// [tool.poetry]
+/// ```
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 struct ToolSection {
     poetry: PoetrySection,
 }
 
+/// ```toml
+/// [tool.poetry.dependencies]
+/// dep1 = "1.2.3"
+/// dep2 = { version = "4.5.6", optional = true }
+/// ```
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 pub enum Dependency2 {
     Compact(String),
     Expanded { version: String, optional: bool },
 }
 
+/// ```toml
+/// [tool.poetry.dependencies]
+/// [tool.poetry.dev-dependencies]
+/// [tool.poetry.extras]
+/// ``
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 struct PoetrySection {
     dependencies: HashMap<String, Dependency2>,
+    dev_dependencies: HashMap<String, Dependency2>,
     extras: HashMap<String, Vec<String>>,
 }
 
 /// Parses a poetry lockfile
-pub fn specs_from_poetry(pyproject_toml: &Path, compatible_tags: &[(String, String, String)]) {
-    let poetry_pyproject_toml: PoetryPyprojectToml = toml::from_str(&fs::read_to_string(lockfile)?)
-        .with_context(|| format!("Invalid poetry pyproject.toml: {}", lockfile.display()))?;
+pub fn poetry_pyproject_toml_dependencies(pyproject_toml: &Path) -> (Vec<String>, Vec<String>) {
+    let poetry_pyproject_toml: PoetryPyprojectToml =
+        toml::from_str(&fs::read_to_string(pyproject_toml)?)
+            .with_context(|| format!("Invalid poetry pyproject.toml: {}", lockfile.display()))?;
 
-    poetry_pyproject_toml.tool.poetry.dependencies
+    let poetry_section = poetry_pyproject_toml.tool.poetry;
+    (
+        poetry_section.dependencies.keys().collect(),
+        poetry_section.dev_dependencies.keys().collect(),
+    )
 }
-*/
 
 /// Parses a poetry lockfile
 pub fn specs_from_lockfile(

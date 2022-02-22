@@ -1,5 +1,5 @@
 use crate::package_index::{download_wheel_cached, search_wheel};
-use crate::poetry_lock::specs_from_lockfile;
+use crate::poetry::specs_from_lockfile;
 use crate::spec::Spec;
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install_wheel, WheelInstallerError};
