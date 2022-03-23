@@ -7,6 +7,7 @@ use zip::result::ZipError;
 
 mod cli;
 mod install;
+mod markers;
 mod package_index;
 mod poetry;
 mod spec;

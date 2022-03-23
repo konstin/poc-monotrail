@@ -163,6 +163,7 @@ struct PoetrySection {
     extras: HashMap<String, Vec<String>>,
 }
 
+/*
 /// Parses a poetry lockfile
 pub fn poetry_pyproject_toml_dependencies(pyproject_toml: &Path) -> (Vec<String>, Vec<String>) {
     let poetry_pyproject_toml: PoetryPyprojectToml =
@@ -175,6 +176,7 @@ pub fn poetry_pyproject_toml_dependencies(pyproject_toml: &Path) -> (Vec<String>
         poetry_section.dev_dependencies.keys().collect(),
     )
 }
+*/
 
 /// Parses a poetry lockfile
 pub fn specs_from_lockfile(
