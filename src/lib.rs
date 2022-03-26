@@ -1,3 +1,5 @@
+extern crate core;
+
 pub use crate::install::install_wheel;
 use crate::wheel_tags::{Arch, Os};
 pub use cli::{run, Cli};

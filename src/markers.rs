@@ -7,15 +7,15 @@
 
 #![allow(dead_code)]
 
+use serde::Deserialize;
 use std::fmt::{Display, Formatter};
+use std::io;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 
-#[derive(Debug, Eq, PartialEq)]
-struct PythonEnvironmentVersion {
-    inner: String,
-}
+static PEP508_QUERY_SCRIPT: &str = include_str!("get_pep508_env.py");
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Deserialize)]
 struct PythonEnvironment {
     implementation_name: String,
     implementation_version: String,
@@ -25,9 +25,8 @@ struct PythonEnvironment {
     platform_release: String,
     platform_system: String,
     platform_version: String,
-    platform_in_venv: String,
-    python_full_version: PythonEnvironmentVersion,
-    python_version: PythonEnvironmentVersion,
+    python_full_version: String,
+    python_version: String,
     sys_platform: String,
 }
 
@@ -42,15 +41,65 @@ impl PythonEnvironment {
             platform_release: "".to_string(),
             platform_system: "".to_string(),
             platform_version: "".to_string(),
-            platform_in_venv: "".to_string(),
-            python_full_version: PythonEnvironmentVersion {
-                inner: "".to_string(),
-            },
-            python_version: PythonEnvironmentVersion {
-                inner: "".to_string(),
-            },
+            python_full_version: "".to_string(),
+            python_version: "".to_string(),
             sys_platform: "".to_string(),
         }
+    }
+
+    fn get_key(&self, key: Key) -> &str {
+        match key {
+            Key::ImplementationName => &self.implementation_name,
+            Key::ImplementationVersion => &self.implementation_version,
+            Key::OsName => &self.os_name,
+            Key::PlatformMachine => &self.platform_machine,
+            Key::PlatformPythonImplementation => &self.platform_python_implementation,
+            Key::PlatformRelease => &self.platform_release,
+            Key::PlatformSystem => &self.platform_system,
+            Key::PlatformVersion => &self.platform_version,
+            Key::PythonFullVersion => &self.python_full_version,
+            Key::PythonVersion => &self.python_version,
+            Key::SysPlatform => &self.sys_platform,
+        }
+    }
+
+    /// Runs python to get the actual PEP 508 value
+    fn from_python() -> Self {
+        let out = Command::new("python")
+            .env("PYTHONIOENCODING", "utf-8")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                child
+                    .stdin
+                    .as_mut()
+                    .expect("piped stdin")
+                    .write_all(PEP508_QUERY_SCRIPT.as_bytes())?;
+                child.wait_with_output()
+            });
+
+        let returned = match out {
+            Err(err) => {
+                if err.kind() == io::ErrorKind::NotFound {
+                    panic!(
+                        "Could not find any interpreter at {}, \
+                        are you sure you have Python installed on your PATH?",
+                        "python"
+                    )
+                } else {
+                    panic!(
+                        "Failed to run the Python interpreter at {}: {}",
+                        "python", err
+                    )
+                }
+            }
+            Ok(ok) if !ok.status.success() => panic!("Python script failed"),
+            Ok(ok) => ok.stdout,
+        };
+        serde_json::from_slice(&returned).unwrap()
     }
 }
 
@@ -63,7 +112,7 @@ fn position_with_start(chars: &[char], start: usize, cond: impl Fn(char) -> bool
     return chars.len();
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 enum Key {
     ImplementationName,
     ImplementationVersion,
@@ -73,7 +122,6 @@ enum Key {
     PlatformRelease,
     PlatformSystem,
     PlatformVersion,
-    PlatformInVenv,
     PythonFullVersion,
     PythonVersion,
     SysPlatform,
@@ -92,7 +140,6 @@ impl FromStr for Key {
             "platform_release" => Self::PlatformRelease,
             "platform_system" => Self::PlatformSystem,
             "platform_version" => Self::PlatformVersion,
-            "platform_in_venv" => Self::PlatformInVenv,
             "python_full_version" => Self::PythonFullVersion,
             "python_version" => Self::PythonVersion,
             "sys_platform" => Self::SysPlatform,
@@ -112,7 +159,6 @@ impl Display for Key {
             Self::PlatformRelease => "platform_release",
             Self::PlatformSystem => "platform_system",
             Self::PlatformVersion => "platform_version",
-            Self::PlatformInVenv => "platform_in_venv",
             Self::PythonFullVersion => "python_full_version",
             Self::PythonVersion => "python_version",
             Self::SysPlatform => "sys_platform",
@@ -170,6 +216,36 @@ struct Expression {
     value: String,
 }
 
+impl Expression {
+    fn evaluate(&self, env: &PythonEnvironment) -> bool {
+        match self.key {
+            Key::OsName
+            | Key::SysPlatform
+            | Key::PlatformPythonImplementation
+            | Key::PlatformRelease
+            | Key::PlatformVersion
+            | Key::ImplementationName => match self.comparator {
+                Comparator::Equal => env.get_key(self.key) == self.value,
+                Comparator::In => self.value.contains(env.get_key(self.key)),
+                Comparator::NotIn => !self.value.contains(env.get_key(self.key)),
+                _ => panic!(
+                    "comparator {} not supported for {}",
+                    self.comparator, self.key
+                ),
+            },
+            _ => match self.comparator {
+                Comparator::Equal => env.get_key(self.key) == self.value,
+                Comparator::In => self.value.contains(env.get_key(self.key)),
+                Comparator::NotIn => !self.value.contains(env.get_key(self.key)),
+                _ => panic!(
+                    "comparator {} not supported for {}",
+                    self.comparator, self.key
+                ),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 enum ExpressionTree {
     Expression(Expression),
@@ -177,7 +253,23 @@ enum ExpressionTree {
     Or(Vec<ExpressionTree>),
 }
 
-fn marker_matches(marker: &str) -> Result<ExpressionTree, ()> {
+impl ExpressionTree {
+    fn evaluate(&self, env: &PythonEnvironment) -> bool {
+        match self {
+            ExpressionTree::Expression(expression) => expression.evaluate(env),
+            ExpressionTree::And(and_list) => and_list
+                .iter()
+                .map(|expression| expression.evaluate(env))
+                .all(|x| x),
+            ExpressionTree::Or(or_list) => or_list
+                .iter()
+                .map(|expression| expression.evaluate(env))
+                .any(|x| x),
+        }
+    }
+}
+
+fn parse_marker(marker: &str) -> Result<ExpressionTree, ()> {
     // 😈
     // behold my horror of the parser
     let chars: Vec<char> = marker.chars().collect();
@@ -295,19 +387,53 @@ fn parse_expression(chars: &[char], start_name: usize) -> Result<(Expression, us
 
 #[cfg(test)]
 mod test {
-    use crate::markers::marker_matches;
+    use crate::markers::{parse_marker, PythonEnvironment};
+
+    #[test]
+    fn get_python() {
+        PythonEnvironment::from_python();
+    }
 
     #[test]
     fn asdf() {
-        marker_matches("python_version == '2.7'").unwrap();
-        marker_matches(
+        let env27 = PythonEnvironment {
+            implementation_name: "".to_string(),
+            implementation_version: "".to_string(),
+            os_name: "linux".to_string(),
+            platform_machine: "".to_string(),
+            platform_python_implementation: "".to_string(),
+            platform_release: "".to_string(),
+            platform_system: "".to_string(),
+            platform_version: "".to_string(),
+            python_full_version: "".to_string(),
+            python_version: "2.7".to_string(),
+            sys_platform: "linux".to_string(),
+        };
+        let env37 = PythonEnvironment {
+            implementation_name: "".to_string(),
+            implementation_version: "".to_string(),
+            os_name: "linux".to_string(),
+            platform_machine: "".to_string(),
+            platform_python_implementation: "".to_string(),
+            platform_release: "".to_string(),
+            platform_system: "".to_string(),
+            platform_version: "".to_string(),
+            python_full_version: "".to_string(),
+            python_version: "3.7".to_string(),
+            sys_platform: "linux".to_string(),
+        };
+        let marker1 = parse_marker("python_version == '2.7'").unwrap();
+        let marker2 = parse_marker(
             "os_name == \"linux\" or python_version == \"3.7\" and sys_platform == \"win32\"",
         )
         .unwrap();
-        marker_matches(
+        let marker3 = parse_marker(
                 "python_version == \"2.7\" and (sys_platform == \"win32\" or sys_platform == \"linux\")",
-        )
-        .unwrap();
+        ).unwrap();
+        assert!(marker1.evaluate(&env27));
+        assert!(!marker1.evaluate(&env37));
+        dbg!(marker2.evaluate(&env27), marker3.evaluate(&env27));
+        dbg!(marker2.evaluate(&env37), marker3.evaluate(&env37));
     }
 
     #[test]
@@ -338,7 +464,7 @@ mod test {
             ),
         ];
         for (a, b) in values {
-            assert_eq!(marker_matches(a).unwrap(), marker_matches(b).unwrap());
+            assert_eq!(parse_marker(a).unwrap(), parse_marker(b).unwrap());
         }
     }
 }
