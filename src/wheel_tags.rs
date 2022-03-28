@@ -465,7 +465,7 @@ pub(crate) fn compatible_platform_tags(
             _,
         ) => {
             let info = PlatformInfo::new()?;
-            let release = info.release().replace(".", "_").replace("-", "_");
+            let release = info.release().replace('.', "_").replace('-', "_");
             vec![format!(
                 "{}_{}_{}",
                 os.to_string().to_lowercase(),

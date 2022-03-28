@@ -10,7 +10,11 @@ fn cli() -> Result<()> {
     debug!("VIRTUAL_ENV: {:?}", env::var_os("VIRTUAL_ENV"));
     let venv = if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
         PathBuf::from(virtual_env)
-    } else if let Cli::PoetryInstall { lockfile, .. } = &cli {
+    } else if let Cli::PoetryInstall {
+        pyproject_toml: lockfile,
+        ..
+    } = &cli
+    {
         let venv = lockfile
             .parent()
             .context("Invalid lockfile path")?

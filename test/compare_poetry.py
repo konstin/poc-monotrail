@@ -31,7 +31,7 @@ def compare_with_poetry(
         check_call(["virtualenv", env], stdout=DEVNULL)
         env_vars = {**os.environ, "VIRTUAL_ENV": env}
         start_pip = time.time()
-        check_call(["poetry", "install", "--no-root", "--no-dev"], env=env_vars, cwd=poetry_dir)
+        check_call(["poetry", "install", "--no-root"], env=env_vars, cwd=poetry_dir)
         stop_pip = time.time()
         env.rename(env_poetry)
 
@@ -43,7 +43,7 @@ def compare_with_poetry(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [install_wheel_rs, "poetry-install", poetry_dir.joinpath("poetry.lock")],
+        [install_wheel_rs, "poetry-install", poetry_dir.joinpath("pyproject.toml")],
         stdout=DEVNULL,
         env=dict(os.environ, VIRTUAL_ENV=env),
     )

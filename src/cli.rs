@@ -1,5 +1,5 @@
 use crate::package_index::{download_wheel_cached, search_wheel};
-use crate::poetry::specs_from_lockfile;
+use crate::poetry::find_specs_to_install;
 use crate::spec::Spec;
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install_wheel, WheelInstallerError};
@@ -20,9 +20,13 @@ pub enum Cli {
         no_compile: bool,
     },
     PoetryInstall {
-        lockfile: PathBuf,
+        pyproject_toml: PathBuf,
         #[clap(long)]
         no_compile: bool,
+        #[clap(long)]
+        no_dev: bool,
+        #[clap(short = 'E')]
+        extras: Vec<String>,
     },
 }
 
@@ -68,9 +72,9 @@ fn install_specs(
                 .map(|spec| {
                     current.lock().unwrap().push(spec.name.clone());
                     pb.set_message(current.lock().unwrap().join(","));
-                    if pb.is_hidden() {
-                        pb.println(&spec.requested);
-                    }
+                    //if pb.is_hidden() {
+                    //    pb.println(&format!("Installing {}", spec.requested));
+                    //}
 
                     let (wheel_path, version) = match &spec.file_path {
                         Some((file_path, metadata)) => {
@@ -134,11 +138,13 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             install_specs(&specs, venv, &compatible_tags, no_compile)?;
         }
         Cli::PoetryInstall {
-            lockfile,
+            pyproject_toml,
             no_compile,
+            no_dev,
+            extras,
         } => {
             let compatible_tags = current_compatible_tags(venv)?;
-            let specs = specs_from_lockfile(&lockfile, &compatible_tags)?;
+            let specs = find_specs_to_install(&pyproject_toml, &compatible_tags, no_dev, &extras)?;
             install_specs(&specs, venv, &compatible_tags, no_compile)?;
         }
     };

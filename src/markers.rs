@@ -1,4 +1,4 @@
-//! I have no idea how to write parsers and didn't want to learn it,
+//! I have no idea how to write parsers and didn't want to learn it just for this,
 //! so if you want to replace this with something proper feel free to :)
 //! I really wouldn't have written this in the first place if it wasn't absolutely required
 //!
@@ -16,7 +16,7 @@ use std::str::FromStr;
 static PEP508_QUERY_SCRIPT: &str = include_str!("get_pep508_env.py");
 
 #[derive(Debug, Eq, PartialEq, Deserialize)]
-struct PythonEnvironment {
+pub struct PythonEnvironment {
     implementation_name: String,
     implementation_version: String,
     os_name: String,
@@ -64,7 +64,7 @@ impl PythonEnvironment {
     }
 
     /// Runs python to get the actual PEP 508 value
-    fn from_python() -> Self {
+    pub fn from_python() -> Self {
         let out = Command::new("python")
             .env("PYTHONIOENCODING", "utf-8")
             .stdin(Stdio::piped())
@@ -104,12 +104,12 @@ impl PythonEnvironment {
 }
 
 fn position_with_start(chars: &[char], start: usize, cond: impl Fn(char) -> bool) -> usize {
-    for pos in start..chars.len() {
-        if !cond(chars[pos]) {
+    for (pos, char) in chars.iter().enumerate().skip(start) {
+        if !cond(*char) {
             return pos;
         }
     }
-    return chars.len();
+    chars.len()
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
@@ -145,7 +145,7 @@ impl FromStr for Key {
             "sys_platform" => Self::SysPlatform,
             _ => return Err(()),
         };
-        return Ok(value);
+        Ok(value)
     }
 }
 impl Display for Key {
@@ -210,10 +210,21 @@ impl Display for Comparator {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct Expression {
+pub struct Expression {
     key: Key,
     comparator: Comparator,
     value: String,
+}
+
+impl Display for Expression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let quoted_value = if self.value.contains('\'') {
+            format!("\"{}\"", self.value)
+        } else {
+            format!("'{}'", self.value)
+        };
+        write!(f, "{} {} {}", self.key, self.comparator, quoted_value)
+    }
 }
 
 impl Expression {
@@ -247,14 +258,36 @@ impl Expression {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum ExpressionTree {
+pub enum ExpressionTree {
     Expression(Expression),
     And(Vec<ExpressionTree>),
     Or(Vec<ExpressionTree>),
 }
 
+impl Display for ExpressionTree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExpressionTree::Expression(expression) => write!(f, "{}", expression),
+            ExpressionTree::And(and_list) => f.write_str(
+                &and_list
+                    .iter()
+                    .map(|expression| format!("({})", expression))
+                    .collect::<Vec<String>>()
+                    .join(" and "),
+            ),
+            ExpressionTree::Or(or_list) => f.write_str(
+                &or_list
+                    .iter()
+                    .map(|expression| format!("({})", expression))
+                    .collect::<Vec<String>>()
+                    .join(" or "),
+            ),
+        }
+    }
+}
+
 impl ExpressionTree {
-    fn evaluate(&self, env: &PythonEnvironment) -> bool {
+    pub fn evaluate(&self, env: &PythonEnvironment) -> bool {
         match self {
             ExpressionTree::Expression(expression) => expression.evaluate(env),
             ExpressionTree::And(and_list) => and_list
@@ -269,9 +302,8 @@ impl ExpressionTree {
     }
 }
 
-fn parse_marker(marker: &str) -> Result<ExpressionTree, ()> {
-    // 😈
-    // behold my horror of the parser
+/// PEP 508 marker parser
+pub fn parse_markers(marker: &str) -> Result<ExpressionTree, ()> {
     let chars: Vec<char> = marker.chars().collect();
 
     let (expression, end_expression) = parse_expression_list(&chars, 0)?;
@@ -285,21 +317,24 @@ fn parse_expression_list(
     chars: &[char],
     start_expression: usize,
 ) -> Result<(ExpressionTree, usize), ()> {
+    // 😈
+    // behold my horror of the parser
+
     // "and" has precedence over "or", so we make an "or" list that consists of single or a list of "and" nodes
     let mut or_list: Vec<ExpressionTree> = Vec::new();
     let mut and_list = Vec::new();
 
     let (expression, end_expression) = if chars[start_expression] == '(' {
-        parse_expression_list(&chars, start_expression + 1)?
+        parse_expression_list(chars, start_expression + 1)?
     } else {
-        let (expression, end_expression) = parse_expression(&chars, start_expression)?;
+        let (expression, end_expression) = parse_expression(chars, start_expression)?;
         (ExpressionTree::Expression(expression), end_expression)
     };
     and_list.push(expression);
-    let mut start_and_or = position_with_start(&chars, end_expression, |c| c.is_whitespace());
+    let mut start_and_or = position_with_start(chars, end_expression, |c| c.is_whitespace());
     while start_and_or < chars.len() && chars[start_and_or] != ')' {
-        let end_and_or = position_with_start(&chars, start_and_or, |c| !c.is_whitespace());
-        let start_expression = position_with_start(&chars, end_and_or, |c| c.is_whitespace());
+        let end_and_or = position_with_start(chars, start_and_or, |c| !c.is_whitespace());
+        let start_expression = position_with_start(chars, end_and_or, |c| c.is_whitespace());
 
         let conjunction_and = match chars[start_and_or..end_and_or]
             .iter()
@@ -315,9 +350,9 @@ fn parse_expression_list(
         };
 
         let (expression, end_expression) = if chars[start_expression] == '(' {
-            parse_expression_list(&chars, start_expression + 1)?
+            parse_expression_list(chars, start_expression + 1)?
         } else {
-            let (expression, end_expression) = parse_expression(&chars, start_expression)?;
+            let (expression, end_expression) = parse_expression(chars, start_expression)?;
             (ExpressionTree::Expression(expression), end_expression)
         };
 
@@ -333,7 +368,7 @@ fn parse_expression_list(
             and_list = vec![expression];
         }
 
-        start_and_or = position_with_start(&chars, end_expression, |c| c.is_whitespace());
+        start_and_or = position_with_start(chars, end_expression, |c| c.is_whitespace());
     }
     or_list.push(if and_list.len() == 1 {
         and_list.swap_remove(0)
@@ -355,24 +390,24 @@ fn parse_expression_list(
 
 /// parses <keyword> <comparator> <value>, e.g. `python_version == '2.7'`
 fn parse_expression(chars: &[char], start_name: usize) -> Result<(Expression, usize), ()> {
-    let end_name = position_with_start(&chars, start_name, |c| {
+    let end_name = position_with_start(chars, start_name, |c| {
         c.is_ascii_alphanumeric() || c == '_'
     });
     let name = &chars[start_name..end_name];
     let key = Key::from_str(&name.iter().collect::<String>())?;
 
-    let start_comparator = position_with_start(&chars, end_name, |c| c.is_whitespace());
-    let end_comparator = position_with_start(&chars, start_comparator, |c| {
+    let start_comparator = position_with_start(chars, end_name, |c| c.is_whitespace());
+    let end_comparator = position_with_start(chars, start_comparator, |c| {
         !c.is_whitespace() && c != '\'' && c != '"'
     });
     let comparator = &chars[start_comparator..end_comparator];
     let comparator = Comparator::from_str(&comparator.iter().collect::<String>())?;
 
-    let start_value_quote = position_with_start(&chars, end_comparator, |c| c.is_whitespace());
+    let start_value_quote = position_with_start(chars, end_comparator, |c| c.is_whitespace());
     // haha yes
     let quote_char = chars[start_value_quote];
 
-    let end_value = position_with_start(&chars, start_value_quote + 1, |c| c != quote_char);
+    let end_value = position_with_start(chars, start_value_quote + 1, |c| c != quote_char);
     let value = &chars[start_value_quote + 1..end_value];
     let value = value.iter().collect::<String>();
 
@@ -387,11 +422,11 @@ fn parse_expression(chars: &[char], start_name: usize) -> Result<(Expression, us
 
 #[cfg(test)]
 mod test {
-    use crate::markers::{parse_marker, PythonEnvironment};
+    use crate::markers::{parse_markers, PythonEnvironment};
 
     #[test]
     fn get_python() {
-        PythonEnvironment::from_python();
+        dbg!(PythonEnvironment::from_python());
     }
 
     #[test]
@@ -422,18 +457,20 @@ mod test {
             python_version: "3.7".to_string(),
             sys_platform: "linux".to_string(),
         };
-        let marker1 = parse_marker("python_version == '2.7'").unwrap();
-        let marker2 = parse_marker(
+        let marker1 = parse_markers("python_version == '2.7'").unwrap();
+        let marker2 = parse_markers(
             "os_name == \"linux\" or python_version == \"3.7\" and sys_platform == \"win32\"",
         )
         .unwrap();
-        let marker3 = parse_marker(
+        let marker3 = parse_markers(
                 "python_version == \"2.7\" and (sys_platform == \"win32\" or sys_platform == \"linux\")",
         ).unwrap();
         assert!(marker1.evaluate(&env27));
         assert!(!marker1.evaluate(&env37));
-        dbg!(marker2.evaluate(&env27), marker3.evaluate(&env27));
-        dbg!(marker2.evaluate(&env37), marker3.evaluate(&env37));
+        assert!(marker2.evaluate(&env27));
+        assert!(marker2.evaluate(&env37));
+        assert!(marker3.evaluate(&env27));
+        assert!(!marker3.evaluate(&env37));
     }
 
     #[test]
@@ -464,7 +501,7 @@ mod test {
             ),
         ];
         for (a, b) in values {
-            assert_eq!(parse_marker(a).unwrap(), parse_marker(b).unwrap());
+            assert_eq!(parse_markers(a).unwrap(), parse_markers(b).unwrap());
         }
     }
 }

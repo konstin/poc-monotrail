@@ -84,7 +84,7 @@ fn read_scripts_from_section(
                         "Extras in console scripts aren't supported yet".to_string(),
                     ));
                 }
-                let (module, function) = value.split_once(":").ok_or_else(|| {
+                let (module, function) = value.split_once(':').ok_or_else(|| {
                     WheelInstallerError::InvalidWheel(format!(
                         "{} is invalid: console script key {} must contain a colon",
                         section_name, script_name
@@ -322,7 +322,7 @@ fn parse_wheel_version(wheel_text: &str) -> Result<(), WheelInstallerError> {
     let wheel_version = wheel_file_data.get("Wheel-Version").ok_or_else(|| {
         WheelInstallerError::InvalidWheel("Wheel-Version missing in WHEEL file".to_string())
     })?;
-    let wheel_version = wheel_version.split_once(".").ok_or_else(|| {
+    let wheel_version = wheel_version.split_once('.').ok_or_else(|| {
         WheelInstallerError::InvalidWheel("Invalid Wheel-Version in WHEEL file".to_string())
     })?;
     // pip has some test wheels that use that ancient version,
