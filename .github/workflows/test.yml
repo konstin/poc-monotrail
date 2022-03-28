@@ -58,6 +58,10 @@ jobs:
       - name: Install hyperfine (mac)
         if: matrix.os == 'macos-latest'
         run: brew install hyperfine
+      - name: Install poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+      - name: Add poetry to path
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       # Caching
       # Install gnu-tar because BSD tar is buggy
