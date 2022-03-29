@@ -16,24 +16,30 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       # Install all the pythons
-      - uses: actions/setup-python@v2
+      - name: Install python 3.7
+        uses: actions/setup-python@v2
         with:
           python-version: "3.7"
       # 3.8 is activated below
-      - uses: actions/setup-python@v2
+      - name: Install python 3.9
+        uses: actions/setup-python@v2
         with:
           python-version: "3.9"
-      - uses: actions/setup-python@v2
+      - name: Install python 3.10
+        uses: actions/setup-python@v2
         with:
           python-version: "3.10"
-      - uses: actions/setup-python@v2
+      - name: Install pypy 3.7
+        uses: actions/setup-python@v2
         with:
           python-version: "pypy-3.7"
-      - uses: actions/setup-python@v2
+      - name: Install pypy 3.8
+        uses: actions/setup-python@v2
         with:
           python-version: "pypy-3.8"
       # Make this the active python
-      - uses: actions/setup-python@v2
+      - name: Install python 3.8
+        uses: actions/setup-python@v2
         with:
           python-version: "3.8"
 
@@ -41,7 +47,8 @@ jobs:
         run: |
           pip install -U pip virtualenv
           virtualenv --upgrade-embed-wheels
-      - uses: actions-rs/toolchain@v1
+      - name: Install stable rust
+        uses: actions-rs/toolchain@v1
         id: rustup
         with:
           profile: minimal

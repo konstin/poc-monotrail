@@ -192,7 +192,7 @@ pub fn find_specs_to_install(
     no_dev: bool,
     extras: &[String],
 ) -> anyhow::Result<Vec<Spec>> {
-    // TODO: don't parse this from env but do it like maturin
+    // TODO: don't parse this from subprocess but do it like maturin
     let environment = PythonEnvironment::from_python();
 
     // get deps from poetry.toml
@@ -271,7 +271,7 @@ pub fn find_specs_to_install(
         };
         specs.push(spec);
 
-        // 2. Add package's deps to queue (basically recursion)
+        // 2. Add package's deps to queue (basically flattened recursion)
         for (item, dependency) in package.dependencies.as_ref().unwrap_or(&HashMap::new()) {
             if seen.contains(item) {
                 continue;
