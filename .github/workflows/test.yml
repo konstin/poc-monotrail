@@ -117,7 +117,7 @@ jobs:
         run: python -m test.test_popular
 
       - name: Compare popular poetry
-        run: python -m test.compare_poetry data_science_project
+        run: python -m test.compare_poetry data_science_project -E tqdm_feature
 
       - name: Benchmark plotly and tqdm
         if: matrix.os == 'ubuntu-latest'
