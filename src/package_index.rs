@@ -120,28 +120,8 @@ pub fn search_wheel(
     Ok((picked_wheel.url, picked_wheel.filename, version))
 }
 
-/// Builds cache filename, downloads if not present, returns cache filename
-pub fn download_wheel_cached(
-    name: &str,
-    version: &str,
-    filename: &str,
-    url: &str,
-) -> Result<PathBuf> {
-    let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
-    let target_file = target_dir.join(&filename);
-
-    if target_file.is_file() {
-        info!("Using cached download at {}", target_file.display());
-        return Ok(target_file);
-    }
-
-    download_wheel(url, &target_dir, &target_file)?;
-
-    Ok(target_file)
-}
-
 /// Just wraps ureq
-fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -> Result<()> {
+pub(crate) fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -> Result<()> {
     info!("Downloading wheel to {}", target_file.display());
     fs::create_dir_all(&target_dir).context("Couldn't create cache dir")?;
     // temp file so we don't clash with other processes running in parallel
@@ -160,7 +140,7 @@ fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -> Result<()
 }
 
 /// `~/.cache/install-wheel-rs`
-fn cache_dir() -> result::Result<PathBuf, WheelInstallerError> {
+pub(crate) fn cache_dir() -> result::Result<PathBuf, WheelInstallerError> {
     Ok(dirs::cache_dir()
         .ok_or_else(|| {
             WheelInstallerError::IOError(io::Error::new(

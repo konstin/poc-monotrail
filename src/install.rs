@@ -368,8 +368,9 @@ fn bytecode_compile(
 
     // > Read the file list and add each line that it contains to the list of files and directories
     // > to compile. If list is -, read lines from stdin.
+    let args = ["-m", "compileall", "-l", "-i", "-"];
     let mut bytecode_compiler = Command::new("python")
-        .args(&["-m", "compileall", "-i", "-"])
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -401,7 +402,8 @@ fn bytecode_compile(
         return Err(WheelInstallerError::PythonSubcommandError(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "Failed to run `python -m compileall`: {}\n---stdout:\n{}---stderr:\n{}",
+                "Failed to run `python {}`: {}\n---stdout:\n{}---stderr:\n{}",
+                args.join(" "),
                 output.status,
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
@@ -619,7 +621,6 @@ fn install_data(
                 ));
                 move_folder_recorded(&data_entry.path(), &target_path, site_packages, record)?;
             }
-
             Some("purelib" | "platlib") => {
                 // purelib and platlib locations are not relevant when using venvs
                 // https://stackoverflow.com/a/27882460/3549270

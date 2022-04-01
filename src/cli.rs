@@ -1,17 +1,16 @@
-use crate::package_index::{download_wheel_cached, search_wheel};
+use crate::package_index::{download_wheel, search_wheel};
 use crate::poetry::find_specs_to_install;
 use crate::spec::Spec;
 use crate::wheel_tags::current_compatible_tags;
-use crate::{install_wheel, WheelInstallerError};
+use crate::{install_wheel, package_index, WheelInstallerError};
 use anyhow::Context;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
 use std::path::{Path, PathBuf};
-
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
+
 #[derive(Parser)]
 pub enum Cli {
     Install {
@@ -28,6 +27,30 @@ pub enum Cli {
         #[clap(short = 'E')]
         extras: Vec<String>,
     },
+}
+
+/// Builds cache filename, downloads if not present, returns cache filename
+pub fn download_wheel_cached(
+    name: &str,
+    version: &str,
+    filename: &str,
+    url: &str,
+) -> anyhow::Result<PathBuf> {
+    let target_dir = package_index::cache_dir()?
+        .join("artifacts")
+        .join(name)
+        .join(version);
+    let target_file = target_dir.join(&filename);
+
+    if target_file.is_file() {
+        debug!("Using cached download at {}", target_file.display());
+        return Ok(target_file);
+    }
+
+    info!("Downloading (or getting from cache) {} {}", name, version);
+    download_wheel(url, &target_dir, &target_file)?;
+
+    Ok(target_file)
 }
 
 fn install_specs(
@@ -72,9 +95,9 @@ fn install_specs(
                 .map(|spec| {
                     current.lock().unwrap().push(spec.name.clone());
                     pb.set_message(current.lock().unwrap().join(","));
-                    //if pb.is_hidden() {
-                    //    pb.println(&format!("Installing {}", spec.requested));
-                    //}
+                    if pb.is_hidden() {
+                        info!("Installing {}", spec.requested);
+                    }
 
                     let (wheel_path, version) = match &spec.file_path {
                         Some((file_path, metadata)) => {
@@ -84,7 +107,10 @@ fn install_specs(
                             let (url, filename, version) =
                                 search_wheel(&spec.name, spec.version.as_deref(), compatible_tags)?;
                             // TODO: Lookup size
-                            info!("Downloading {} {}", spec.name, version);
+                            debug!(
+                                "Downloading (or getting from cache) {} {}",
+                                spec.name, version
+                            );
                             let wheel_path =
                                 download_wheel_cached(&spec.name, &version, &filename, &url)
                                     .with_context(|| {
@@ -102,7 +128,7 @@ fn install_specs(
                                 format!("Failed to install {} {}", spec.name, version)
                             }
                         })?;
-                    info!("Installed {} {}", name, version);
+                    debug!("Installed {} {}", name, version);
                     {
                         let mut current = current.lock().unwrap();
                         current.retain(|x| x != &name);

@@ -1,25 +1,28 @@
-use crate::markers::{parse_markers, PythonEnvironment};
+//! Parsing of pyproject.toml and poetry.lock
+
+use crate::markers::Pep508Environment;
 use crate::poetry::poetry_lock::PoetryLock;
 use crate::spec::Spec;
 use crate::wheel_tags::WheelFilename;
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use fs_err as fs;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::str::FromStr;
 
 mod poetry_lock {
+    use crate::markers::{parse_markers, Pep508Environment};
     use serde::Deserialize;
     use std::collections::HashMap;
 
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
-    #[allow(dead_code)]
     pub struct PoetryLock {
         pub package: Vec<Package>,
         pub metadata: Metadata,
     }
 
+    /// `[[package]]`
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
     #[allow(dead_code)]
@@ -35,45 +38,87 @@ mod poetry_lock {
         pub dependencies: Option<HashMap<String, Dependency>>,
     }
 
+    /// e.g. `{version = ">=1.21.0", markers = "python_version >= \"3.10\""}`
+    #[derive(Deserialize, Debug, Clone)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct DependencyExpanded {
+        pub version: String,
+        pub markers: String,
+    }
+
+    /// `[package.dependencies]`
+    ///
+    /// Can be one of three formats:
+    /// ```toml
+    /// attrs = ">=17.4.0"
+    /// colorama = {version = "*", markers = "sys_platform == \"win32\""}
+    /// numpy = [
+    ///     {version = ">=1.18.5", markers = "platform_machine != \"aarch64\" and platform_machine != \"arm64\" and python_version < \"3.10\""},
+    ///     {version = ">=1.19.2", markers = "platform_machine == \"aarch64\" and python_version < \"3.10\""},
+    ///     {version = ">=1.20.0", markers = "platform_machine == \"arm64\" and python_version < \"3.10\""},
+    ///     {version = ">=1.21.0", markers = "python_version >= \"3.10\""},
+    /// ]
+    /// ```
     #[derive(Deserialize, Debug, Clone)]
     #[serde(untagged, rename_all = "kebab-case")]
     pub enum Dependency {
         Compact(String),
-        Expanded { version: String, markers: String },
+        Expanded(DependencyExpanded),
+        List(Vec<DependencyExpanded>),
     }
 
-    #[allow(dead_code)]
     impl Dependency {
-        pub fn get_version(&self) -> &str {
-            match self {
-                Dependency::Compact(version) => version,
-                Dependency::Expanded { version, .. } => version,
-            }
-        }
-        pub fn get_markers(&self) -> Option<&str> {
-            match self {
-                Dependency::Compact(_) => None,
-                Dependency::Expanded { markers, .. } => Some(markers),
-            }
+        /// checks if we need to install given the markers and returns the matching version constraint
+        pub fn get_version(&self, environment: &Pep508Environment) -> Result<Option<&str>, String> {
+            Ok(match self {
+                Dependency::Compact(version) => Some(version),
+                Dependency::Expanded(DependencyExpanded { version, markers }) => {
+                    if markers.starts_with("extra ==") {
+                        todo!("markers extra");
+                    }
+                    if parse_markers(markers).unwrap().evaluate(environment)? {
+                        Some(version)
+                    } else {
+                        None
+                    }
+                }
+                Dependency::List(options) => {
+                    for option in options {
+                        if option.markers.starts_with("extra ==") {
+                            todo!("markers extra");
+                        }
+                        if parse_markers(&option.markers)
+                            .unwrap()
+                            .evaluate(environment)?
+                        {
+                            return Ok(Some(&option.version));
+                        }
+                    }
+                    None
+                }
+            })
         }
     }
 
+    /// `[metadata]`
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
     #[allow(dead_code)]
     pub struct Metadata {
-        lock_version: String,
-        python_versions: String,
-        content_hash: String,
-        pub(crate) files: HashMap<String, Vec<HashedFile>>,
+        pub lock_version: String,
+        pub python_versions: String,
+        pub content_hash: String,
+        /// `[metadata.files]`
+        pub files: HashMap<String, Vec<HashedFile>>,
     }
 
+    /// e.g. `{file = "attrs-21.4.0-py2.py3-none-any.whl", hash = "sha256:2d27e3784d7a565d36ab851fe94887c5eccd6a463168875832a1be79c82828b4"}`
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
     #[allow(dead_code)]
     pub struct HashedFile {
-        pub(crate) file: String,
-        hash: String,
+        pub file: String,
+        pub hash: String,
     }
 }
 
@@ -86,7 +131,6 @@ mod poetry_toml {
     /// ```
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
-    #[allow(dead_code)]
     pub struct PoetryPyprojectToml {
         pub tool: ToolSection,
     }
@@ -96,7 +140,6 @@ mod poetry_toml {
     /// ```
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
-    #[allow(dead_code)]
     pub struct ToolSection {
         pub poetry: PoetrySection,
     }
@@ -186,6 +229,7 @@ pub fn filename_and_url(
     Ok((filename, url))
 }
 
+/// Parses pyproject.toml and poetry.lock and returns a list of packages to install
 pub fn find_specs_to_install(
     pyproject_toml: &Path,
     compatible_tags: &[(String, String, String)],
@@ -193,7 +237,7 @@ pub fn find_specs_to_install(
     extras: &[String],
 ) -> anyhow::Result<Vec<Spec>> {
     // TODO: don't parse this from subprocess but do it like maturin
-    let environment = PythonEnvironment::from_python();
+    let environment = Pep508Environment::from_python();
 
     // get deps from poetry.toml
     let poetry_pyproject_toml: poetry_toml::PoetryPyprojectToml =
@@ -233,10 +277,11 @@ pub fn find_specs_to_install(
 
     let lockfile: poetry_lock::PoetryLock = toml::from_str(&fs::read_to_string(&lockfile)?)
         .with_context(|| format!("Invalid lockfile: {}", lockfile.display()))?;
-    let packages: HashMap<&str, &poetry_lock::Package> = lockfile
+    // keys are normalized names since `[package.dependencies]` also uses normalized names
+    let packages: HashMap<String, &poetry_lock::Package> = lockfile
         .package
         .iter()
-        .map(|package| (package.name.as_str(), package))
+        .map(|package| (package.name.replace('-', "_"), package))
         .collect();
 
     let mut queue: VecDeque<String> = VecDeque::new();
@@ -255,7 +300,8 @@ pub fn find_specs_to_install(
             continue;
         }
         // 1. Add package to install list
-        let package = packages.get(item.as_str()).with_context(|| {
+        // search by normalized name
+        let package = packages.get(&item.replace('-', "_")).with_context(|| {
             format!(
                 "Lockfile outdated (run `poetry update`): {} is missing",
                 item
@@ -272,21 +318,20 @@ pub fn find_specs_to_install(
         specs.push(spec);
 
         // 2. Add package's deps to queue (basically flattened recursion)
-        for (item, dependency) in package.dependencies.as_ref().unwrap_or(&HashMap::new()) {
-            if seen.contains(item) {
+        for (dep_item, dependency) in package.dependencies.as_ref().unwrap_or(&HashMap::new()) {
+            if seen.contains(dep_item) {
                 continue;
             }
-            if let Some(markers) = dependency.get_markers() {
-                if markers.starts_with("extra ==") {
-                    todo!("markers extra");
-                }
-                if !parse_markers(markers).unwrap().evaluate(&environment) {
-                    continue;
-                }
+            if let Some(_version) = dependency.get_version(&environment).map_err(|err| {
+                anyhow!(err).context(format!(
+                    "Failed to parse dependency {} of {}: {:?}",
+                    dep_item, item, dependency,
+                ))
+            })? {
+                queue.push_back(dep_item.clone());
             }
 
-            queue.push_back(item.clone());
-            seen.insert(item.clone());
+            seen.insert(dep_item.clone());
         }
     }
 

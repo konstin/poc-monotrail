@@ -1,12 +1,13 @@
-//! I have no idea how to write parsers and didn't want to learn it just for this,
+//! i have no idea how to write parsers and didn't want to learn it just for this,
 //! so if you want to replace this with something proper feel free to :)
-//! I really wouldn't have written this in the first place if it wasn't absolutely required
+//! i really wouldn't have written this in the first place if it wasn't absolutely required
+//!
+//! just to be clear: the parser below is horrible
 //!
 //! https://peps.python.org/pep-0508/#grammar
 //! https://github.com/pypa/pip/blob/b4d2b0f63f4955c7d6eee2653c6e1fa6fa507c31/src/pip/_vendor/distlib/markers.py
 
-#![allow(dead_code)]
-
+use pep440::Version as Pep440Version;
 use serde::Deserialize;
 use std::fmt::{Display, Formatter};
 use std::io;
@@ -15,8 +16,9 @@ use std::str::FromStr;
 
 static PEP508_QUERY_SCRIPT: &str = include_str!("get_pep508_env.py");
 
+/// The version and platform information required to evaluate marker expressions according to PEP 508
 #[derive(Debug, Eq, PartialEq, Deserialize)]
-pub struct PythonEnvironment {
+pub struct Pep508Environment {
     implementation_name: String,
     implementation_version: String,
     os_name: String,
@@ -30,23 +32,7 @@ pub struct PythonEnvironment {
     sys_platform: String,
 }
 
-impl PythonEnvironment {
-    fn new() -> Self {
-        PythonEnvironment {
-            implementation_name: "".to_string(),
-            implementation_version: "".to_string(),
-            os_name: "".to_string(),
-            platform_machine: "".to_string(),
-            platform_python_implementation: "".to_string(),
-            platform_release: "".to_string(),
-            platform_system: "".to_string(),
-            platform_version: "".to_string(),
-            python_full_version: "".to_string(),
-            python_version: "".to_string(),
-            sys_platform: "".to_string(),
-        }
-    }
-
+impl Pep508Environment {
     fn get_key(&self, key: Key) -> &str {
         match key {
             Key::ImplementationName => &self.implementation_name,
@@ -63,7 +49,10 @@ impl PythonEnvironment {
         }
     }
 
-    /// Runs python to get the actual PEP 508 value
+    /// Runs python to get the actual PEP 508 values
+    ///
+    /// To be eventually replaced by something like the maturin solution where we construct this
+    /// is in rust
     pub fn from_python() -> Self {
         let out = Command::new("python")
             .env("PYTHONIOENCODING", "utf-8")
@@ -128,7 +117,7 @@ enum Key {
 }
 
 impl FromStr for Key {
-    type Err = ();
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let value = match s {
@@ -143,7 +132,7 @@ impl FromStr for Key {
             "python_full_version" => Self::PythonFullVersion,
             "python_version" => Self::PythonVersion,
             "sys_platform" => Self::SysPlatform,
-            _ => return Err(()),
+            _ => return Err(format!("Invalid key: {}", s)),
         };
         Ok(value)
     }
@@ -169,6 +158,7 @@ impl Display for Key {
 #[derive(Debug, Eq, PartialEq)]
 enum Comparator {
     Equal,
+    NotEqual,
     Larger,
     LargerEqual,
     Smaller,
@@ -178,18 +168,19 @@ enum Comparator {
 }
 
 impl FromStr for Comparator {
-    type Err = ();
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let value = match s {
             "==" => Self::Equal,
+            "!=" => Self::NotEqual,
             ">" => Self::Larger,
             ">=" => Self::LargerEqual,
             "<" => Self::Smaller,
             "<=" => Self::SmallerEqual,
             "in" => Self::In,
             "not in" => Self::NotIn,
-            _ => return Err(()),
+            _ => return Err(format!("Invalid comparator: {}", s)),
         };
         Ok(value)
     }
@@ -199,6 +190,7 @@ impl Display for Comparator {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Equal => "==",
+            Self::NotEqual => "!=",
             Self::Larger => ">",
             Self::LargerEqual => ">=",
             Self::Smaller => "<",
@@ -209,6 +201,7 @@ impl Display for Comparator {
     }
 }
 
+/// Represents one clause in the form <a name from the PEP508 list> <an operator> <a value>
 #[derive(Debug, Eq, PartialEq)]
 pub struct Expression {
     key: Key,
@@ -228,35 +221,50 @@ impl Display for Expression {
 }
 
 impl Expression {
-    fn evaluate(&self, env: &PythonEnvironment) -> bool {
-        match self.key {
+    /// Determines whether the expression is true or false in the given environment
+    fn evaluate(&self, env: &Pep508Environment) -> Result<bool, String> {
+        Ok(match self.key {
             Key::OsName
             | Key::SysPlatform
             | Key::PlatformPythonImplementation
+            | Key::PlatformMachine
             | Key::PlatformRelease
+            | Key::PlatformSystem
             | Key::PlatformVersion
             | Key::ImplementationName => match self.comparator {
                 Comparator::Equal => env.get_key(self.key) == self.value,
+                Comparator::NotEqual => env.get_key(self.key) != self.value,
                 Comparator::In => self.value.contains(env.get_key(self.key)),
                 Comparator::NotIn => !self.value.contains(env.get_key(self.key)),
-                _ => panic!(
-                    "comparator {} not supported for {}",
-                    self.comparator, self.key
-                ),
+                _ => {
+                    return Err(format!(
+                        "comparator {} not supported for {} (not a version)",
+                        self.comparator, self.key
+                    ))
+                }
             },
-            _ => match self.comparator {
-                Comparator::Equal => env.get_key(self.key) == self.value,
-                Comparator::In => self.value.contains(env.get_key(self.key)),
-                Comparator::NotIn => !self.value.contains(env.get_key(self.key)),
-                _ => panic!(
-                    "comparator {} not supported for {}",
-                    self.comparator, self.key
-                ),
-            },
-        }
+            Key::ImplementationVersion | Key::PythonFullVersion | Key::PythonVersion => {
+                let left_version = Pep440Version::parse(env.get_key(self.key))
+                    .ok_or_else(|| format!("{} is not a valid pep440 version", self.value))?;
+                let right_version = Pep440Version::parse(&self.value)
+                    .ok_or_else(|| format!("{} is not a valid pep440 version", self.value))?;
+                match self.comparator {
+                    // Should this actually use equality or should we compare with pep440
+                    Comparator::Equal => env.get_key(self.key) == self.value,
+                    Comparator::NotEqual => env.get_key(self.key) != self.value,
+                    Comparator::In => self.value.contains(env.get_key(self.key)),
+                    Comparator::NotIn => !self.value.contains(env.get_key(self.key)),
+                    Comparator::Larger => left_version > right_version,
+                    Comparator::LargerEqual => left_version >= right_version,
+                    Comparator::Smaller => left_version < right_version,
+                    Comparator::SmallerEqual => left_version <= right_version,
+                }
+            }
+        })
     }
 }
 
+/// Represents one of the nested marker expressions with and/or/parentheses
 #[derive(Debug, Eq, PartialEq)]
 pub enum ExpressionTree {
     Expression(Expression),
@@ -287,23 +295,28 @@ impl Display for ExpressionTree {
 }
 
 impl ExpressionTree {
-    pub fn evaluate(&self, env: &PythonEnvironment) -> bool {
-        match self {
-            ExpressionTree::Expression(expression) => expression.evaluate(env),
+    /// Determines whether the marker expression is true or false in the given environment
+    pub fn evaluate(&self, env: &Pep508Environment) -> Result<bool, String> {
+        Ok(match self {
+            ExpressionTree::Expression(expression) => expression.evaluate(env)?,
             ExpressionTree::And(and_list) => and_list
                 .iter()
                 .map(|expression| expression.evaluate(env))
-                .all(|x| x),
+                .collect::<Result<Vec<bool>, String>>()?
+                .iter()
+                .all(|x| *x),
             ExpressionTree::Or(or_list) => or_list
                 .iter()
                 .map(|expression| expression.evaluate(env))
-                .any(|x| x),
-        }
+                .collect::<Result<Vec<bool>, String>>()?
+                .iter()
+                .any(|x| *x),
+        })
     }
 }
 
 /// PEP 508 marker parser
-pub fn parse_markers(marker: &str) -> Result<ExpressionTree, ()> {
+pub fn parse_markers(marker: &str) -> Result<ExpressionTree, String> {
     let chars: Vec<char> = marker.chars().collect();
 
     let (expression, end_expression) = parse_expression_list(&chars, 0)?;
@@ -316,7 +329,7 @@ pub fn parse_markers(marker: &str) -> Result<ExpressionTree, ()> {
 fn parse_expression_list(
     chars: &[char],
     start_expression: usize,
-) -> Result<(ExpressionTree, usize), ()> {
+) -> Result<(ExpressionTree, usize), String> {
     // 😈
     // behold my horror of the parser
 
@@ -389,10 +402,9 @@ fn parse_expression_list(
 }
 
 /// parses <keyword> <comparator> <value>, e.g. `python_version == '2.7'`
-fn parse_expression(chars: &[char], start_name: usize) -> Result<(Expression, usize), ()> {
-    let end_name = position_with_start(chars, start_name, |c| {
-        c.is_ascii_alphanumeric() || c == '_'
-    });
+fn parse_expression(chars: &[char], start_name: usize) -> Result<(Expression, usize), String> {
+    let end_name =
+        position_with_start(chars, start_name, |c| c.is_ascii_alphanumeric() || c == '_');
     let name = &chars[start_name..end_name];
     let key = Key::from_str(&name.iter().collect::<String>())?;
 
@@ -422,16 +434,18 @@ fn parse_expression(chars: &[char], start_name: usize) -> Result<(Expression, us
 
 #[cfg(test)]
 mod test {
-    use crate::markers::{parse_markers, PythonEnvironment};
+    use crate::markers::{parse_markers, Pep508Environment};
 
+    /// The output depends on where we run this, just check it works at all
+    /// (which depends on python being in PATH which `cargo test` needs anyway)
     #[test]
     fn get_python() {
-        dbg!(PythonEnvironment::from_python());
+        Pep508Environment::from_python();
     }
 
     #[test]
-    fn asdf() {
-        let env27 = PythonEnvironment {
+    fn test_marker_evaluation() {
+        let env27 = Pep508Environment {
             implementation_name: "".to_string(),
             implementation_version: "".to_string(),
             os_name: "linux".to_string(),
@@ -444,7 +458,7 @@ mod test {
             python_version: "2.7".to_string(),
             sys_platform: "linux".to_string(),
         };
-        let env37 = PythonEnvironment {
+        let env37 = Pep508Environment {
             implementation_name: "".to_string(),
             implementation_version: "".to_string(),
             os_name: "linux".to_string(),
@@ -465,16 +479,17 @@ mod test {
         let marker3 = parse_markers(
                 "python_version == \"2.7\" and (sys_platform == \"win32\" or sys_platform == \"linux\")",
         ).unwrap();
-        assert!(marker1.evaluate(&env27));
-        assert!(!marker1.evaluate(&env37));
-        assert!(marker2.evaluate(&env27));
-        assert!(marker2.evaluate(&env37));
-        assert!(marker3.evaluate(&env27));
-        assert!(!marker3.evaluate(&env37));
+        assert!(marker1.evaluate(&env27).unwrap());
+        assert!(!marker1.evaluate(&env37).unwrap());
+        assert!(marker2.evaluate(&env27).unwrap());
+        assert!(marker2.evaluate(&env37).unwrap());
+        assert!(marker3.evaluate(&env27).unwrap());
+        assert!(!marker3.evaluate(&env37).unwrap());
     }
 
+    /// Copied from https://github.com/pypa/packaging/blob/85ff971a250dc01db188ef9775499c15553a8c95/tests/test_markers.py#L175-L221
     #[test]
-    fn test_marker_matches() {
+    fn test_marker_equivalence() {
         let values = [
             ("python_version == '2.7'", "python_version == \"2.7\""),
             ("python_version == \"2.7\"", "python_version == \"2.7\""),
