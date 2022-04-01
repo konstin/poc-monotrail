@@ -759,14 +759,14 @@ dependencies = [
 [[package]]
 name = "python-pkginfo"
 version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a8d0ae14c6a9a6b9ca65516bad430f5c9588f9b424784275febba8cd6711dc4"
+source = "git+https://github.com/konstin/python-pkginfo-rs?branch=thiserror#19329c4c66ce6be07a1d65ea0e96da317f9f71db"
 dependencies = [
  "flate2",
  "fs-err",
  "mailparse",
  "rfc2047-decoder",
  "tar",
+ "thiserror",
  "zip 0.6.0",
 ]
 

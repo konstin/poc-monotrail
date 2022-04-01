@@ -15,8 +15,11 @@ fs-err = "2.6.0"
 goblin = "0.4.3"
 indicatif = "0.16.2"
 indoc = "1.0.3"
+pep440 = "0.2.0"
 platform-info = "0.2.0"
-python-pkginfo = "0.5.0"
+plist = "1.3.1"
+#python-pkginfo = "0.5.0"
+python-pkginfo = { git = "https://github.com/konstin/python-pkginfo-rs", branch = "thiserror" }
 rayon = "1.5.1"
 regex = "1.5.4"
 serde = { version = "1.0.131", features = ["derive"] }
@@ -31,8 +34,6 @@ tracing-subscriber = "0.3.3"
 ureq = { version = "2.3.1", features = ["json"] }
 walkdir = "2.3.2"
 zip = "0.5.13"
-plist = "1.3.1"
-pep440 = "0.2.0"
 
 # zip implementation
 [profile.dev.package.adler]

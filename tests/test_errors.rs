@@ -42,8 +42,7 @@ fn test_corruptwheel() -> Result<()> {
         &[
             "Failed to install pip/tests/data/packages/corruptwheel-1.0-py2.py3-none-any.whl",
             "The wheel is broken",
-            "invalid Zip archive",
-            "invalid Zip archive",
+            "invalid Zip archive: Could not find central directory end",
         ],
     )
 }
@@ -63,8 +62,7 @@ fn test_priority() -> Result<()> {
         &[
             "Failed to install pip/tests/data/packages/priority-1.0-py2.py3-none-any.whl",
             "The wheel is broken",
-            "invalid Zip archive",
-            "invalid Zip archive",
+            "invalid Zip archive: Invalid zip header",
         ],
     )
 }
