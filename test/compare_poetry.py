@@ -29,7 +29,7 @@ def compare_with_poetry(
     env_poetry = test_venvs.joinpath(f"{env_name}-poetry")
 
     paths = os.environ["PATH"].split(":")
-    if env_var_virtualenv := os.environ["VIRTUAL_ENV"]:
+    if env_var_virtualenv := os.environ.get("VIRTUAL_ENV"):
         paths.remove(str(Path(env_var_virtualenv).joinpath("bin")))
     paths.insert(0, str(env.joinpath("bin")))
     venv_env_vars = os.environ.copy()
