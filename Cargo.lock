@@ -758,8 +758,9 @@ dependencies = [
 
 [[package]]
 name = "python-pkginfo"
-version = "0.5.3"
-source = "git+https://github.com/konstin/python-pkginfo-rs?branch=thiserror#19329c4c66ce6be07a1d65ea0e96da317f9f71db"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f51c51da2adc8c5cc4321a274b87b8073e58e6215d17c362dacedc1f8e9503f2"
 dependencies = [
  "flate2",
  "fs-err",
