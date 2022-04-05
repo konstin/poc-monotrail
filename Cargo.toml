@@ -40,7 +40,7 @@ walkdir = "2.3.2"
 zip = "0.5.13"
 
 [features]
-default = ["python_bindings"]
+#default = ["python_bindings"]
 python_bindings = ["pyo3"]
 
 [package.metadata.maturin]
