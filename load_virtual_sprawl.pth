@@ -1,0 +1,1 @@
+import sys; exec("try:\n    import virtual_sprawl\nexcept:\n    pass\n")

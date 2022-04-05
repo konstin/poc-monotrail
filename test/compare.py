@@ -16,12 +16,12 @@ def get_root() -> Path:
 
 
 def get_bin() -> Path:
-    release_bin = get_root().joinpath("target/release/install-wheel-rs")
+    release_bin = get_root().joinpath("target/release/virtual-sprawl")
     if release_bin.is_file():
         release_ctime = release_bin.stat().st_ctime
     else:
         release_ctime = 0
-    debug_bin = get_root().joinpath("target/debug/install-wheel-rs")
+    debug_bin = get_root().joinpath("target/debug/virtual-sprawl")
     if debug_bin.is_file():
         debug_ctime = debug_bin.stat().st_ctime
     else:

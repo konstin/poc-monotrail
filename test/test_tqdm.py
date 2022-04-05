@@ -33,7 +33,7 @@ def test_tqdm():
 
     check_call(
         [
-            get_root().joinpath("target/release/install-wheel-rs"),
+            get_root().joinpath("target/release/virtual-sprawl"),
             "install",
             get_root().joinpath("popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl"),
         ],

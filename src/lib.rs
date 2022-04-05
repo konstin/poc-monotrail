@@ -1,7 +1,8 @@
-extern crate core;
-
-pub use crate::install::install_wheel;
-use crate::wheel_tags::{Arch, Os};
+use crate::install::install_specs;
+use crate::install_location::InstallLocation;
+use crate::poetry::find_specs_to_install;
+pub use crate::wheel::install_wheel;
+use crate::wheel_tags::{compatible_tags, Arch, Os};
 pub use cli::{run, Cli};
 use std::io;
 use thiserror::Error;
@@ -9,11 +10,16 @@ use zip::result::ZipError;
 
 mod cli;
 mod install;
+mod install_location;
 mod markers;
 mod package_index;
 mod poetry;
+mod python_bindings;
+mod source_distribution;
 mod spec;
 mod venv_parser;
+mod virtual_sprawl;
+mod wheel;
 mod wheel_tags;
 
 #[derive(Error, Debug)]

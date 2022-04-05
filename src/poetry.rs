@@ -2,9 +2,9 @@
 
 use crate::markers::Pep508Environment;
 use crate::poetry::poetry_lock::PoetryLock;
-use crate::spec::Spec;
+use crate::spec::{DistributionType, Spec};
 use crate::wheel_tags::WheelFilename;
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use fs_err as fs;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
@@ -43,7 +43,8 @@ mod poetry_lock {
     #[serde(rename_all = "kebab-case")]
     pub struct DependencyExpanded {
         pub version: String,
-        pub markers: String,
+        pub markers: Option<String>,
+        pub extras: Option<Vec<String>>,
     }
 
     /// `[package.dependencies]`
@@ -72,25 +73,29 @@ mod poetry_lock {
         pub fn get_version(&self, environment: &Pep508Environment) -> Result<Option<&str>, String> {
             Ok(match self {
                 Dependency::Compact(version) => Some(version),
-                Dependency::Expanded(DependencyExpanded { version, markers }) => {
-                    if markers.starts_with("extra ==") {
-                        todo!("markers extra");
+                Dependency::Expanded(DependencyExpanded {
+                    version, markers, ..
+                }) => {
+                    if let Some(markers) = markers {
+                        if markers.starts_with("extra ==") {
+                            todo!("markers extra");
+                        }
+                        if parse_markers(markers).unwrap().evaluate(environment)? {
+                            return Ok(Some(version));
+                        }
                     }
-                    if parse_markers(markers).unwrap().evaluate(environment)? {
-                        Some(version)
-                    } else {
-                        None
-                    }
+                    None
                 }
                 Dependency::List(options) => {
                     for option in options {
-                        if option.markers.starts_with("extra ==") {
-                            todo!("markers extra");
-                        }
-                        if parse_markers(&option.markers)
-                            .unwrap()
-                            .evaluate(environment)?
-                        {
+                        if let Some(markers) = &option.markers {
+                            if markers.starts_with("extra ==") {
+                                todo!("markers extra");
+                            }
+                            if parse_markers(markers).unwrap().evaluate(environment)? {
+                                return Ok(Some(&option.version));
+                            }
+                        } else {
                             return Ok(Some(&option.version));
                         }
                     }
@@ -154,14 +159,18 @@ mod poetry_toml {
     #[allow(dead_code)]
     pub enum Dependency {
         Compact(String),
-        Expanded { version: String, optional: bool },
+        Expanded {
+            version: String,
+            optional: Option<bool>,
+            extras: Option<Vec<String>>,
+        },
     }
 
     impl Dependency {
         pub fn is_optional(&self) -> bool {
             match self {
                 Dependency::Compact(_) => false,
-                Dependency::Expanded { optional, .. } => *optional,
+                Dependency::Expanded { optional, .. } => optional.unwrap_or(false),
             }
         }
     }
@@ -186,7 +195,7 @@ pub fn filename_and_url(
     lockfile: &PoetryLock,
     package: &poetry_lock::Package,
     compatible_tags: &[(String, String, String)],
-) -> anyhow::Result<(String, String)> {
+) -> anyhow::Result<(String, DistributionType, String)> {
     let hashed_files = lockfile
         .metadata
         .files
@@ -207,26 +216,46 @@ pub fn filename_and_url(
             ))
         })
         .collect::<Result<_, anyhow::Error>>()?;
-    let (filename, parsed_filename) = filenames
-        .into_iter()
-        .find(|(_filename, parsed)| parsed.is_compatible(compatible_tags))
-        .with_context(|| {
-            format!(
-                "No compatible compiled file found for {}. \
-                    Is it missing a wheel for your operating system/architecture/python version?",
-                package.name
-            )
-        })?;
+    let wheel = filenames
+        .iter()
+        .find(|(_filename, parsed)| parsed.is_compatible(compatible_tags));
 
-    // https://warehouse.pypa.io/api-reference/integration-guide.html#if-you-so-choose
-    let url = format!(
-        "https://files.pythonhosted.org/packages/{}/{}/{}/{}",
-        parsed_filename.python_tag.join("."),
-        package.name.chars().next().unwrap(),
-        package.name,
-        filename,
-    );
-    Ok((filename, url))
+    if let Some((filename, parsed_filename)) = wheel {
+        // https://warehouse.pypa.io/api-reference/integration-guide.html#if-you-so-choose
+        let url = format!(
+            "https://files.pythonhosted.org/packages/{}/{}/{}/{}",
+            parsed_filename.python_tag.join("."),
+            package.name.chars().next().unwrap(),
+            package.name,
+            filename,
+        );
+        return Ok((filename.clone(), DistributionType::Wheel, url));
+    }
+
+    if let Some(hashed_file) = hashed_files
+        .iter()
+        .find(|hashed_file| hashed_file.file.ends_with(".tar.gz"))
+    {
+        // https://warehouse.pypa.io/api-reference/integration-guide.html#if-you-so-choose
+        let url = format!(
+            "https://files.pythonhosted.org/packages/{}/{}/{}/{}",
+            "source",
+            package.name.chars().next().unwrap(),
+            package.name,
+            hashed_file.file,
+        );
+        Ok((
+            hashed_file.file.clone(),
+            DistributionType::SourceDistribution,
+            url,
+        ))
+    } else {
+        bail!(
+            "No compatible compiled file found for {}. \
+                Why does it have neither a wheel for your operating system/architecture/python version not any sdist?",
+            package.name
+        )
+    }
 }
 
 /// Parses pyproject.toml and poetry.lock and returns a list of packages to install
@@ -235,9 +264,10 @@ pub fn find_specs_to_install(
     compatible_tags: &[(String, String, String)],
     no_dev: bool,
     extras: &[String],
+    pep508_env: Option<Pep508Environment>,
 ) -> anyhow::Result<Vec<Spec>> {
     // TODO: don't parse this from subprocess but do it like maturin
-    let environment = Pep508Environment::from_python();
+    let environment = pep508_env.unwrap_or_else(Pep508Environment::from_python);
 
     // get deps from poetry.toml
     let poetry_pyproject_toml: poetry_toml::PoetryPyprojectToml =
@@ -301,19 +331,22 @@ pub fn find_specs_to_install(
         }
         // 1. Add package to install list
         // search by normalized name
-        let package = packages.get(&item.replace('-', "_")).with_context(|| {
-            format!(
-                "Lockfile outdated (run `poetry update`): {} is missing",
-                item
-            )
-        })?;
-        let (_filename, url) = filename_and_url(&lockfile, package, compatible_tags)?;
+        let package = packages
+            .get(&item.to_lowercase().replace('-', "_"))
+            .with_context(|| {
+                format!(
+                    "Lockfile outdated (run `poetry update`): {} is missing",
+                    item
+                )
+            })?;
+        let (filename, distribution_type, url) =
+            filename_and_url(&lockfile, package, compatible_tags)?;
         let spec = Spec {
             requested: format!("{} {}", package.name, package.version),
             name: package.name.clone(),
             version: Some(package.version.clone()),
             file_path: None,
-            url: Some(url.clone()),
+            url: Some((url, filename, distribution_type)),
         };
         specs.push(spec);
 

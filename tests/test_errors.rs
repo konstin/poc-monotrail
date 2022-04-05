@@ -13,7 +13,7 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     Command::new("virtualenv").arg(&venv).output()?;
     let wheel = Path::new("pip/tests/data/packages").join(name);
     let cli: Cli =
-        Cli::try_parse_from(&["install-wheel-rs", "install", &wheel.display().to_string()])?;
+        Cli::try_parse_from(&["virtual-sprawl", "install", &wheel.display().to_string()])?;
     if let Err(err) = run(cli, &venv) {
         let err: Error = err;
         let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();

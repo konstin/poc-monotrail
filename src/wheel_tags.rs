@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WheelFilename {
     pub distribution: String,
     pub version: String,

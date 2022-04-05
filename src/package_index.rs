@@ -1,5 +1,7 @@
 //! Basic downloading from pypi
 
+use crate::spec::DistributionType;
+
 use crate::wheel_tags::WheelFilename;
 use crate::WheelInstallerError;
 use anyhow::{bail, Context, Result};
@@ -42,6 +44,42 @@ enum PackageType {
     Sdist,
 }
 
+fn matching_package_for_version(
+    _name: &str,
+    compatible_tags: &[(String, String, String)],
+    version: &str,
+    pypi_releases: &[PypiRelease],
+) -> Result<Option<(PypiRelease, DistributionType, String)>> {
+    let wheel_releases = pypi_releases
+        .iter()
+        .filter(|release| release.packagetype == PackageType::BdistWheel)
+        .map(|release| Ok((WheelFilename::from_str(&release.filename)?, release)))
+        .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, WheelInstallerError>>()?;
+    if let Some((_, picked_wheel)) = wheel_releases
+        .iter()
+        .find(|(filename, _)| filename.is_compatible(compatible_tags))
+    {
+        return Ok(Some((
+            (*picked_wheel).clone(),
+            DistributionType::Wheel,
+            version.to_string(),
+        )));
+    }
+
+    if let Some(sdist_release) = pypi_releases
+        .iter()
+        .find(|release| release.packagetype == PackageType::Sdist)
+    {
+        Ok(Some((
+            sdist_release.clone(),
+            DistributionType::SourceDistribution,
+            version.to_string(),
+        )))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Finds a matching wheel from pages like https://pypi.org/pypi/tqdm/json
 ///
 /// https://warehouse.pypa.io/api-reference/json.html
@@ -49,11 +87,11 @@ fn search_release(
     name: &str,
     version: Option<&str>,
     compatible_tags: &[(String, String, String)],
-) -> Result<(PypiRelease, String)> {
+) -> Result<(PypiRelease, DistributionType, String)> {
     debug!("Getting Releases");
     let url = format!("https://pypi.org/pypi/{}/json", name);
     let pypi_project: PypiProject = ureq::get(&url)
-        .set("User-Agent", "install-wheel-rs (konstin@mailbox.org)")
+        .set("User-Agent", "virtual-sprawl (konstin@mailbox.org)")
         .call()
         .context("Failed to contact pypi. Is your internet connection working?")?
         .into_json()
@@ -63,72 +101,56 @@ fn search_release(
             .releases
             .get(version)
             .with_context(|| format!("{} {} not found on pypi", name, version))?;
-        let pypi_releases = pypi_releases
-            .iter()
-            .filter(|release| release.packagetype == PackageType::BdistWheel)
-            .map(|release| Ok((WheelFilename::from_str(&release.filename)?, release)))
-            .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, WheelInstallerError>>()?;
-        let picked_wheel = pypi_releases
-            .iter()
-            .find(|(filename, _)| filename.is_compatible(compatible_tags))
-            .with_context(|| format!("Couldn't find compatible release for {} {}", name, version))?
-            .1;
-        Ok((picked_wheel.clone(), version.to_string()))
+
+        matching_package_for_version(name, compatible_tags, version, pypi_releases)?
+            .with_context(|| format!("Couldn't find compatible release for {} {}", name, version))
     } else {
         let mut releases = pypi_project.releases.iter().collect::<Vec<_>>();
         // TODO: Actually parse versions
         releases.sort_by_key(|&(key, _)| key);
         releases.reverse();
-        let mut picked_wheel = None;
         for (version, release) in releases {
-            // TODO: Actually parse versions
-            let release = release
-                .iter()
-                .filter(|release| release.packagetype == PackageType::BdistWheel)
-                .map(|release| Ok((WheelFilename::from_str(&release.filename)?, release)))
-                .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, WheelInstallerError>>()?;
-            if let Some((_, picked_wheel_)) = release
-                .iter()
-                .find(|(filename, _)| filename.is_compatible(compatible_tags))
+            if let Some(matching_package) =
+                matching_package_for_version(name, compatible_tags, version, release)?
             {
-                picked_wheel = Some((picked_wheel_.to_owned(), version.to_string()));
-                break;
-            } else {
-                eprintln!(
-                    "⚠️ No compatible package found for {} version {}",
-                    name, version
-                );
+                return Ok(matching_package);
             }
         }
-        if let Some((picked_wheel, version)) = picked_wheel {
-            Ok((picked_wheel.clone(), version))
-        } else {
-            bail!("No matching version found for {}", name);
-        }
+        bail!("No matching version found for {}", name);
     }
 }
 
 /// Finds a matching wheel
 ///
 /// Returns url, filename, version
-pub fn search_wheel(
+pub fn search_package(
     name: &str,
     version: Option<&str>,
     compatible_tags: &[(String, String, String)],
-) -> Result<(String, String, String)> {
-    let (picked_wheel, version) = search_release(name, version, compatible_tags)?;
-    Ok((picked_wheel.url, picked_wheel.filename, version))
+) -> Result<(String, String, DistributionType, String)> {
+    let (picked_wheel, distribution_type, version) =
+        search_release(name, version, compatible_tags)?;
+    Ok((
+        picked_wheel.url,
+        picked_wheel.filename,
+        distribution_type,
+        version,
+    ))
 }
 
 /// Just wraps ureq
-pub(crate) fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -> Result<()> {
+pub(crate) fn download_distribution(
+    url: &str,
+    target_dir: &Path,
+    target_file: &Path,
+) -> Result<()> {
     info!("Downloading wheel to {}", target_file.display());
     fs::create_dir_all(&target_dir).context("Couldn't create cache dir")?;
     // temp file so we don't clash with other processes running in parallel
     let mut temp_file = tempfile::NamedTempFile::new_in(&target_dir)
         .context("Couldn't create file for download")?;
     let request_for_file = ureq::get(url)
-        .set("User-Agent", "install-wheel-rs (konstin@mailbox.org)")
+        .set("User-Agent", "virtual-sprawl (konstin@mailbox.org)")
         .call()
         .context("Failed to download file from pypi")?;
     io::copy(&mut request_for_file.into_reader(), &mut temp_file)
@@ -139,7 +161,7 @@ pub(crate) fn download_wheel(url: &str, target_dir: &Path, target_file: &Path) -
     Ok(())
 }
 
-/// `~/.cache/install-wheel-rs`
+/// `~/.cache/virtual-sprawl`
 pub(crate) fn cache_dir() -> result::Result<PathBuf, WheelInstallerError> {
     Ok(dirs::cache_dir()
         .ok_or_else(|| {

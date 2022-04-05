@@ -33,8 +33,8 @@ def compare_with_poetry(
         paths.remove(str(Path(env_var_virtualenv).joinpath("bin")))
     paths.insert(0, str(env.joinpath("bin")))
     venv_env_vars = os.environ.copy()
-    venv_env_vars["PATH"]=":".join(paths)
-    venv_env_vars["VIRTUAL_ENV"]=str(env)
+    venv_env_vars["PATH"] = ":".join(paths)
+    venv_env_vars["VIRTUAL_ENV"] = str(env)
 
     # poetry install
     if clear_poetry and env_poetry.exists():

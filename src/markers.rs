@@ -49,12 +49,19 @@ impl Pep508Environment {
         }
     }
 
+    /// If we launch from python, we can call the python code from python with no overhead, but
+    /// still need to parse into Self here
+    pub fn from_json_str(pep508_env_data: &str) -> Self {
+        serde_json::from_str(pep508_env_data).unwrap()
+    }
+
     /// Runs python to get the actual PEP 508 values
     ///
     /// To be eventually replaced by something like the maturin solution where we construct this
     /// is in rust
     pub fn from_python() -> Self {
         let out = Command::new("python")
+            .args(["-S"])
             .env("PYTHONIOENCODING", "utf-8")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

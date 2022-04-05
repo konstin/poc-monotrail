@@ -4,18 +4,26 @@ use regex::Regex;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+/// Additional metadata for the url
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum DistributionType {
+    Wheel,
+    SourceDistribution,
+}
+
 /// We have four sources of package install requests:
 ///  * User gives a package name (no version), needs json api and download
 ///  * User gives a package name and version, needs json api and download
 ///  * User gives a file, which has name and version, doesn't need download
 ///  * Lockfile fives name, version and filename, needs download
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Spec {
     pub requested: String,
     pub name: String,
     pub version: Option<String>,
     pub file_path: Option<(PathBuf, WheelFilename)>,
-    pub url: Option<String>,
+    /// Url, filename, distribution type
+    pub url: Option<(String, String, DistributionType)>,
 }
 
 impl Spec {

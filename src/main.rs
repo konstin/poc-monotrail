@@ -1,9 +1,9 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use install_wheel_rs::{run, Cli};
 use std::env;
 use std::path::PathBuf;
 use tracing::debug;
+use virtual_sprawl::{run, Cli};
 
 fn cli() -> Result<()> {
     let cli = Cli::parse();
@@ -22,7 +22,7 @@ fn cli() -> Result<()> {
         if venv.join("pyvenv.cfg").is_file() {
             venv
         } else {
-            bail!("No venv activate or next to lockfile");
+            bail!("No venv active or next to lockfile");
         }
     } else {
         bail!("Will only install in a virtualenv");

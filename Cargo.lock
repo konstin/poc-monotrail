@@ -145,9 +145,9 @@ checksum = "fff857943da45f546682664a79488be82e69e43c1a7a2307679ab9afb3a66d2e"
 
 [[package]]
 name = "clap"
-version = "3.1.7"
+version = "3.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c67e7973e74896f4bba06ca2dcfd28d54f9cb8c035e940a32b88ed48f5f5ecf2"
+checksum = "71c47df61d9e16dc010b55dba1952a57d8c215dbb533fd13cdd13369aac73b1c"
 dependencies = [
  "atty",
  "bitflags",
@@ -481,6 +481,16 @@ dependencies = [
 
 [[package]]
 name = "indoc"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47741a8bc60fb26eb8d6e0238bbb26d8575ff623fdc97b1a2c00c050b9684ed8"
+dependencies = [
+ "indoc-impl",
+ "proc-macro-hack",
+]
+
+[[package]]
+name = "indoc"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7906a9fababaeacb774f72410e497a1d18de916322e33797bb2cd29baa23c9e"
@@ -489,38 +499,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "install-wheel-rs"
-version = "0.1.0"
+name = "indoc-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce046d161f000fffde5f432a0d034d0341dc152643b2598ed5bfce44c4f3a8f0"
 dependencies = [
- "anyhow",
- "base64",
- "cfg-if",
- "clap",
- "configparser",
- "csv",
- "dirs",
- "fs-err",
- "goblin",
- "indicatif",
- "indoc",
- "pep440",
- "platform-info",
- "plist",
- "python-pkginfo",
- "rayon",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "target-lexicon",
- "tempfile",
- "thiserror",
- "toml",
- "tracing",
- "tracing-subscriber",
- "ureq",
- "walkdir",
- "zip 0.5.13",
+ "proc-macro-hack",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "unindent",
 ]
 
 [[package]]
@@ -572,6 +560,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f30344350a2a51da54c1d53be93fade8a237e545dbcc4bdbe635413f2117cab9"
 dependencies = [
  "safemem",
+]
+
+[[package]]
+name = "lock_api"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "327fa5b6a6940e4699ec49a9beae1ea4845c6bab9314e4f84ac68742139d8c53"
+dependencies = [
+ "autocfg",
+ "scopeguard",
 ]
 
 [[package]]
@@ -666,6 +664,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "parking_lot"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
+dependencies = [
+ "instant",
+ "lock_api",
+ "parking_lot_core",
+]
+
+[[package]]
+name = "parking_lot_core"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d76e8e1493bcac0d2766c42737f34458f1c8c50c0d23bcb24ea953affb273216"
+dependencies = [
+ "cfg-if",
+ "instant",
+ "libc",
+ "redox_syscall",
+ "smallvec",
+ "winapi",
+]
+
+[[package]]
+name = "paste"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45ca20c77d80be666aef2b45486da86238fabe33e38306bd3118fe4af33fa880"
+dependencies = [
+ "paste-impl",
+ "proc-macro-hack",
+]
+
+[[package]]
+name = "paste-impl"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d95a7db200b97ef370c8e6de0088252f7e0dfff7d047a28528e47456c0fc98b6"
+dependencies = [
+ "proc-macro-hack",
+]
+
+[[package]]
 name = "pep440"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -748,12 +790,66 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-hack"
+version = "0.5.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbf0c48bc1d91375ae5c3cd81e3722dff1abcf81a30960240640d223f59fe0e5"
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7342d5883fbccae1cc37a2353b09c87c9b0f3afd73f5fb9bba687a1f733b029"
 dependencies = [
  "unicode-xid",
+]
+
+[[package]]
+name = "pyo3"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cf01dbf1c05af0a14c7779ed6f3aa9deac9c3419606ac9de537a2d649005720"
+dependencies = [
+ "cfg-if",
+ "indoc 0.3.6",
+ "libc",
+ "parking_lot",
+ "paste",
+ "pyo3-build-config",
+ "pyo3-macros",
+ "unindent",
+]
+
+[[package]]
+name = "pyo3-build-config"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbf9e4d128bfbddc898ad3409900080d8d5095c379632fbbfbb9c8cfb1fb852b"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
+name = "pyo3-macros"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67701eb32b1f9a9722b4bc54b548ff9d7ebfded011c12daece7b9063be1fd755"
+dependencies = [
+ "pyo3-macros-backend",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "pyo3-macros-backend"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f44f09e825ee49a105f2c7b23ebee50886a9aee0746f4dd5a704138a64b0218a"
+dependencies = [
+ "proc-macro2",
+ "pyo3-build-config",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -768,7 +864,7 @@ dependencies = [
  "rfc2047-decoder",
  "tar",
  "thiserror",
- "zip 0.6.0",
+ "zip 0.6.2",
 ]
 
 [[package]]
@@ -1200,9 +1296,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-core"
-version = "0.1.23"
+version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa31669fa42c09c34d94d8165dd2012e8ff3c66aca50f3bb226b68f216f2706c"
+checksum = "90442985ee2f57c9e1b548ee72ae842f4a9a20e3f417cc38dbc5dc684d9bb4ee"
 dependencies = [
  "lazy_static",
  "valuable",
@@ -1221,9 +1317,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-subscriber"
-version = "0.3.9"
+version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e0ab7bdc962035a87fba73f3acca9b8a8d0034c2e6f60b84aeaaddddc155dce"
+checksum = "b9df98b037d039d03400d9dd06b0f8ce05486b5f25e9a2d7d36196e142ebbc52"
 dependencies = [
  "ansi_term",
  "sharded-slab",
@@ -1314,6 +1410,42 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "virtual-sprawl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "cfg-if",
+ "clap",
+ "configparser",
+ "csv",
+ "dirs",
+ "fs-err",
+ "goblin",
+ "indicatif",
+ "indoc 1.0.4",
+ "pep440",
+ "platform-info",
+ "plist",
+ "pyo3",
+ "python-pkginfo",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "target-lexicon",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
+ "walkdir",
+ "zip 0.5.13",
+]
 
 [[package]]
 name = "walkdir"
@@ -1477,13 +1609,14 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "0.6.0"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6fa4aa90e99fb8d701bda16fb040d8ed2f9c7176fb44de750e880a74b580315"
+checksum = "bf225bcf73bb52cbb496e70475c7bd7a3f769df699c0020f6c7bd9a96dcf0b8d"
 dependencies = [
  "byteorder",
  "bzip2",
  "crc32fast",
+ "crossbeam-utils",
  "flate2",
  "time 0.3.9",
 ]
