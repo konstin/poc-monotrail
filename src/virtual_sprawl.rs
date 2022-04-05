@@ -24,6 +24,7 @@ fn find_lockfile(file_running: &Path) -> Option<PathBuf> {
     None
 }
 
+#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn setup_virtual_sprawl(
     file_running: &Path,
     python: &Path,

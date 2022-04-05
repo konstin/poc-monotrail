@@ -14,6 +14,7 @@ mod install_location;
 mod markers;
 mod package_index;
 mod poetry;
+#[cfg(feature = "python_bindings")]
 mod python_bindings;
 mod source_distribution;
 mod spec;

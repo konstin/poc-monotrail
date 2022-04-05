@@ -51,6 +51,7 @@ impl Pep508Environment {
 
     /// If we launch from python, we can call the python code from python with no overhead, but
     /// still need to parse into Self here
+    #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
     pub fn from_json_str(pep508_env_data: &str) -> Self {
         serde_json::from_str(pep508_env_data).unwrap()
     }
