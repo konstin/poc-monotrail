@@ -15,7 +15,7 @@ from test.compare import get_bin, get_root, diff_envs
 def compare_with_poetry(
     env_base: str,
     project_dir: Path,
-    install_wheel_rs: Path,
+    virtual_sprawl: Path,
     no_dev: bool,
     extras: List[str],
     clear_rs: bool = True,
@@ -63,7 +63,7 @@ def compare_with_poetry(
         rmtree(env_rs)
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
-    call = [install_wheel_rs, "poetry-install", project_dir.joinpath("pyproject.toml")]
+    call = [virtual_sprawl, "poetry-install", project_dir.joinpath("pyproject.toml")]
     if no_dev:
         call.append("--no-dev")
     if extras:

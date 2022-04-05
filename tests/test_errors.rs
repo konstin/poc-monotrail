@@ -2,10 +2,10 @@
 
 use anyhow::{bail, Error, Result};
 use clap::Parser;
-use install_wheel_rs::{run, Cli};
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
+use virtual_sprawl::{run, Cli};
 
 fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let temp_dir = TempDir::new()?;

@@ -22,7 +22,7 @@ pub fn build_source_distribution_to_wheel_cached(
 
     let cache_hit = fs::read_dir(&target_dir).ok().and_then(|dir| {
         for entry in dir.flatten() {
-            if !entry.path().ends_with(".whl") {
+            if !entry.path().to_string_lossy().ends_with(".whl") {
                 continue;
             }
             if let Ok(true) = WheelFilename::from_str(entry.file_name().to_string_lossy().as_ref())

@@ -40,7 +40,7 @@ def get_bin() -> Path:
 def compare_with_pip(
     env_name: str,
     wheels: List[Union[str, Path]],
-    install_wheel_rs: Path,
+    virtual_sprawl: Path,
     clear_rs: bool = True,
     clear_pip: bool = False,
 ):
@@ -70,7 +70,7 @@ def compare_with_pip(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [install_wheel_rs, "install", *wheels],
+        [virtual_sprawl, "install", *wheels],
         stdout=DEVNULL,
         env=dict(os.environ, VIRTUAL_ENV=env),
     )

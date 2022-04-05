@@ -1,15 +1,13 @@
 use crate::install_location::InstallLocation;
+use crate::install_wheel;
 use crate::package_index::search_package;
 use crate::spec::{DistributionType, Spec};
-use crate::{install_wheel};
 use anyhow::{bail, Context};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::cli::download_distribution_cached;
-use crate::source_distribution::{
-    build_source_distribution_to_wheel_cached,
-};
+use crate::source_distribution::build_source_distribution_to_wheel_cached;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 
@@ -74,13 +72,13 @@ fn download_and_install(
     let (wheel_path, distribution_type, version) = match &spec.file_path {
         // case 1: we already got a file (wheel or sdist)
         Some((file_path, metadata)) => {
-            if file_path.ends_with(".whl") {
+            if file_path.as_os_str().to_string_lossy().ends_with(".whl") {
                 (
                     file_path.to_owned(),
                     DistributionType::Wheel,
                     metadata.version.clone(),
                 )
-            } else if file_path.ends_with(".tar.gz") {
+            } else if file_path.as_os_str().to_string_lossy().ends_with(".tar.gz") {
                 (
                     file_path.to_owned(),
                     DistributionType::SourceDistribution,
