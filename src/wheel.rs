@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::{env, io};
+use tempfile::TempDir;
 use tracing::{debug, span, trace, warn, Level};
 use walkdir::WalkDir;
 use zip::result::ZipError;
@@ -738,8 +739,28 @@ pub fn install_wheel(
         return Err(WheelInstallerError::IncompatibleWheel { os, arch });
     }
 
-    let site_packages = location
-        .get_install_location(&filename)
+    let (temp_dir_final_location, base_location) = match location {
+        InstallLocation::Venv { venv_base, .. } => (None, venv_base.to_path_buf()),
+        InstallLocation::VirtualSprawl {
+            virtual_sprawl_root,
+            ..
+        } => {
+            // TODO: The version needs to be passed otherwise so we can also handle git hashes
+            // and such
+            let final_location = virtual_sprawl_root.join(format!(
+                "{}-{}",
+                filename.distribution.to_lowercase(),
+                filename.version
+            ));
+            fs::create_dir_all(&virtual_sprawl_root)?;
+            // temp dir and rename for atomicity
+            let temp_dir = TempDir::new_in(&virtual_sprawl_root)?;
+            let base_location = temp_dir.path().to_path_buf();
+            (Some((temp_dir, final_location)), base_location)
+        }
+    };
+
+    let site_packages = base_location
         .join("lib")
         .join(format!(
             "python{}.{}",
@@ -802,7 +823,7 @@ pub fn install_wheel(
     if data_dir.is_dir() {
         debug!(name = name.as_str(), "Installing data");
         install_data(
-            &location.get_install_location(&filename),
+            &base_location,
             &site_packages,
             &data_dir,
             name,
@@ -849,6 +870,12 @@ pub fn install_wheel(
     for entry in record {
         record_writer.serialize(entry)?;
     }
+
+    // rename for atomicity
+    if let Some((_temp_dir, final_location)) = temp_dir_final_location {
+        fs::rename(base_location, final_location)?;
+    }
+
     Ok((name.to_string(), version.to_string()))
 }
 

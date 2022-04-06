@@ -2,6 +2,7 @@
 .cargo
 .venv*
 __pycache__
+data_science_project/iris.png
 flamegraph*.svg
 perf.data*
 pip

@@ -334,14 +334,15 @@ pub fn find_specs_to_install(
         .collect();
 
     let mut queue: VecDeque<String> = VecDeque::new();
-    for (dep_name, dep_spec) in deps {
-        if !dep_spec.is_optional() || optionals_picked.contains(&dep_name) {
-            queue.push_back(dep_name);
-        }
-    }
-
     let mut seen = HashSet::new();
     let mut specs = Vec::new();
+
+    for (dep_name, dep_spec) in deps {
+        if !dep_spec.is_optional() || optionals_picked.contains(&dep_name) {
+            queue.push_back(dep_name.clone());
+            seen.insert(dep_name);
+        }
+    }
 
     while let Some(item) = queue.pop_front() {
         // We do not need to install python

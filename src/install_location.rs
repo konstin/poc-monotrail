@@ -1,4 +1,4 @@
-use crate::wheel_tags::WheelFilename;
+
 use std::io;
 use std::path::PathBuf;
 
@@ -30,24 +30,6 @@ impl InstallLocation {
         match self {
             InstallLocation::Venv { python_version, .. } => *python_version,
             InstallLocation::VirtualSprawl { python_version, .. } => *python_version,
-        }
-    }
-
-    pub fn get_install_location(&self, filename: &WheelFilename) -> PathBuf {
-        match self {
-            InstallLocation::Venv { venv_base, .. } => venv_base.to_path_buf(),
-            InstallLocation::VirtualSprawl {
-                virtual_sprawl_root,
-                ..
-            } => {
-                // TODO: The version needs to be passed otherwise so we can also handle git hashes
-                // and such
-                virtual_sprawl_root.join(format!(
-                    "{}-{}",
-                    filename.distribution.to_lowercase(),
-                    filename.version
-                ))
-            }
         }
     }
 

@@ -3,6 +3,7 @@ use crate::virtual_sprawl::setup_virtual_sprawl;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, PyResult, Python};
+use std::env;
 use std::path::Path;
 use tracing::debug;
 
@@ -33,6 +34,17 @@ fn get_virtual_sprawl_info(
 
 #[pymodule]
 fn virtual_sprawl(_py: Python, m: &PyModule) -> PyResult<()> {
+    // Good enough for now
+    if env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::fmt::init();
+    } else {
+        let format = tracing_subscriber::fmt::format()
+            .with_level(false)
+            .with_target(false)
+            .without_time()
+            .compact();
+        tracing_subscriber::fmt().event_format(format).init();
+    }
     m.add_function(wrap_pyfunction!(get_virtual_sprawl_info, m)?)?;
     Ok(())
 }
