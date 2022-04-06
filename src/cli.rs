@@ -4,10 +4,10 @@ use crate::poetry::find_specs_to_install;
 use crate::spec::Spec;
 use crate::venv_parser::get_venv_python_version;
 use crate::wheel_tags::current_compatible_tags;
-use crate::{install, package_index, WheelInstallerError};
+use crate::{install, install_specs, package_index, WheelInstallerError};
 use clap::Parser;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
+use tracing::debug;
 
 #[derive(Parser)]
 pub enum Cli {
@@ -26,6 +26,8 @@ pub enum Cli {
         extras: Vec<String>,
         #[clap(long)]
         virtual_sprawl: bool,
+        #[clap(long)]
+        skip_existing: bool,
     },
 }
 
@@ -47,7 +49,7 @@ pub fn download_distribution_cached(
         return Ok(target_file);
     }
 
-    info!("Downloading (or getting from cache) {} {}", name, version);
+    debug!("Downloading (or getting from cache) {} {}", name, version);
     download_distribution(url, &target_dir, &target_file)?;
 
     Ok(target_file)
@@ -78,6 +80,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             no_dev,
             extras,
             virtual_sprawl,
+            skip_existing,
         } => {
             let compatible_tags = current_compatible_tags(venv)?;
             let specs =
@@ -93,7 +96,18 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 installation_location
             };
 
-            install::install_specs(&specs, &location, &compatible_tags, no_compile)?;
+            let specs = if skip_existing {
+                specs
+                    .into_iter()
+                    .filter(|spec| {
+                        !location.is_installed(&spec.name, &spec.version.clone().unwrap())
+                    })
+                    .collect()
+            } else {
+                specs
+            };
+
+            install_specs(&specs, &location, &compatible_tags, no_compile)?;
         }
     };
     Ok(())

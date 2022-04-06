@@ -12,6 +12,7 @@ use std::str::FromStr;
 
 mod poetry_lock {
     use crate::markers::{parse_markers, Pep508Environment};
+    use regex::Regex;
     use serde::Deserialize;
     use std::collections::HashMap;
 
@@ -70,15 +71,25 @@ mod poetry_lock {
 
     impl Dependency {
         /// checks if we need to install given the markers and returns the matching version constraint
-        pub fn get_version(&self, environment: &Pep508Environment) -> Result<Option<&str>, String> {
+        pub fn get_version(
+            &self,
+            environment: &Pep508Environment,
+            extras: &[String],
+        ) -> Result<Option<&str>, String> {
+            let extra_re = Regex::new(r#"^extra == "([\w\d_-]+)"$"#).unwrap();
+
             Ok(match self {
                 Dependency::Compact(version) => Some(version),
                 Dependency::Expanded(DependencyExpanded {
                     version, markers, ..
                 }) => {
                     if let Some(markers) = markers {
-                        if markers.starts_with("extra ==") {
-                            todo!("markers extra");
+                        if let Some(captures) = extra_re.captures(markers) {
+                            return if extras.contains(&captures[1].to_string()) {
+                                Ok(Some(version))
+                            } else {
+                                Ok(None)
+                            };
                         }
                         if parse_markers(markers).unwrap().evaluate(environment)? {
                             return Ok(Some(version));
@@ -89,8 +100,12 @@ mod poetry_lock {
                 Dependency::List(options) => {
                     for option in options {
                         if let Some(markers) = &option.markers {
-                            if markers.starts_with("extra ==") {
-                                todo!("markers extra");
+                            if let Some(captures) = extra_re.captures(markers) {
+                                if extras.contains(&captures[1].to_string()) {
+                                    return Ok(Some(&option.version));
+                                } else {
+                                    continue;
+                                };
                             }
                             if parse_markers(markers).unwrap().evaluate(environment)? {
                                 return Ok(Some(&option.version));
@@ -191,6 +206,10 @@ mod poetry_toml {
 }
 
 /// Resolves a single package's filename and url inside a poetry lockfile
+///
+/// doesn't work because the pypi api wants a different python version than the one in the wheel
+/// filename
+#[allow(dead_code)]
 pub fn filename_and_url(
     lockfile: &PoetryLock,
     package: &poetry_lock::Package,
@@ -261,7 +280,7 @@ pub fn filename_and_url(
 /// Parses pyproject.toml and poetry.lock and returns a list of packages to install
 pub fn find_specs_to_install(
     pyproject_toml: &Path,
-    compatible_tags: &[(String, String, String)],
+    _compatible_tags: &[(String, String, String)],
     no_dev: bool,
     extras: &[String],
     pep508_env: Option<Pep508Environment>,
@@ -339,14 +358,14 @@ pub fn find_specs_to_install(
                     item
                 )
             })?;
-        let (filename, distribution_type, url) =
-            filename_and_url(&lockfile, package, compatible_tags)?;
+        //let (filename, distribution_type, url) =
+        //    filename_and_url(&lockfile, package, compatible_tags)?;
         let spec = Spec {
             requested: format!("{} {}", package.name, package.version),
             name: package.name.clone(),
             version: Some(package.version.clone()),
             file_path: None,
-            url: Some((url, filename, distribution_type)),
+            url: None,
         };
         specs.push(spec);
 
@@ -355,12 +374,15 @@ pub fn find_specs_to_install(
             if seen.contains(dep_item) {
                 continue;
             }
-            if let Some(_version) = dependency.get_version(&environment).map_err(|err| {
-                anyhow!(err).context(format!(
-                    "Failed to parse dependency {} of {}: {:?}",
-                    dep_item, item, dependency,
-                ))
-            })? {
+            if let Some(_version) = dependency
+                .get_version(&environment, extras)
+                .map_err(|err| {
+                    anyhow!(err).context(format!(
+                        "Failed to parse dependency {} of {}: {:?}",
+                        dep_item, item, dependency,
+                    ))
+                })?
+            {
                 queue.push_back(dep_item.clone());
             }
 

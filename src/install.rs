@@ -109,6 +109,7 @@ fn download_and_install(
             );
             let wheel_path = download_distribution_cached(&spec.name, &version, &filename, &url)
                 .with_context(|| format!("Failed to download {} from pypi", spec.requested))?;
+
             (wheel_path, distribution_type, version)
         }
     };

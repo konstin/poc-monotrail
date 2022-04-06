@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{io, result};
-use tracing::{debug, info};
+use tracing::{debug};
 
 /// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
 #[derive(Deserialize, Clone, Debug)]
@@ -144,7 +144,7 @@ pub(crate) fn download_distribution(
     target_dir: &Path,
     target_file: &Path,
 ) -> Result<()> {
-    info!("Downloading wheel to {}", target_file.display());
+    debug!("Downloading wheel to {}", target_file.display());
     fs::create_dir_all(&target_dir).context("Couldn't create cache dir")?;
     // temp file so we don't clash with other processes running in parallel
     let mut temp_file = tempfile::NamedTempFile::new_in(&target_dir)
@@ -152,7 +152,7 @@ pub(crate) fn download_distribution(
     let request_for_file = ureq::get(url)
         .set("User-Agent", "virtual-sprawl (konstin@mailbox.org)")
         .call()
-        .context("Failed to download file from pypi")?;
+        .context("Error during pypi request")?;
     io::copy(&mut request_for_file.into_reader(), &mut temp_file)
         .context("Failed to download wheel from pypi")?;
     temp_file

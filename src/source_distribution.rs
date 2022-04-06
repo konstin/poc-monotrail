@@ -37,10 +37,13 @@ pub fn build_source_distribution_to_wheel_cached(
     if let Some(cache_hit) = cache_hit {
         Ok(cache_hit)
     } else {
-        let wheel = build_source_distribution_to_wheel(sdist, compatible_tags)?;
+        let build_dir = TempDir::new()?;
+
+        let wheel = build_source_distribution_to_wheel(sdist, build_dir.path(), compatible_tags)?;
         fs::create_dir_all(&target_dir)?;
         let wheel_in_cache = target_dir.join(wheel.file_name().unwrap_or(&OsString::new()));
-        fs::rename(wheel, &wheel_in_cache)?;
+        // rename only work on the same device :/
+        fs::copy(wheel, &wheel_in_cache)?;
         Ok(wheel_in_cache)
     }
 }
@@ -48,12 +51,12 @@ pub fn build_source_distribution_to_wheel_cached(
 /// Builds a wheel using pip
 pub fn build_source_distribution_to_wheel(
     sdist: &Path,
+    // needs to be passed in or the tempdir will be deleted to early
+    build_dir: &Path,
     compatible_tags: &[(String, String, String)],
 ) -> Result<PathBuf> {
-    let build_dir = TempDir::new()?;
-
     let output = Command::new("pip")
-        .current_dir(build_dir.path())
+        .current_dir(build_dir)
         .args(&["wheel", "--no-deps"])
         .arg(sdist)
         .output()
@@ -72,7 +75,7 @@ pub fn build_source_distribution_to_wheel(
         ))
         .into());
     } else {
-        for path in fs::read_dir(build_dir.path())? {
+        for path in fs::read_dir(build_dir)? {
             let path = path?;
             let filename = path.file_name().to_string_lossy().to_string();
             if filename.ends_with(".whl") {

@@ -50,4 +50,32 @@ impl InstallLocation {
             }
         }
     }
+
+    pub fn is_installed(&self, name: &str, version: &str) -> bool {
+        match self {
+            InstallLocation::Venv {
+                venv_base,
+                python_version,
+            } => venv_base
+                .join("lib")
+                .join(format!("python{}.{}", python_version.0, python_version.1))
+                .join("site-packages")
+                .join(format!(
+                    "{}-{}.dist-info",
+                    name.to_lowercase().replace('-', "_"),
+                    version
+                ))
+                .is_dir(),
+            InstallLocation::VirtualSprawl {
+                virtual_sprawl_root,
+                ..
+            } => virtual_sprawl_root
+                .join(format!(
+                    "{}-{}",
+                    name.to_lowercase().replace('-', "_"),
+                    version
+                ))
+                .is_dir(),
+        }
+    }
 }

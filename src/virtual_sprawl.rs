@@ -31,7 +31,7 @@ pub fn setup_virtual_sprawl(
     python_version: (u8, u8),
     pep508_env: Option<Pep508Environment>,
 ) -> anyhow::Result<(String, Vec<(String, String)>)> {
-    let virtual_sprawl_root = "/home/konsti/virtual_sprawl/virtual_sprawl_packages".to_string();
+    let virtual_sprawl_root = "/home/konsti/virtual_sprawl/virtual_sprawl".to_string();
     let pyproject_toml = find_lockfile(file_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
@@ -41,7 +41,7 @@ pub fn setup_virtual_sprawl(
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
     let specs = find_specs_to_install(&pyproject_toml, &compatible_tags, false, &[], pep508_env)?;
 
-    // hackery hack
+    // ugly way to remove already installed
     let mut to_install_specs = Vec::new();
     let mut installed_done = Vec::new();
     for spec in specs {
