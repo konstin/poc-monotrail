@@ -7,7 +7,7 @@ use fs_err::{DirEntry, File};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -76,26 +76,34 @@ if __name__ == '__main__':
 fn read_scripts_from_section(
     scripts_section: &HashMap<String, Option<String>>,
     section_name: &str,
+    extras: &[String],
 ) -> Result<Vec<Script>, WheelInstallerError> {
     let mut scripts = Vec::new();
     for (script_name, python_location) in scripts_section.iter() {
         match python_location {
             Some(value) => {
-                if value.contains(' ') {
-                    return Err(WheelInstallerError::InvalidWheel(
-                        "Extras in console scripts aren't supported yet".to_string(),
-                    ));
-                }
-                let (module, function) = value.split_once(':').ok_or_else(|| {
+                let re = Regex::new(r"^(?P<module>[\w\d_\-.]+):(?P<function>[\w\d_\-.]+)(?:\s+\[(?P<extras>(?:[^,]+,?\s*)+)\])?$").unwrap();
+                let captures = re.captures(value).ok_or_else(|| {
                     WheelInstallerError::InvalidWheel(format!(
-                        "{} is invalid: console script key {} must contain a colon",
-                        section_name, script_name
+                        "invalid console script: '{}'",
+                        value
                     ))
                 })?;
+                if let Some(script_extras) = captures.name("extras") {
+                    let script_extras = script_extras
+                        .as_str()
+                        .split(',')
+                        .map(|extra| extra.trim().to_string())
+                        .collect::<HashSet<String>>();
+                    if !script_extras.is_subset(&extras.iter().cloned().collect()) {
+                        continue;
+                    }
+                }
+
                 scripts.push(Script {
                     script_name: script_name.to_string(),
-                    module: module.to_string(),
-                    function: function.to_string(),
+                    module: captures.name("module").unwrap().as_str().to_string(),
+                    function: captures.name("function").unwrap().as_str().to_string(),
                 });
             }
             None => {
@@ -115,6 +123,7 @@ fn read_scripts_from_section(
 fn parse_scripts(
     archive: &mut ZipArchive<File>,
     dist_info_dir: &str,
+    extras: &[String],
 ) -> Result<(Vec<Script>, Vec<Script>), WheelInstallerError> {
     let entry_points_path = format!("{}/entry_points.txt", dist_info_dir);
     let entry_points_mapping = match archive.by_name(&entry_points_path) {
@@ -131,11 +140,13 @@ fn parse_scripts(
 
     // TODO: handle extras
     let console_scripts = match entry_points_mapping.get("console_scripts") {
-        Some(console_scripts) => read_scripts_from_section(console_scripts, "console_scripts")?,
+        Some(console_scripts) => {
+            read_scripts_from_section(console_scripts, "console_scripts", extras)?
+        }
         None => Vec::new(),
     };
     let gui_scripts = match entry_points_mapping.get("gui_scripts") {
-        Some(gui_scripts) => read_scripts_from_section(gui_scripts, "gui_scripts")?,
+        Some(gui_scripts) => read_scripts_from_section(gui_scripts, "gui_scripts", extras)?,
         None => Vec::new(),
     };
 
@@ -146,7 +157,6 @@ fn parse_scripts(
 /// https://github.com/richo/hashing-copy/blob/d8dd2fdb63c6faf198de0c9e5713d6249cbb5323/src/lib.rs#L10-L52
 /// which in turn got it from std
 /// https://doc.rust-lang.org/1.58.0/src/std/io/copy.rs.html#128-156
-
 pub fn copy_and_hash(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<(u64, String)> {
     // TODO: Do we need to support anything besides sha256?
     let mut hasher = Sha256::new();
@@ -707,9 +717,13 @@ fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelIns
         .escape(Some(b'"'))
         .from_reader(record)
         .deserialize()
-        .map(|x| {
-            let y: RecordEntry = x?;
-            Ok(y)
+        .map(|entry| {
+            let entry: RecordEntry = entry?;
+            Ok(RecordEntry {
+                // selenium uses absolute paths for some reason
+                path: entry.path.trim_start_matches('/').to_string(),
+                ..entry
+            })
         })
         .collect()
 }
@@ -723,6 +737,7 @@ pub fn install_wheel(
     location: &InstallLocation,
     wheel_path: &Path,
     compile: bool,
+    extras: &[String],
 ) -> Result<(String, String), WheelInstallerError> {
     let filename = wheel_path
         .file_name()
@@ -813,7 +828,7 @@ pub fn install_wheel(
     );
 
     debug!(name = name.as_str(), "Writing entrypoints");
-    let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir)?;
+    let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir, extras)?;
     write_script_entrypoints(&site_packages, location, &console_scripts, &mut record)?;
     write_script_entrypoints(&site_packages, location, &gui_scripts, &mut record)?;
 
@@ -883,10 +898,10 @@ pub fn install_wheel(
 mod test {
     use super::parse_wheel_version;
     use crate::venv_parser::get_pyvenv_cfg_python_version;
+    use crate::wheel::read_record_file;
     use indoc::{formatdoc, indoc};
 
     #[test]
-
     fn test_parse_wheel_version() {
         fn wheel_with_version(version: &str) -> String {
             return formatdoc! {"
@@ -904,7 +919,6 @@ mod test {
     }
 
     #[test]
-
     fn test_parse_pyenv_cfg() {
         let pyvenv_cfg = indoc! {"
             home = /usr
@@ -918,5 +932,30 @@ mod test {
             ",
         };
         assert_eq!(get_pyvenv_cfg_python_version(pyvenv_cfg).unwrap(), (3, 8));
+    }
+
+    #[test]
+    fn record_with_absolute_paths() {
+        let record: &str = indoc! {"
+            /selenium/__init__.py,sha256=l8nEsTP4D2dZVula_p4ZuCe8AGnxOq7MxMeAWNvR0Qc,811
+            /selenium/common/exceptions.py,sha256=oZx2PS-g1gYLqJA_oqzE4Rq4ngplqlwwRBZDofiqni0,9309
+            selenium-4.1.0.dist-info/METADATA,sha256=jqvBEwtJJ2zh6CljTfTXmpF1aiFs-gvOVikxGbVyX40,6468
+            selenium-4.1.0.dist-info/RECORD,,
+        "};
+
+        let entries = read_record_file(&mut record.as_bytes()).unwrap();
+        let expected = [
+            "selenium/__init__.py",
+            "selenium/common/exceptions.py",
+            "selenium-4.1.0.dist-info/METADATA",
+            "selenium-4.1.0.dist-info/RECORD",
+        ]
+        .map(ToString::to_string)
+        .to_vec();
+        let actual = entries
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect::<Vec<String>>();
+        assert_eq!(expected, actual);
     }
 }

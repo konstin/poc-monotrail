@@ -1,11 +1,14 @@
 //! Parsing of pyproject.toml and poetry.lock
 
 use crate::markers::Pep508Environment;
-use crate::poetry::poetry_lock::PoetryLock;
+use crate::poetry::poetry_lock::{Package, PoetryLock};
+use crate::poetry::poetry_toml::Dependency;
 use crate::spec::{DistributionType, Spec};
 use crate::wheel_tags::WheelFilename;
-use anyhow::{anyhow, bail, Context};
+use crate::WheelInstallerError;
+use anyhow::{bail, Context};
 use fs_err as fs;
+use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::str::FromStr;
@@ -14,7 +17,7 @@ mod poetry_lock {
     use crate::markers::{parse_markers, Pep508Environment};
     use regex::Regex;
     use serde::Deserialize;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
@@ -71,28 +74,39 @@ mod poetry_lock {
 
     impl Dependency {
         /// checks if we need to install given the markers and returns the matching version constraint
-        pub fn get_version(
+        ///
+        /// For the extras we give in a set of extras the is activated for self to check if we need
+        /// self->dep, and return the extras active for self->dep
+        pub fn get_version_and_extras(
             &self,
             environment: &Pep508Environment,
-            extras: &[String],
-        ) -> Result<Option<&str>, String> {
+            self_extras: &HashSet<String>,
+        ) -> Result<Option<(String, Vec<String>)>, String> {
             let extra_re = Regex::new(r#"^extra == "([\w\d_-]+)"$"#).unwrap();
 
             Ok(match self {
-                Dependency::Compact(version) => Some(version),
+                Dependency::Compact(version) => Some((version.to_string(), Vec::new())),
                 Dependency::Expanded(DependencyExpanded {
-                    version, markers, ..
+                    version,
+                    markers,
+                    extras,
                 }) => {
                     if let Some(markers) = markers {
                         if let Some(captures) = extra_re.captures(markers) {
-                            return if extras.contains(&captures[1].to_string()) {
-                                Ok(Some(version))
+                            return if self_extras.contains(&captures[1].to_string()) {
+                                Ok(Some((
+                                    version.to_string(),
+                                    extras.clone().unwrap_or_default(),
+                                )))
                             } else {
                                 Ok(None)
                             };
                         }
                         if parse_markers(markers).unwrap().evaluate(environment)? {
-                            return Ok(Some(version));
+                            return Ok(Some((
+                                version.to_string(),
+                                extras.clone().unwrap_or_default(),
+                            )));
                         }
                     }
                     None
@@ -101,17 +115,26 @@ mod poetry_lock {
                     for option in options {
                         if let Some(markers) = &option.markers {
                             if let Some(captures) = extra_re.captures(markers) {
-                                if extras.contains(&captures[1].to_string()) {
-                                    return Ok(Some(&option.version));
+                                if self_extras.contains(&captures[1].to_string()) {
+                                    return Ok(Some((
+                                        option.version.to_string(),
+                                        option.extras.clone().unwrap_or_default(),
+                                    )));
                                 } else {
                                     continue;
                                 };
                             }
                             if parse_markers(markers).unwrap().evaluate(environment)? {
-                                return Ok(Some(&option.version));
+                                return Ok(Some((
+                                    option.version.to_string(),
+                                    option.extras.clone().unwrap_or_default(),
+                                )));
                             }
                         } else {
-                            return Ok(Some(&option.version));
+                            return Ok(Some((
+                                option.version.to_string(),
+                                option.extras.clone().unwrap_or_default(),
+                            )));
                         }
                     }
                     None
@@ -186,6 +209,13 @@ mod poetry_toml {
             match self {
                 Dependency::Compact(_) => false,
                 Dependency::Expanded { optional, .. } => optional.unwrap_or(false),
+            }
+        }
+
+        pub fn get_extras(&self) -> &[String] {
+            match self {
+                Dependency::Compact(_) => &[],
+                Dependency::Expanded { extras, .. } => extras.as_deref().unwrap_or_default(),
             }
         }
     }
@@ -277,18 +307,74 @@ pub fn filename_and_url(
     }
 }
 
-/// Parses pyproject.toml and poetry.lock and returns a list of packages to install
-pub fn find_specs_to_install(
-    pyproject_toml: &Path,
-    _compatible_tags: &[(String, String, String)],
+/// this isn't actually needed poetry gives us all we need
+#[allow(dead_code)]
+fn parse_dep_extra(
+    dep_spec: &str,
+) -> Result<(String, HashSet<String>, Option<String>), WheelInstallerError> {
+    let re = Regex::new(r"(?P<name>[\w\d_-]+)(?:\[(?P<extras>.*)\])? ?(?:\((?P<version>.+)\))?")
+        .unwrap();
+    let captures = re.captures(dep_spec).ok_or_else(|| {
+        WheelInstallerError::InvalidWheel(format!(
+            "Invalid dependency specification in poetry.lock: {}",
+            dep_spec
+        ))
+    })?;
+    Ok((
+        captures.name("name").unwrap().as_str().to_string(),
+        captures
+            .name("extras")
+            .map(|extras| {
+                extras
+                    .as_str()
+                    .to_string()
+                    .split(',')
+                    .map(ToString::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        captures
+            .name("version")
+            .map(|version| version.as_str().to_string()),
+    ))
+}
+
+fn resolution_to_specs(
+    packages: HashMap<String, Package>,
+    deps_with_extras: HashMap<String, HashSet<String>>,
+) -> anyhow::Result<Vec<Spec>> {
+    let mut specs = Vec::new();
+    for (dep_name, dep_extras) in deps_with_extras {
+        // search by normalized name
+        let package = packages
+            .get(&dep_name.to_lowercase().replace('-', "_"))
+            .with_context(|| {
+                format!(
+                    "Lockfile outdated (run `poetry update`): {} is missing",
+                    dep_name
+                )
+            })?;
+        let spec = Spec {
+            requested: format!("{} {}", package.name, package.version),
+            name: package.name.clone(),
+            version: Some(package.version.clone()),
+            extras: dep_extras.into_iter().collect(),
+            file_path: None,
+            url: None,
+        };
+        specs.push(spec);
+    }
+    Ok(specs)
+}
+
+/// Get the root deps from pyproject.toml, already filtered by activated extras.
+/// The is no root package in poetry.lock that we could use so we also need to read pyproject.toml
+fn get_root_info(
+    pyproject_toml: &&Path,
     no_dev: bool,
     extras: &[String],
-    pep508_env: Option<Pep508Environment>,
-) -> anyhow::Result<Vec<Spec>> {
-    // TODO: don't parse this from subprocess but do it like maturin
-    let environment = pep508_env.unwrap_or_else(Pep508Environment::from_python);
-
-    // get deps from poetry.toml
+) -> anyhow::Result<HashMap<String, Dependency>> {
+    // read/get deps from poetry.toml
     let poetry_pyproject_toml: poetry_toml::PoetryPyprojectToml =
         toml::from_str(&fs::read_to_string(pyproject_toml)?).with_context(|| {
             format!(
@@ -298,7 +384,7 @@ pub fn find_specs_to_install(
         })?;
     let poetry_section = poetry_pyproject_toml.tool.poetry;
 
-    let deps = if no_dev {
+    let root_deps = if no_dev {
         poetry_section.dependencies.clone()
     } else {
         poetry_section
@@ -308,88 +394,161 @@ pub fn find_specs_to_install(
             .collect()
     };
 
-    // read lockfile
-    let lockfile = pyproject_toml
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .join("poetry.lock");
-
-    let mut optionals_picked: HashSet<_> = HashSet::new();
-
+    let mut root_extra_deps: HashSet<_> = HashSet::new();
     for extra_name in extras {
         let packages = poetry_section
             .extras
             .get(extra_name)
             .with_context(|| format!("No such extra {}", extra_name))?;
-        optionals_picked.extend(packages);
+        root_extra_deps.extend(packages);
     }
 
-    let lockfile: poetry_lock::PoetryLock = toml::from_str(&fs::read_to_string(&lockfile)?)
-        .with_context(|| format!("Invalid lockfile: {}", lockfile.display()))?;
-    // keys are normalized names since `[package.dependencies]` also uses normalized names
-    let packages: HashMap<String, &poetry_lock::Package> = lockfile
-        .package
-        .iter()
-        .map(|package| (package.name.replace('-', "_"), package))
+    let root_deps = root_deps
+        .into_iter()
+        .filter(|(dep_name, dep_spec)| {
+            // We do not need to install python (oh if we only could, relocatable python a dream)
+            if dep_name == "python" {
+                return false;
+            }
+            // Use only those optional deps which are activated by a selected extra
+            if dep_spec.is_optional() && !root_extra_deps.contains(&dep_name) {
+                return false;
+            }
+            true
+        })
         .collect();
 
-    let mut queue: VecDeque<String> = VecDeque::new();
-    let mut seen = HashSet::new();
-    let mut specs = Vec::new();
+    Ok(root_deps)
+}
 
-    for (dep_name, dep_spec) in deps {
-        if !dep_spec.is_optional() || optionals_picked.contains(&dep_name) {
-            queue.push_back(dep_name.clone());
-            seen.insert(dep_name);
-        }
+fn get_packages_from_lockfile(pyproject_toml: &Path) -> anyhow::Result<HashMap<String, Package>> {
+    // read lockfile
+    let lockfile = pyproject_toml
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join("poetry.lock");
+    let lockfile: poetry_lock::PoetryLock = toml::from_str(&fs::read_to_string(&lockfile)?)
+        .with_context(|| format!("Invalid lockfile: {}", lockfile.display()))?;
+
+    // keys are normalized names since `[package.dependencies]` also uses normalized names
+    let packages: HashMap<String, poetry_lock::Package> = lockfile
+        .package
+        .into_iter()
+        .map(|package| (package.name.replace('-', "_"), package))
+        .collect();
+    Ok(packages)
+}
+
+/// Parses pyproject.toml and poetry.lock and returns a list of packages to install
+pub fn find_specs_to_install(
+    pyproject_toml: &Path,
+    no_dev: bool,
+    extras: &[String],
+    pep508_env: Option<Pep508Environment>,
+) -> anyhow::Result<Vec<Spec>> {
+    // TODO: don't parse this from subprocess but do it like maturin
+    let environment = pep508_env.unwrap_or_else(Pep508Environment::from_python);
+
+    let root_deps = get_root_info(&pyproject_toml, no_dev, extras)?;
+
+    let packages = get_packages_from_lockfile(pyproject_toml)?;
+
+    // This is the thing we want to build: a list with all transitive dependencies and
+    // all their (transitively activated) features
+    let mut deps_with_extras: HashMap<String, HashSet<String>> = HashMap::new();
+    // (dep, dep->extra) combinations we still need to process
+    let mut queue: VecDeque<(String, HashSet<String>)> = VecDeque::new();
+    // Since we have no explicit root package, prime manually
+    for (dep_name, dep_spec) in root_deps {
+        let dep_name_norm = dep_name.to_lowercase().replace("-", "_");
+
+        queue.push_back((
+            dep_name_norm.clone(),
+            dep_spec.get_extras().iter().cloned().collect(),
+        ));
+        deps_with_extras.insert(
+            dep_name_norm.clone(),
+            dep_spec.get_extras().iter().cloned().collect(),
+        );
     }
 
-    while let Some(item) = queue.pop_front() {
-        // We do not need to install python
-        if item == "python" {
-            continue;
-        }
-        // 1. Add package to install list
-        // search by normalized name
+    // resolve the dependencies-extras tree
+    // (dep, dep->extra)
+    while let Some((dep_name, self_extras)) = queue.pop_front() {
         let package = packages
-            .get(&item.to_lowercase().replace('-', "_"))
+            .get(&dep_name.to_lowercase().replace('-', "_"))
             .with_context(|| {
                 format!(
                     "Lockfile outdated (run `poetry update`): {} is missing",
-                    item
+                    dep_name
                 )
             })?;
-        //let (filename, distribution_type, url) =
-        //    filename_and_url(&lockfile, package, compatible_tags)?;
-        let spec = Spec {
-            requested: format!("{} {}", package.name, package.version),
-            name: package.name.clone(),
-            version: Some(package.version.clone()),
-            file_path: None,
-            url: None,
-        };
-        specs.push(spec);
-
-        // 2. Add package's deps to queue (basically flattened recursion)
-        for (dep_item, dependency) in package.dependencies.as_ref().unwrap_or(&HashMap::new()) {
-            if seen.contains(dep_item) {
-                continue;
-            }
-            if let Some(_version) = dependency
-                .get_version(&environment, extras)
-                .map_err(|err| {
-                    anyhow!(err).context(format!(
-                        "Failed to parse dependency {} of {}: {:?}",
-                        dep_item, item, dependency,
-                    ))
-                })?
+        // descend one level into the dep tree
+        for (new_dep_name, new_dep) in package.dependencies.clone().unwrap_or_default() {
+            let new_dep_name_norm = new_dep_name.to_lowercase().replace("-", "_");
+            // Check the extras selected on the current dep activate the transitive dependency
+            let (_new_dep_version, new_dep_extras) = match new_dep
+                .get_version_and_extras(&environment, &self_extras)
+                .map_err(WheelInstallerError::InvalidPoetry)?
             {
-                queue.push_back(dep_item.clone());
-            }
+                None => continue,
+                Some((version, new_dep_extras)) => (version, new_dep_extras),
+            };
 
-            seen.insert(dep_item.clone());
+            let new_dep_extras: HashSet<String> = new_dep_extras.into_iter().collect();
+
+            let new_extras = if let Some(known_extras) = deps_with_extras.get(&new_dep_name) {
+                if new_dep_extras.is_subset(known_extras) {
+                    // nothing to do here, the dep and all those extras are already known
+                    continue;
+                } else {
+                    new_dep_extras.difference(known_extras).cloned().collect()
+                }
+            } else {
+                new_dep_extras
+            };
+
+            deps_with_extras
+                .entry(new_dep_name_norm.clone())
+                .or_default()
+                .extend(new_extras.clone());
+            queue.push_back((new_dep_name_norm.clone(), new_extras));
         }
     }
 
+    let specs = resolution_to_specs(packages, deps_with_extras)?;
     Ok(specs)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::poetry::parse_dep_extra;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_parse_extra_deps() {
+        let examples = [
+            ("pympler", ("pympler".to_string(), HashSet::new(), None)),
+            (
+                "pytest (>=4.3.0)",
+                (
+                    "pytest".to_string(),
+                    HashSet::new(),
+                    Some(">=4.3.0".to_string()),
+                ),
+            ),
+            (
+                "coverage[toml] (>=5.0.2)",
+                (
+                    "coverage".to_string(),
+                    ["toml".to_string()].into_iter().collect(),
+                    Some(">=5.0.2".to_string()),
+                ),
+            ),
+        ];
+
+        for (input, expected) in examples {
+            assert_eq!(parse_dep_extra(input).unwrap(), expected);
+        }
+    }
 }

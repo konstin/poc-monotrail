@@ -36,6 +36,9 @@ pub enum WheelInstallerError {
     /// The wheel is broken
     #[error("The wheel is invalid: {0}")]
     InvalidWheel(String),
+    /// pyproject.toml or poetry.lock are broken
+    #[error("The poetry dependency specification (pyproject.toml or poetry.lock) is broken (try `poetry update`?): {0}")]
+    InvalidPoetry(String),
     /// Doesn't follow file name schema
     #[error("The wheel filename \"{0}\" is invalid: {1}")]
     InvalidWheelFileName(String, String),

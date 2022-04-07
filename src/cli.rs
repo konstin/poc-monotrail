@@ -70,7 +70,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let compatible_tags = current_compatible_tags(venv)?;
             let specs = targets
                 .iter()
-                .map(Spec::from_requested)
+                .map(|target| Spec::from_requested(target, Vec::new()))
                 .collect::<Result<Vec<Spec>, WheelInstallerError>>()?;
             install::install_specs(&specs, &installation_location, &compatible_tags, no_compile)?;
         }
@@ -83,8 +83,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             skip_existing,
         } => {
             let compatible_tags = current_compatible_tags(venv)?;
-            let specs =
-                find_specs_to_install(&pyproject_toml, &compatible_tags, no_dev, &extras, None)?;
+            let specs = find_specs_to_install(&pyproject_toml, no_dev, &extras, None)?;
 
             let location = if virtual_sprawl {
                 InstallLocation::VirtualSprawl {

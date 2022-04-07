@@ -21,6 +21,7 @@ pub struct Spec {
     pub requested: String,
     pub name: String,
     pub version: Option<String>,
+    pub extras: Vec<String>,
     pub file_path: Option<(PathBuf, WheelFilename)>,
     /// Url, filename, distribution type
     pub url: Option<(String, String, DistributionType)>,
@@ -28,7 +29,10 @@ pub struct Spec {
 
 impl Spec {
     /// Parses "package_name", "package_name==version" and "some/path/tqdm-4.62.3-py2.py3-none-any.whl"
-    pub fn from_requested(requested: impl AsRef<str>) -> Result<Self, WheelInstallerError> {
+    pub fn from_requested(
+        requested: impl AsRef<str>,
+        extras: Vec<String>,
+    ) -> Result<Self, WheelInstallerError> {
         if requested.as_ref().ends_with(".whl") {
             let file_path = PathBuf::from(requested.as_ref());
             let filename = file_path
@@ -40,6 +44,7 @@ impl Spec {
                 requested: requested.as_ref().to_string(),
                 name: metadata.distribution.clone(),
                 version: Some(metadata.version.clone()),
+                extras,
                 file_path: Some((file_path, metadata)),
                 url: None,
             })
@@ -51,6 +56,7 @@ impl Spec {
                     requested: requested.as_ref().to_string(),
                     name: name.to_string(),
                     version: Some(version.to_string()),
+                    extras,
                     file_path: None,
                     url: None,
                 })
@@ -59,6 +65,7 @@ impl Spec {
                     requested: requested.as_ref().to_string(),
                     name: requested.as_ref().to_string(),
                     version: None,
+                    extras,
                     file_path: None,
                     url: None,
                 })

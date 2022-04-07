@@ -90,7 +90,7 @@ jobs:
           args: --release
 
       - name: Download pip repo
-        run: git clone --depth 1 --branch 22.0.3 -q https://github.com/pypa/pip
+        run: git clone --depth 1 --branch 22.0.3 -q https://github.com/pypa/pip _pip
       - name: Download popular wheels
         run: pip download -d popular-wheels -r popular.txt
 

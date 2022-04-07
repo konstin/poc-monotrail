@@ -2,10 +2,10 @@
 .cargo
 .venv*
 __pycache__
+_pip
 data_science_project/iris.png
 flamegraph*.svg
 perf.data*
-pip
 popular-wheels
 target
 test-venvs

@@ -24,9 +24,9 @@ fn get_virtual_sprawl_info(
         Some(Pep508Environment::from_json_str(pep508_env)),
     );
     virtual_sprawl.map_err(|err| {
-        let mut accumulator = "virtual sprawl failed to load.\n".to_string();
+        let mut accumulator = "virtual sprawl failed to load.".to_string();
         for cause in err.chain().collect::<Vec<_>>().iter() {
-            accumulator.push_str(&format!("  Caused by: {}", cause));
+            accumulator.push_str(&format!("\n  Caused by: {}", cause));
         }
         PyRuntimeError::new_err(accumulator)
     })

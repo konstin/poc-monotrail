@@ -39,7 +39,7 @@ pub fn setup_virtual_sprawl(
         )
     })?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
-    let specs = find_specs_to_install(&pyproject_toml, &compatible_tags, false, &[], pep508_env)?;
+    let specs = find_specs_to_install(&pyproject_toml, false, &[], pep508_env)?;
 
     // ugly way to remove already installed
     let mut to_install_specs = Vec::new();

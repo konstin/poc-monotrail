@@ -135,7 +135,7 @@ fn download_and_install(
         })?
     };
     debug!("Installing {} {}", spec.name, version);
-    install_wheel(location, &wheel_path, !no_compile)
+    install_wheel(location, &wheel_path, !no_compile, &spec.extras)
         .with_context(|| format!("Failed to install {}", spec.requested))?;
     Ok(version)
 }
