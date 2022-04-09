@@ -17,8 +17,10 @@ pub fn install_specs(
     location: &InstallLocation,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
+    background: bool,
 ) -> anyhow::Result<Vec<(String, String)>> {
     match specs {
+        [] if background => return Ok(vec![]),
         [spec] => {
             info!("Installing {}", spec.requested);
             let version = download_and_install(location, &compatible_tags, no_compile, spec)?;

@@ -16,7 +16,7 @@ pub enum DistributionType {
 ///  * User gives a package name and version, needs json api and download
 ///  * User gives a file, which has name and version, doesn't need download
 ///  * Lockfile fives name, version and filename, needs download
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Spec {
     pub requested: String,
     pub name: String,

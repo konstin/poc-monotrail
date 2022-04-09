@@ -1,7 +1,6 @@
 //! Basic downloading from pypi
 
 use crate::spec::DistributionType;
-
 use crate::wheel_tags::WheelFilename;
 use crate::WheelInstallerError;
 use anyhow::{bail, Context, Result};
@@ -11,7 +10,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{io, result};
-use tracing::{debug};
+use tracing::debug;
 
 /// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
 #[derive(Deserialize, Clone, Debug)]

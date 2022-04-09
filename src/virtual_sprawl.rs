@@ -1,10 +1,17 @@
 use crate::markers::Pep508Environment;
-use crate::{compatible_tags, find_specs_to_install, install_specs, Arch, InstallLocation, Os};
+use crate::requirements_txt::requirements_txt_to_specs;
+use crate::{compatible_tags, install_specs, poetry_lockfile_to_specs, Arch, InstallLocation, Os};
 use anyhow::Context;
+use fs_err as fs;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
 
-fn find_lockfile(file_running: &Path) -> Option<PathBuf> {
+enum LockfileType {
+    PyprojectToml,
+    RequirementsTxt,
+}
+
+fn find_lockfile(file_running: &Path) -> Option<(PathBuf, LockfileType)> {
     let mut parent = if file_running.is_absolute() {
         file_running.parent().map(|path| path.to_path_buf())
     } else {
@@ -17,7 +24,13 @@ fn find_lockfile(file_running: &Path) -> Option<PathBuf> {
 
     while let Some(dir) = parent {
         if dir.join("pyproject.toml").exists() {
-            return Some(dir.join("pyproject.toml"));
+            return Some((dir.join("pyproject.toml"), LockfileType::PyprojectToml));
+        }
+        if dir.join("requirements-frozen.txt").exists() {
+            return Some((
+                dir.join("requirements-frozen.txt"),
+                LockfileType::RequirementsTxt,
+            ));
         }
         parent = dir.parent().map(|path| path.to_path_buf());
     }
@@ -32,14 +45,25 @@ pub fn setup_virtual_sprawl(
     pep508_env: Option<Pep508Environment>,
 ) -> anyhow::Result<(String, Vec<(String, String)>)> {
     let virtual_sprawl_root = "/home/konsti/virtual_sprawl/virtual_sprawl".to_string();
-    let pyproject_toml = find_lockfile(file_running).with_context(|| {
+    let (lockfile, lockfile_type) = find_lockfile(file_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
             file_running.display()
         )
     })?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
-    let specs = find_specs_to_install(&pyproject_toml, false, &[], pep508_env)?;
+    let specs = match lockfile_type {
+        LockfileType::PyprojectToml => poetry_lockfile_to_specs(&lockfile, false, &[], pep508_env)?,
+        LockfileType::RequirementsTxt => {
+            let requirements_txt = fs::read_to_string(&lockfile)?;
+            requirements_txt_to_specs(&requirements_txt).with_context(|| {
+                format!(
+                    "requirements specification is invalid: {}",
+                    lockfile.display()
+                )
+            })?
+        }
+    };
 
     // ugly way to remove already installed
     let mut to_install_specs = Vec::new();
@@ -66,6 +90,7 @@ pub fn setup_virtual_sprawl(
         },
         &compatible_tags,
         false,
+        true,
     )?;
 
     installed.extend(installed_done);

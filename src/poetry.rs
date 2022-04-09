@@ -440,7 +440,7 @@ fn get_packages_from_lockfile(pyproject_toml: &Path) -> anyhow::Result<HashMap<S
 }
 
 /// Parses pyproject.toml and poetry.lock and returns a list of packages to install
-pub fn find_specs_to_install(
+pub fn poetry_lockfile_to_specs(
     pyproject_toml: &Path,
     no_dev: bool,
     extras: &[String],

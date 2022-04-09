@@ -1,6 +1,6 @@
 use crate::install::install_specs;
 use crate::install_location::InstallLocation;
-use crate::poetry::find_specs_to_install;
+use crate::poetry::poetry_lockfile_to_specs;
 pub use crate::wheel::install_wheel;
 use crate::wheel_tags::{compatible_tags, Arch, Os};
 pub use cli::{run, Cli};
@@ -16,6 +16,7 @@ mod package_index;
 mod poetry;
 #[cfg(feature = "python_bindings")]
 mod python_bindings;
+mod requirements_txt;
 mod source_distribution;
 mod spec;
 mod venv_parser;

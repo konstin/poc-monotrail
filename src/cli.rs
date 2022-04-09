@@ -1,6 +1,6 @@
 use crate::install_location::InstallLocation;
 use crate::package_index::download_distribution;
-use crate::poetry::find_specs_to_install;
+use crate::poetry::poetry_lockfile_to_specs;
 use crate::spec::Spec;
 use crate::venv_parser::get_venv_python_version;
 use crate::wheel_tags::current_compatible_tags;
@@ -72,7 +72,13 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 .iter()
                 .map(|target| Spec::from_requested(target, Vec::new()))
                 .collect::<Result<Vec<Spec>, WheelInstallerError>>()?;
-            install::install_specs(&specs, &installation_location, &compatible_tags, no_compile)?;
+            install::install_specs(
+                &specs,
+                &installation_location,
+                &compatible_tags,
+                no_compile,
+                false,
+            )?;
         }
         Cli::PoetryInstall {
             pyproject_toml,
@@ -83,7 +89,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             skip_existing,
         } => {
             let compatible_tags = current_compatible_tags(venv)?;
-            let specs = find_specs_to_install(&pyproject_toml, no_dev, &extras, None)?;
+            let specs = poetry_lockfile_to_specs(&pyproject_toml, no_dev, &extras, None)?;
 
             let location = if virtual_sprawl {
                 InstallLocation::VirtualSprawl {
@@ -106,7 +112,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 specs
             };
 
-            install_specs(&specs, &location, &compatible_tags, no_compile)?;
+            install_specs(&specs, &location, &compatible_tags, no_compile, false)?;
         }
     };
     Ok(())

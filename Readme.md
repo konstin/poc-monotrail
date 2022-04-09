@@ -1,4 +1,10 @@
-Takes a wheel and installs it, in rust
+# Proof Of Concept: Virtual Sprawl
+
+This proof of concept shows two things:
+
+ a) how to install packages faster than pip/poetry - see benchmarks below
+ b) venv-less python packages: every dependency is installed only once and hooked to your project. No more venv directory.
+
 
 ```        
 $ VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
