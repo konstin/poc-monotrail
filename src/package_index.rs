@@ -21,18 +21,18 @@ struct PypiProject {
 /// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
 #[derive(Deserialize, Clone, Debug)]
 #[allow(dead_code)]
-struct PypiRelease {
-    filename: String,
-    packagetype: PackageType,
-    python_version: String,
-    size: usize,
-    url: String,
+pub struct PypiRelease {
+    pub filename: String,
+    pub packagetype: PackageType,
+    pub python_version: String,
+    pub size: usize,
+    pub url: String,
 }
 
 /// https://github.com/pypa/warehouse/blob/4d4c7940063db51e8ee03de78afdff6d4e9140ae/warehouse/filters.py#L33-L41
 #[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
-enum PackageType {
+pub enum PackageType {
     BdistDmg,
     BdistDumb,
     BdistEgg,
@@ -82,9 +82,9 @@ fn matching_package_for_version(
 /// Finds a matching wheel from pages like https://pypi.org/pypi/tqdm/json
 ///
 /// https://warehouse.pypa.io/api-reference/json.html
-fn search_release(
+pub fn search_release(
     name: &str,
-    version: Option<&str>,
+    version: Option<String>,
     compatible_tags: &[(String, String, String)],
 ) -> Result<(PypiRelease, DistributionType, String)> {
     debug!("Getting Releases");
@@ -98,10 +98,10 @@ fn search_release(
     if let Some(version) = version {
         let pypi_releases = pypi_project
             .releases
-            .get(version)
+            .get(&version)
             .with_context(|| format!("{} {} not found on pypi", name, version))?;
 
-        matching_package_for_version(name, compatible_tags, version, pypi_releases)?
+        matching_package_for_version(name, compatible_tags, &version, pypi_releases)?
             .with_context(|| format!("Couldn't find compatible release for {} {}", name, version))
     } else {
         let mut releases = pypi_project.releases.iter().collect::<Vec<_>>();
@@ -117,24 +117,6 @@ fn search_release(
         }
         bail!("No matching version found for {}", name);
     }
-}
-
-/// Finds a matching wheel
-///
-/// Returns url, filename, version
-pub fn search_package(
-    name: &str,
-    version: Option<&str>,
-    compatible_tags: &[(String, String, String)],
-) -> Result<(String, String, DistributionType, String)> {
-    let (picked_wheel, distribution_type, version) =
-        search_release(name, version, compatible_tags)?;
-    Ok((
-        picked_wheel.url,
-        picked_wheel.filename,
-        distribution_type,
-        version,
-    ))
 }
 
 /// Just wraps ureq

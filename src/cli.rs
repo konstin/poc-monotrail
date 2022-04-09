@@ -1,7 +1,7 @@
 use crate::install_location::InstallLocation;
 use crate::package_index::download_distribution;
 use crate::poetry::poetry_lockfile_to_specs;
-use crate::spec::Spec;
+use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install, install_specs, package_index, WheelInstallerError};
@@ -70,8 +70,8 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let compatible_tags = current_compatible_tags(venv)?;
             let specs = targets
                 .iter()
-                .map(|target| Spec::from_requested(target, Vec::new()))
-                .collect::<Result<Vec<Spec>, WheelInstallerError>>()?;
+                .map(|target| RequestedSpec::from_requested(target, Vec::new()))
+                .collect::<Result<Vec<RequestedSpec>, WheelInstallerError>>()?;
             install::install_specs(
                 &specs,
                 &installation_location,
@@ -105,7 +105,13 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 specs
                     .into_iter()
                     .filter(|spec| {
-                        !location.is_installed(&spec.name, &spec.version.clone().unwrap())
+                        let version = match &spec.version {
+                            None => {
+                                panic!("lockfile specs must have a version")
+                            }
+                            Some(version) => version,
+                        };
+                        !location.is_installed(&spec.name, version)
                     })
                     .collect()
             } else {

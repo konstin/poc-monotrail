@@ -1,29 +1,28 @@
+use crate::cli::download_distribution_cached;
 use crate::install_location::InstallLocation;
 use crate::install_wheel;
-use crate::package_index::search_package;
-use crate::spec::{DistributionType, Spec};
+use crate::source_distribution::build_source_distribution_to_wheel_cached;
+use crate::spec::{DistributionType, FileOrUrl, RequestedSpec};
 use anyhow::{bail, Context};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
-use crate::cli::download_distribution_cached;
-use crate::source_distribution::build_source_distribution_to_wheel_cached;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 /// Naively returns name and version which is sufficient for the current system
 pub fn install_specs(
-    specs: &[Spec],
+    specs: &[RequestedSpec],
     location: &InstallLocation,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
     background: bool,
 ) -> anyhow::Result<Vec<(String, String)>> {
     match specs {
-        [] if background => return Ok(vec![]),
+        // silent with we do python preload and have nothing to do
+        [] if background => Ok(vec![]),
         [spec] => {
             info!("Installing {}", spec.requested);
-            let version = download_and_install(location, &compatible_tags, no_compile, spec)?;
+            let version = download_and_install(spec, location, compatible_tags, no_compile)?;
             debug!("Installed {} {}", spec.name, version);
             Ok(vec![(spec.name.clone(), version)])
         }
@@ -42,7 +41,7 @@ pub fn install_specs(
                     }
 
                     let version =
-                        download_and_install(location, &compatible_tags, no_compile, spec)?;
+                        download_and_install(spec, location, compatible_tags, no_compile)?;
                     debug!("Installed {} {}", spec.name, version);
                     {
                         let mut current = current.lock().unwrap();
@@ -66,25 +65,23 @@ pub fn install_specs(
 }
 
 fn download_and_install(
+    requested_spec: &RequestedSpec,
     location: &InstallLocation,
-    compatible_tags: &&[(String, String, String)],
+    compatible_tags: &[(String, String, String)],
     no_compile: bool,
-    spec: &Spec,
 ) -> anyhow::Result<String> {
-    let (wheel_path, distribution_type, version) = match &spec.file_path {
-        // case 1: we already got a file (wheel or sdist)
-        Some((file_path, metadata)) => {
+    let spec = requested_spec.resolve(compatible_tags)?;
+    trace!("requested: {:?}, resolved: {:?}", requested_spec, spec);
+
+    let (wheel_path, distribution_type, version) = match spec.location {
+        FileOrUrl::File(file_path) => {
             if file_path.as_os_str().to_string_lossy().ends_with(".whl") {
-                (
-                    file_path.to_owned(),
-                    DistributionType::Wheel,
-                    metadata.version.clone(),
-                )
+                (file_path, DistributionType::Wheel, spec.version.clone())
             } else if file_path.as_os_str().to_string_lossy().ends_with(".tar.gz") {
                 (
-                    file_path.to_owned(),
+                    file_path,
                     DistributionType::SourceDistribution,
-                    metadata.version.clone(),
+                    spec.version.clone(),
                 )
             } else {
                 bail!(
@@ -93,28 +90,20 @@ fn download_and_install(
                 )
             }
         }
-        None => {
-            let (url, filename, distribution_type, version) = match spec.clone() {
-                // case 2: we have version and url
-                Spec {
-                    version: Some(version),
-                    url: Some((url, filename, distribution_type)),
-                    ..
-                } => (url, filename, distribution_type, version),
-                // case 3: we have a name and maybe a version -> search fitting version and url
-                _ => search_package(&spec.name, spec.version.as_deref(), compatible_tags)?,
-            };
+        FileOrUrl::Url { url, filename } => {
             // TODO: Lookup size
             debug!(
                 "Downloading (or getting from cache) {} {}",
-                spec.name, version
+                spec.name, spec.version
             );
-            let wheel_path = download_distribution_cached(&spec.name, &version, &filename, &url)
-                .with_context(|| format!("Failed to download {} from pypi", spec.requested))?;
+            let wheel_path =
+                download_distribution_cached(&spec.name, &spec.version, &filename, &url)
+                    .with_context(|| format!("Failed to download {} from pypi", spec.requested))?;
 
-            (wheel_path, distribution_type, version)
+            (wheel_path, spec.distribution_type, spec.version)
         }
     };
+
     let wheel_path = if distribution_type == DistributionType::Wheel {
         wheel_path
     } else {

@@ -3,7 +3,7 @@
 use crate::markers::Pep508Environment;
 use crate::poetry::poetry_lock::{Package, PoetryLock};
 use crate::poetry::poetry_toml::Dependency;
-use crate::spec::{DistributionType, Spec};
+use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use crate::wheel_tags::WheelFilename;
 use crate::WheelInstallerError;
 use anyhow::{bail, Context};
@@ -40,6 +40,7 @@ mod poetry_lock {
         #[serde(default)]
         pub extras: HashMap<String, Vec<String>>,
         pub dependencies: Option<HashMap<String, Dependency>>,
+        pub source: Option<Source>,
     }
 
     /// e.g. `{version = ">=1.21.0", markers = "python_version >= \"3.10\""}`
@@ -143,6 +144,17 @@ mod poetry_lock {
         }
     }
 
+    /// `[[package]] [package.source]`
+    #[derive(Deserialize, Debug, Clone)]
+    #[allow(dead_code)]
+    pub struct Source {
+        #[serde(rename = "type")]
+        pub source_type: String,
+        pub url: String,
+        pub reference: String,
+        pub resolved_reference: String,
+    }
+
     /// `[metadata]`
     #[derive(Deserialize, Debug, Clone)]
     #[serde(rename_all = "kebab-case")]
@@ -198,9 +210,11 @@ mod poetry_toml {
     pub enum Dependency {
         Compact(String),
         Expanded {
-            version: String,
+            version: Option<String>,
             optional: Option<bool>,
             extras: Option<Vec<String>>,
+            git: Option<String>,
+            branch: Option<String>,
         },
     }
 
@@ -342,7 +356,7 @@ fn parse_dep_extra(
 fn resolution_to_specs(
     packages: HashMap<String, Package>,
     deps_with_extras: HashMap<String, HashSet<String>>,
-) -> anyhow::Result<Vec<Spec>> {
+) -> anyhow::Result<Vec<RequestedSpec>> {
     let mut specs = Vec::new();
     for (dep_name, dep_extras) in deps_with_extras {
         // search by normalized name
@@ -354,10 +368,16 @@ fn resolution_to_specs(
                     dep_name
                 )
             })?;
-        let spec = Spec {
+        let spec = RequestedSpec {
             requested: format!("{} {}", package.name, package.version),
             name: package.name.clone(),
             version: Some(package.version.clone()),
+            source: package.source.clone().map(|source| SpecSource {
+                source_type: source.source_type,
+                url: source.url,
+                reference: source.reference,
+                resolved_reference: source.resolved_reference,
+            }),
             extras: dep_extras.into_iter().collect(),
             file_path: None,
             url: None,
@@ -445,7 +465,7 @@ pub fn poetry_lockfile_to_specs(
     no_dev: bool,
     extras: &[String],
     pep508_env: Option<Pep508Environment>,
-) -> anyhow::Result<Vec<Spec>> {
+) -> anyhow::Result<Vec<RequestedSpec>> {
     // TODO: don't parse this from subprocess but do it like maturin
     let environment = pep508_env.unwrap_or_else(Pep508Environment::from_python);
 
@@ -460,7 +480,7 @@ pub fn poetry_lockfile_to_specs(
     let mut queue: VecDeque<(String, HashSet<String>)> = VecDeque::new();
     // Since we have no explicit root package, prime manually
     for (dep_name, dep_spec) in root_deps {
-        let dep_name_norm = dep_name.to_lowercase().replace("-", "_");
+        let dep_name_norm = dep_name.to_lowercase().replace('-', "_");
 
         queue.push_back((
             dep_name_norm.clone(),
@@ -485,7 +505,7 @@ pub fn poetry_lockfile_to_specs(
             })?;
         // descend one level into the dep tree
         for (new_dep_name, new_dep) in package.dependencies.clone().unwrap_or_default() {
-            let new_dep_name_norm = new_dep_name.to_lowercase().replace("-", "_");
+            let new_dep_name_norm = new_dep_name.to_lowercase().replace('-', "_");
             // Check the extras selected on the current dep activate the transitive dependency
             let (_new_dep_version, new_dep_extras) = match new_dep
                 .get_version_and_extras(&environment, &self_extras)
