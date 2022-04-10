@@ -1,9 +1,11 @@
 use crate::markers::Pep508Environment;
 use crate::requirements_txt::requirements_txt_to_specs;
+use crate::spec::RequestedSpec;
 use crate::{compatible_tags, install_specs, poetry_lockfile_to_specs, Arch, InstallLocation, Os};
 use anyhow::Context;
 use fs_err as fs;
 use std::env::current_dir;
+use std::io;
 use std::path::{Path, PathBuf};
 
 enum LockfileType {
@@ -37,6 +39,61 @@ fn find_lockfile(file_running: &Path) -> Option<(PathBuf, LockfileType)> {
     None
 }
 
+#[allow(clippy::type_complexity)]
+pub fn filter_installed(
+    specs: &[RequestedSpec],
+    virtual_sprawl_root: &Path,
+) -> anyhow::Result<(Vec<RequestedSpec>, Vec<(String, String)>)> {
+    let read_dir = match fs::read_dir(Path::new(&virtual_sprawl_root)) {
+        Ok(read_dir) => read_dir,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            return Ok((specs.to_vec(), Vec::new()))
+        }
+        Err(err) => return Err(err).context("Failed to access virtual sprawl directory"),
+    };
+    let installed_packages: Vec<_> = read_dir
+        .filter_map(|dir| dir.ok())
+        .filter_map(|dir| {
+            let filename = dir.file_name();
+            let (name, version) = filename.to_str()?.split_once('-')?;
+            Some((name.to_string(), version.to_string(), dir.path()))
+        })
+        .collect();
+
+    let mut installed = Vec::new();
+    let mut not_installed = Vec::new();
+    for spec in specs {
+        let unique_version = if let Some(source) = &spec.source {
+            Some(source.resolved_reference.clone())
+        } else {
+            spec.version.as_ref().cloned()
+        };
+
+        if let Some(unique_version) = unique_version {
+            if installed_packages.iter().any(|(name, version, _path)| {
+                name == &spec.normalized_name() && version == &unique_version
+            }) {
+                installed.push((spec.normalized_name(), unique_version));
+            } else {
+                not_installed.push(spec.clone());
+            }
+        } else {
+            // For now we just take any version there is
+            // This would take proper version resolution to make sense
+            if let Some((name, version, _path)) = installed_packages
+                .iter()
+                .find(|(name, _version, _path)| name == &spec.normalized_name())
+            {
+                installed.push((name.to_string(), version.to_string()));
+            } else {
+                not_installed.push(spec.clone());
+            }
+        }
+    }
+
+    Ok((not_installed, installed))
+}
+
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn setup_virtual_sprawl(
     file_running: &Path,
@@ -65,21 +122,8 @@ pub fn setup_virtual_sprawl(
         }
     };
 
-    // ugly way to remove already installed
-    let mut to_install_specs = Vec::new();
-    let mut installed_done = Vec::new();
-    for spec in specs {
-        let version = spec
-            .version
-            .clone()
-            .context("Missing version field in locked specs")?;
-        let location = format!("{}-{}", spec.name.to_lowercase().replace('-', "_"), version);
-        if Path::new(&virtual_sprawl_root).join(location).is_dir() {
-            installed_done.push((spec.name, version));
-        } else {
-            to_install_specs.push(spec)
-        }
-    }
+    let (to_install_specs, installed_done) =
+        filter_installed(&specs, Path::new(&virtual_sprawl_root))?;
 
     let mut installed = install_specs(
         &to_install_specs,

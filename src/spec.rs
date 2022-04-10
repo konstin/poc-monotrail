@@ -42,6 +42,10 @@ pub struct RequestedSpec {
 }
 
 impl RequestedSpec {
+    pub fn normalized_name(&self) -> String {
+        self.name.to_lowercase().replace('-', "_")
+    }
+
     pub fn resolve(
         &self,
         compatible_tags: &[(String, String, String)],
@@ -66,7 +70,7 @@ impl RequestedSpec {
                     unique_version: if let Some(source) = &self.source {
                         source.resolved_reference.clone()
                     } else {
-                        version.clone()
+                        version
                     },
                     extras: self.extras.clone(),
                     location: FileOrUrl::Url { url, filename },
