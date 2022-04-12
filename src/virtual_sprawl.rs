@@ -8,6 +8,10 @@ use std::env::current_dir;
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub fn virtual_sprawl_root() -> anyhow::Result<PathBuf> {
+    Ok(PathBuf::from("/home/konsti/virtual_sprawl/virtual_sprawl"))
+}
+
 enum LockfileType {
     PyprojectToml,
     RequirementsTxt,
@@ -66,7 +70,7 @@ pub fn filter_installed(
         let unique_version = if let Some(source) = &spec.source {
             Some(source.resolved_reference.clone())
         } else {
-            spec.version.as_ref().cloned()
+            spec.python_version.as_ref().cloned()
         };
 
         if let Some(unique_version) = unique_version {
@@ -101,7 +105,7 @@ pub fn setup_virtual_sprawl(
     python_version: (u8, u8),
     pep508_env: Option<Pep508Environment>,
 ) -> anyhow::Result<(String, Vec<(String, String)>)> {
-    let virtual_sprawl_root = "/home/konsti/virtual_sprawl/virtual_sprawl".to_string();
+    let virtual_sprawl_root = virtual_sprawl_root()?;
     let (lockfile, lockfile_type) = find_lockfile(file_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
@@ -141,8 +145,12 @@ pub fn setup_virtual_sprawl(
 
     let packages = installed
         .into_iter()
-        .map(|(name, version)| (name.to_lowercase().replace('-', "_"), version))
+        .map(|(name, unique_version)| (name.to_lowercase().replace('-', "_"), unique_version))
         .collect();
 
-    Ok((virtual_sprawl_root, packages))
+    let virtual_sprawl_location_string = virtual_sprawl_root
+        .to_str()
+        .context("virtual sprawl path is cursed")?
+        .to_string();
+    Ok((virtual_sprawl_location_string, packages))
 }

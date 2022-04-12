@@ -24,7 +24,8 @@ if os.environ.get("VIRTUAL_SPRAWL"):
             ):
                 self.sprawl_root = Path(sprawl_root)
                 self.sprawl_packages = {
-                    name: (name, version) for name, version in sprawl_packages
+                    name: (name, unique_version)
+                    for name, unique_version in sprawl_packages
                 }
 
             def find_spec(self, fullname, path=None, target=None):
@@ -33,14 +34,14 @@ if os.environ.get("VIRTUAL_SPRAWL"):
                 # e.g. "python-dateutil" actually ships a module "dateutil" but there's no indication about that
                 site_packages = [
                     str(
-                        self.sprawl_root.joinpath(name + "-" + version)
+                        self.sprawl_root.joinpath(name + "-" + unique_version)
                         .joinpath("lib")
                         .joinpath(
                             f"python{sys.version_info.major}.{sys.version_info.minor}"
                         )
                         .joinpath("site-packages")
                     )
-                    for name, version in self.sprawl_packages.values()
+                    for name, unique_version in self.sprawl_packages.values()
                 ]
                 return super().find_spec(fullname, site_packages, target)
 

@@ -371,7 +371,7 @@ fn resolution_to_specs(
         let spec = RequestedSpec {
             requested: format!("{} {}", package.name, package.version),
             name: package.name.clone(),
-            version: Some(package.version.clone()),
+            python_version: Some(package.version.clone()),
             source: package.source.clone().map(|source| SpecSource {
                 source_type: source.source_type,
                 url: source.url,

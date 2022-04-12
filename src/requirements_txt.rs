@@ -23,7 +23,9 @@ pub fn requirements_txt_to_specs(requirements_txt: &str) -> anyhow::Result<Vec<R
             Some(captures) => Ok(RequestedSpec {
                 requested: line.to_string(),
                 name: captures.name("name").unwrap().as_str().to_string(),
-                version: captures.name("version").map(|version| version.as_str().to_string()),
+                python_version: captures
+                    .name("version")
+                    .map(|version| version.as_str().to_string()),
                 source: None,
                 extras: vec![],
                 file_path: None,
@@ -53,7 +55,7 @@ mod test {
             RequestedSpec {
                 requested: "inflection==0.5.1".to_string(),
                 name: "inflection".to_string(),
-                version: Some("0.5.1".to_string()),
+                python_version: Some("0.5.1".to_string()),
                 source: None,
                 extras: vec![],
                 file_path: None,
@@ -62,7 +64,7 @@ mod test {
             RequestedSpec {
                 requested: "upsidedown==0.4".to_string(),
                 name: "upsidedown".to_string(),
-                version: Some("0.4".to_string()),
+                python_version: Some("0.4".to_string()),
                 source: None,
                 extras: vec![],
                 file_path: None,
@@ -71,7 +73,7 @@ mod test {
             RequestedSpec {
                 requested: "numpy".to_string(),
                 name: "numpy".to_string(),
-                version: None,
+                python_version: None,
                 source: None,
                 extras: vec![],
                 file_path: None,

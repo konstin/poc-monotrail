@@ -738,6 +738,8 @@ pub fn install_wheel(
     wheel_path: &Path,
     compile: bool,
     extras: &[String],
+    // {name}-{unique_version}
+    unique_id: &str,
 ) -> Result<(String, String), WheelInstallerError> {
     let filename = wheel_path
         .file_name()
@@ -762,11 +764,7 @@ pub fn install_wheel(
         } => {
             // TODO: The version needs to be passed otherwise so we can also handle git hashes
             // and such
-            let final_location = virtual_sprawl_root.join(format!(
-                "{}-{}",
-                filename.distribution.to_lowercase(),
-                filename.version
-            ));
+            let final_location = virtual_sprawl_root.join(unique_id);
             fs::create_dir_all(&virtual_sprawl_root)?;
             // temp dir and rename for atomicity
             let temp_dir = TempDir::new_in(&virtual_sprawl_root)?;

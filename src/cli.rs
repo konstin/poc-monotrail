@@ -3,6 +3,7 @@ use crate::package_index::download_distribution;
 use crate::poetry::poetry_lockfile_to_specs;
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
+use crate::virtual_sprawl::{filter_installed, virtual_sprawl_root};
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install, install_specs, package_index, WheelInstallerError};
 use clap::Parser;
@@ -91,34 +92,48 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let compatible_tags = current_compatible_tags(venv)?;
             let specs = poetry_lockfile_to_specs(&pyproject_toml, no_dev, &extras, None)?;
 
-            let location = if virtual_sprawl {
-                InstallLocation::VirtualSprawl {
-                    virtual_sprawl_root: PathBuf::from("virtual_sprawl"),
+            if virtual_sprawl {
+                let virtual_sprawl_root = virtual_sprawl_root()?;
+                let location = InstallLocation::VirtualSprawl {
+                    virtual_sprawl_root: virtual_sprawl_root.clone(),
                     python: installation_location.get_python()?,
                     python_version,
-                }
-            } else {
-                installation_location
-            };
+                };
 
-            let specs = if skip_existing {
-                specs
-                    .into_iter()
-                    .filter(|spec| {
-                        let version = match &spec.version {
-                            None => {
-                                panic!("lockfile specs must have a version")
-                            }
-                            Some(version) => version,
-                        };
-                        !location.is_installed(&spec.name, version)
-                    })
-                    .collect()
+                let (to_install_specs, _installed_done) =
+                    filter_installed(&specs, Path::new(&virtual_sprawl_root))?;
+                install_specs(
+                    &to_install_specs,
+                    &location,
+                    &compatible_tags,
+                    no_compile,
+                    false,
+                )?;
             } else {
-                specs
-            };
-
-            install_specs(&specs, &location, &compatible_tags, no_compile, false)?;
+                let specs = if skip_existing {
+                    specs
+                        .into_iter()
+                        .filter(|spec| {
+                            let version = match spec.get_unique_version() {
+                                None => {
+                                    panic!("lockfile specs must have a version")
+                                }
+                                Some(version) => version,
+                            };
+                            !installation_location.is_installed(&spec.name, &version)
+                        })
+                        .collect()
+                } else {
+                    specs
+                };
+                install_specs(
+                    &specs,
+                    &installation_location,
+                    &compatible_tags,
+                    no_compile,
+                    false,
+                )?;
+            }
         }
     };
     Ok(())
