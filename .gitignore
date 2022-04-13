@@ -1,6 +1,7 @@
 *.so
 .cargo
 .venv*
+/virtual_sprawl
 __pycache__
 _pip
 data_science_project/iris.png
@@ -10,4 +11,3 @@ popular-wheels
 target
 test-venvs
 venv
-virtual_sprawl

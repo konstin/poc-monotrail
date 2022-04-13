@@ -1,6 +1,6 @@
 use crate::install::install_specs;
 use crate::install_location::InstallLocation;
-use crate::poetry::poetry_lockfile_to_specs;
+use crate::poetry::read_poetry_specs;
 pub use crate::wheel::install_wheel;
 use crate::wheel_tags::{compatible_tags, Arch, Os};
 pub use cli::{run, Cli};

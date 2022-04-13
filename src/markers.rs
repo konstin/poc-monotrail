@@ -19,17 +19,17 @@ static PEP508_QUERY_SCRIPT: &str = include_str!("get_pep508_env.py");
 /// The version and platform information required to evaluate marker expressions according to PEP 508
 #[derive(Debug, Eq, PartialEq, Deserialize)]
 pub struct Pep508Environment {
-    implementation_name: String,
-    implementation_version: String,
-    os_name: String,
-    platform_machine: String,
-    platform_python_implementation: String,
-    platform_release: String,
-    platform_system: String,
-    platform_version: String,
-    python_full_version: String,
-    python_version: String,
-    sys_platform: String,
+    pub(crate) implementation_name: String,
+    pub(crate) implementation_version: String,
+    pub(crate) os_name: String,
+    pub(crate) platform_machine: String,
+    pub(crate) platform_python_implementation: String,
+    pub(crate) platform_release: String,
+    pub(crate) platform_system: String,
+    pub(crate) platform_version: String,
+    pub(crate) python_full_version: String,
+    pub(crate) python_version: String,
+    pub(crate) sys_platform: String,
 }
 
 impl Pep508Environment {

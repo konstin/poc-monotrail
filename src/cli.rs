@@ -1,6 +1,7 @@
 use crate::install_location::InstallLocation;
+use crate::markers::Pep508Environment;
 use crate::package_index::download_distribution;
-use crate::poetry::poetry_lockfile_to_specs;
+use crate::poetry::read_poetry_specs;
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
 use crate::virtual_sprawl::{filter_installed, virtual_sprawl_root};
@@ -90,7 +91,9 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             skip_existing,
         } => {
             let compatible_tags = current_compatible_tags(venv)?;
-            let specs = poetry_lockfile_to_specs(&pyproject_toml, no_dev, &extras, None)?;
+            // TODO: don't parse this from subprocess but do it like maturin
+            let pep508_env = Pep508Environment::from_python();
+            let specs = read_poetry_specs(&pyproject_toml, no_dev, &extras, &pep508_env)?;
 
             if virtual_sprawl {
                 let virtual_sprawl_root = virtual_sprawl_root()?;

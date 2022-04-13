@@ -17,7 +17,7 @@ def format_full_version(info):
     return version
 
 
-def get_bindings() -> str:
+def get_pep508_env() -> str:
     if hasattr(sys, "implementation"):
         implementation_version = format_full_version(sys.implementation.version)
         implementation_name = sys.implementation.name

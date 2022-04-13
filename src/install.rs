@@ -12,13 +12,14 @@ use tempfile::TempDir;
 use tracing::{debug, info, trace};
 
 /// Naively returns name and version which is sufficient for the current system
+/// Returns name, python version, unique version
 pub fn install_specs(
     specs: &[RequestedSpec],
     location: &InstallLocation,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
     background: bool,
-) -> anyhow::Result<Vec<(String, String)>> {
+) -> anyhow::Result<Vec<(String, String, String)>> {
     match specs {
         // silent with we do python preload and have nothing to do
         [] if background => Ok(vec![]),
@@ -31,9 +32,10 @@ pub fn install_specs(
             } else {
                 info!("Installing {}", spec.requested);
             }
-            let unique_version = download_and_install(spec, location, compatible_tags, no_compile)?;
+            let (python_version, unique_version) =
+                download_and_install(spec, location, compatible_tags, no_compile)?;
             debug!("Installed {} {}", spec.name, unique_version);
-            Ok(vec![(spec.name.clone(), unique_version)])
+            Ok(vec![(spec.name.clone(), python_version, unique_version)])
         }
         _ => {
             let pb = ProgressBar::new(specs.len() as u64).with_style(
@@ -56,7 +58,7 @@ pub fn install_specs(
                         }
                     }
 
-                    let unique_version =
+                    let (python_version, unique_version) =
                         download_and_install(spec, location, compatible_tags, no_compile)?;
                     debug!("Installed {} {}", spec.name, unique_version);
                     {
@@ -66,7 +68,7 @@ pub fn install_specs(
                         pb.inc(1);
                     }
 
-                    Ok((spec.name.clone(), unique_version))
+                    Ok((spec.name.clone(), python_version, unique_version))
                 })
                 .collect::<Result<Vec<_>, anyhow::Error>>()?;
             pb.finish_and_clear();
@@ -80,13 +82,13 @@ pub fn install_specs(
     }
 }
 
-/// Returns the version
+/// Returns the python version, unique version
 fn download_and_install(
     requested_spec: &RequestedSpec,
     location: &InstallLocation,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<(String, String)> {
     let spec = requested_spec.resolve(compatible_tags)?;
     trace!("requested: {:?}, resolved: {:?}", requested_spec, spec);
 
@@ -172,7 +174,7 @@ fn download_and_install(
     let unique_id = format!("{}-{}", spec.normalized_name(), spec.unique_version);
     install_wheel(location, &wheel_path, !no_compile, &spec.extras, &unique_id)
         .with_context(|| format!("Failed to install {}", spec.requested))?;
-    Ok(spec.unique_version)
+    Ok((spec.python_version, spec.unique_version))
 }
 
 /// https://stackoverflow.com/a/67240436/3549270

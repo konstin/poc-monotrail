@@ -1,7 +1,7 @@
 use crate::markers::Pep508Environment;
 use crate::requirements_txt::requirements_txt_to_specs;
 use crate::spec::RequestedSpec;
-use crate::{compatible_tags, install_specs, poetry_lockfile_to_specs, Arch, InstallLocation, Os};
+use crate::{compatible_tags, install_specs, read_poetry_specs, Arch, InstallLocation, Os};
 use anyhow::Context;
 use fs_err as fs;
 use std::env::current_dir;
@@ -47,7 +47,7 @@ fn find_lockfile(file_running: &Path) -> Option<(PathBuf, LockfileType)> {
 pub fn filter_installed(
     specs: &[RequestedSpec],
     virtual_sprawl_root: &Path,
-) -> anyhow::Result<(Vec<RequestedSpec>, Vec<(String, String)>)> {
+) -> anyhow::Result<(Vec<RequestedSpec>, Vec<(String, String, String)>)> {
     let read_dir = match fs::read_dir(Path::new(&virtual_sprawl_root)) {
         Ok(read_dir) => read_dir,
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -77,18 +77,30 @@ pub fn filter_installed(
             if installed_packages.iter().any(|(name, version, _path)| {
                 name == &spec.normalized_name() && version == &unique_version
             }) {
-                installed.push((spec.normalized_name(), unique_version));
+                installed.push((
+                    spec.normalized_name(),
+                    spec.python_version
+                        .clone()
+                        .context("TODO: needs python version")?,
+                    unique_version,
+                ));
             } else {
                 not_installed.push(spec.clone());
             }
         } else {
             // For now we just take any version there is
             // This would take proper version resolution to make sense
-            if let Some((name, version, _path)) = installed_packages
+            if let Some((name, unique_version, _path)) = installed_packages
                 .iter()
                 .find(|(name, _version, _path)| name == &spec.normalized_name())
             {
-                installed.push((name.to_string(), version.to_string()));
+                installed.push((
+                    name.to_string(),
+                    spec.python_version
+                        .clone()
+                        .context("TODO: needs python version")?,
+                    unique_version.to_string(),
+                ));
             } else {
                 not_installed.push(spec.clone());
             }
@@ -98,13 +110,14 @@ pub fn filter_installed(
     Ok((not_installed, installed))
 }
 
+/// Returns a list name, python version, unique version
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn setup_virtual_sprawl(
     file_running: &Path,
     python: &Path,
     python_version: (u8, u8),
-    pep508_env: Option<Pep508Environment>,
-) -> anyhow::Result<(String, Vec<(String, String)>)> {
+    pep508_env: &Pep508Environment,
+) -> anyhow::Result<(String, Vec<(String, String, String)>)> {
     let virtual_sprawl_root = virtual_sprawl_root()?;
     let (lockfile, lockfile_type) = find_lockfile(file_running).with_context(|| {
         format!(
@@ -114,7 +127,7 @@ pub fn setup_virtual_sprawl(
     })?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
     let specs = match lockfile_type {
-        LockfileType::PyprojectToml => poetry_lockfile_to_specs(&lockfile, false, &[], pep508_env)?,
+        LockfileType::PyprojectToml => read_poetry_specs(&lockfile, false, &[], &pep508_env)?,
         LockfileType::RequirementsTxt => {
             let requirements_txt = fs::read_to_string(&lockfile)?;
             requirements_txt_to_specs(&requirements_txt).with_context(|| {
@@ -145,7 +158,13 @@ pub fn setup_virtual_sprawl(
 
     let packages = installed
         .into_iter()
-        .map(|(name, unique_version)| (name.to_lowercase().replace('-', "_"), unique_version))
+        .map(|(name, python_version, unique_version)| {
+            (
+                name.to_lowercase().replace('-', "_"),
+                python_version,
+                unique_version,
+            )
+        })
         .collect();
 
     let virtual_sprawl_location_string = virtual_sprawl_root

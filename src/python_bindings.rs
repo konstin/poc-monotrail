@@ -7,13 +7,15 @@ use std::env;
 use std::path::Path;
 use tracing::debug;
 
-/// Gets the script to be run, returns the virtual_sprawl root and a list of virtual_sprawl modules
+/// Installs all required packages and returns package information to python
+/// Takes the python script that is run and returns the virtual_sprawl root and a list of
+/// virtual_sprawl modules (name, python_version, unique_version)
 #[pyfunction]
-fn get_virtual_sprawl_info(
+fn prepare_virtual_sprawl(
     py: Python,
     file_running: &str,
     pep508_env: &str,
-) -> PyResult<(String, Vec<(String, String)>)> {
+) -> PyResult<(String, Vec<(String, String, String)>)> {
     debug!("file for virtual sprawl: {}", file_running);
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
 
@@ -21,7 +23,7 @@ fn get_virtual_sprawl_info(
         Path::new(file_running),
         Path::new(&sys_executable),
         (py.version_info().major, py.version_info().minor),
-        Some(Pep508Environment::from_json_str(pep508_env)),
+        &Pep508Environment::from_json_str(pep508_env),
     );
     virtual_sprawl.map_err(|err| {
         let mut accumulator = "virtual sprawl failed to load.".to_string();
@@ -45,6 +47,6 @@ fn virtual_sprawl(_py: Python, m: &PyModule) -> PyResult<()> {
             .compact();
         tracing_subscriber::fmt().event_format(format).init();
     }
-    m.add_function(wrap_pyfunction!(get_virtual_sprawl_info, m)?)?;
+    m.add_function(wrap_pyfunction!(prepare_virtual_sprawl, m)?)?;
     Ok(())
 }

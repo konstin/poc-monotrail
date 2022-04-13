@@ -94,23 +94,19 @@ mod poetry_lock {
                 }) => {
                     if let Some(markers) = markers {
                         if let Some(captures) = extra_re.captures(markers) {
-                            return if self_extras.contains(&captures[1].to_string()) {
-                                Ok(Some((
-                                    version.to_string(),
-                                    extras.clone().unwrap_or_default(),
-                                )))
+                            if self_extras.contains(&captures[1].to_string()) {
+                                Some((version.to_string(), extras.clone().unwrap_or_default()))
                             } else {
-                                Ok(None)
-                            };
+                                None
+                            }
+                        } else if parse_markers(markers).unwrap().evaluate(environment)? {
+                            Some((version.to_string(), extras.clone().unwrap_or_default()))
+                        } else {
+                            None
                         }
-                        if parse_markers(markers).unwrap().evaluate(environment)? {
-                            return Ok(Some((
-                                version.to_string(),
-                                extras.clone().unwrap_or_default(),
-                            )));
-                        }
+                    } else {
+                        Some((version.to_string(), extras.clone().unwrap_or_default()))
                     }
-                    None
                 }
                 Dependency::List(options) => {
                     for option in options {
@@ -460,17 +456,16 @@ fn get_packages_from_lockfile(pyproject_toml: &Path) -> anyhow::Result<HashMap<S
 }
 
 /// Parses pyproject.toml and poetry.lock and returns a list of packages to install
-pub fn poetry_lockfile_to_specs(
+pub fn read_poetry_specs(
     pyproject_toml: &Path,
     no_dev: bool,
     extras: &[String],
-    pep508_env: Option<Pep508Environment>,
+    pep508_env: &Pep508Environment,
 ) -> anyhow::Result<Vec<RequestedSpec>> {
-    // TODO: don't parse this from subprocess but do it like maturin
-    let environment = pep508_env.unwrap_or_else(Pep508Environment::from_python);
-
+    // The deps in pyproject.toml which we need to read explicitly since they aren't marked
+    // poetry.lock (raw names)
     let root_deps = get_root_info(&pyproject_toml, no_dev, extras)?;
-
+    // All the details info from poetry.lock, indexed by normalized name
     let packages = get_packages_from_lockfile(pyproject_toml)?;
 
     // This is the thing we want to build: a list with all transitive dependencies and
@@ -508,7 +503,7 @@ pub fn poetry_lockfile_to_specs(
             let new_dep_name_norm = new_dep_name.to_lowercase().replace('-', "_");
             // Check the extras selected on the current dep activate the transitive dependency
             let (_new_dep_version, new_dep_extras) = match new_dep
-                .get_version_and_extras(&environment, &self_extras)
+                .get_version_and_extras(&pep508_env, &self_extras)
                 .map_err(WheelInstallerError::InvalidPoetry)?
             {
                 None => continue,
@@ -542,8 +537,11 @@ pub fn poetry_lockfile_to_specs(
 
 #[cfg(test)]
 mod test {
+    use crate::markers::Pep508Environment;
     use crate::poetry::parse_dep_extra;
+    use crate::read_poetry_specs;
     use std::collections::HashSet;
+    use std::path::Path;
 
     #[test]
     fn test_parse_extra_deps() {
@@ -569,6 +567,41 @@ mod test {
 
         for (input, expected) in examples {
             assert_eq!(parse_dep_extra(input).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn test_read_poetry_specs() {
+        let pep508_env = Pep508Environment {
+            implementation_name: "cpython".to_string(),
+            implementation_version: "3.8.10".to_string(),
+            os_name: "posix".to_string(),
+            platform_machine: "x86_64".to_string(),
+            platform_python_implementation: "CPython".to_string(),
+            platform_release: "5.13.0-39-generic".to_string(),
+            platform_system: "Linux".to_string(),
+            platform_version: "#44~20.04.1-Ubuntu SMP Thu Mar 24 16:43:35 UTC 2022".to_string(),
+            python_full_version: "3.8.10".to_string(),
+            python_version: "3.8".to_string(),
+            sys_platform: "linux".to_string(),
+        };
+        let mst = Path::new("test-data/poetry/mst/pyproject.toml");
+        let data_science = Path::new("test-data/poetry/data-science/pyproject.toml");
+
+        let expected = [
+            (mst, true, vec![], 95),
+            (mst, false, vec![], 130),
+            (mst, true, vec!["import-json".to_string()], 97),
+            (mst, false, vec!["import-json".to_string()], 131),
+            (data_science, true, vec![], 14),
+            (data_science, false, vec![], 20),
+            (data_science, true, vec!["tqdm_feature".to_string()], 15),
+            (data_science, false, vec!["tqdm_feature".to_string()], 21),
+        ];
+
+        for (pyproject_toml, no_dev, extras, specs_count) in expected {
+            let specs = read_poetry_specs(pyproject_toml, no_dev, &extras, &pep508_env).unwrap();
+            assert_eq!(specs.len(), specs_count);
         }
     }
 }
