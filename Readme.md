@@ -27,6 +27,8 @@ virtualenv .venv
 
 _wait, you said venv-less!_ We need to install a `.pth` hook and I don't want to pollute your user-global environment, so we isolate it in a venv you can just `rm -rf`. (it would of course be a lot cooler to have `virtual_sprawl +3.8 run path/to/your/script.py` but I don't know how to dynamically load, import-hook and launch a user-specified python version. If you do, please tell me!)
 
+To install extras, use `VIRTUAL_SPRAWL_EXTRAS="extra1,extra2"`.
+
 ## Debugging
 
 Setting `RUST_LOG=debug` will give you many more details.

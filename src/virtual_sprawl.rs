@@ -116,6 +116,7 @@ pub fn setup_virtual_sprawl(
     file_running: &Path,
     python: &Path,
     python_version: (u8, u8),
+    extras: &[String],
     pep508_env: &Pep508Environment,
 ) -> anyhow::Result<(String, Vec<(String, String, String)>)> {
     let virtual_sprawl_root = virtual_sprawl_root()?;
@@ -127,7 +128,7 @@ pub fn setup_virtual_sprawl(
     })?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
     let specs = match lockfile_type {
-        LockfileType::PyprojectToml => read_poetry_specs(&lockfile, false, &[], &pep508_env)?,
+        LockfileType::PyprojectToml => read_poetry_specs(&lockfile, false, extras, &pep508_env)?,
         LockfileType::RequirementsTxt => {
             let requirements_txt = fs::read_to_string(&lockfile)?;
             requirements_txt_to_specs(&requirements_txt).with_context(|| {

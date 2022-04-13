@@ -15,9 +15,13 @@ if os.environ.get("VIRTUAL_SPRAWL"):
             filename = sys.argv[sys.argv.index("--file") + 1]
         else:
             filename = sys.argv[0]
+        if extras := os.environ.get("VIRTUAL_SPRAWL_EXTRAS"):
+            extras = extras.split(",")
+        else:
+            extras = []
         # Install all required packages and get their location (in rust)
         sprawl_root, sprawl_packages = prepare_virtual_sprawl(
-            filename, get_pep508_env()
+            filename, extras, get_pep508_env()
         )
 
         # activate the virtual sprawl

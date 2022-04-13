@@ -14,6 +14,7 @@ use tracing::debug;
 fn prepare_virtual_sprawl(
     py: Python,
     file_running: &str,
+    extras: Vec<String>,
     pep508_env: &str,
 ) -> PyResult<(String, Vec<(String, String, String)>)> {
     debug!("file for virtual sprawl: {}", file_running);
@@ -23,6 +24,7 @@ fn prepare_virtual_sprawl(
         Path::new(file_running),
         Path::new(&sys_executable),
         (py.version_info().major, py.version_info().minor),
+        &extras,
         &Pep508Environment::from_json_str(pep508_env),
     );
     virtual_sprawl.map_err(|err| {

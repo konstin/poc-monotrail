@@ -11,7 +11,7 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let temp_dir = TempDir::new()?;
     let venv = temp_dir.path().join(".venv");
     Command::new("virtualenv").arg(&venv).output()?;
-    let wheel = Path::new("_pip/tests/data/packages").join(name);
+    let wheel = Path::new("test-data/pip-test-packages").join(name);
     let cli: Cli =
         Cli::try_parse_from(&["virtual-sprawl", "install", &wheel.display().to_string()])?;
     if let Err(err) = run(cli, &venv) {
@@ -29,7 +29,7 @@ fn test_brokenwheel() -> Result<()> {
     check_error(
         "brokenwheel-1.0-py2.py3-none-any.whl",
         &[
-            "Failed to install _pip/tests/data/packages/brokenwheel-1.0-py2.py3-none-any.whl",
+            "Failed to install test-data/pip-test-packages/brokenwheel-1.0-py2.py3-none-any.whl",
             "The wheel is invalid: Inconsistent package name: simple.dist (wheel metadata) vs brokenwheel (filename)",
         ],
     )
@@ -40,7 +40,7 @@ fn test_corruptwheel() -> Result<()> {
     check_error(
         "corruptwheel-1.0-py2.py3-none-any.whl",
         &[
-            "Failed to install _pip/tests/data/packages/corruptwheel-1.0-py2.py3-none-any.whl",
+            "Failed to install test-data/pip-test-packages/corruptwheel-1.0-py2.py3-none-any.whl",
             "The wheel is broken",
             "invalid Zip archive: Could not find central directory end",
         ],
@@ -60,7 +60,7 @@ fn test_priority() -> Result<()> {
     check_error(
         "priority-1.0-py2.py3-none-any.whl",
         &[
-            "Failed to install _pip/tests/data/packages/priority-1.0-py2.py3-none-any.whl",
+            "Failed to install test-data/pip-test-packages/priority-1.0-py2.py3-none-any.whl",
             "The wheel is broken",
             "invalid Zip archive: Invalid zip header",
         ],
