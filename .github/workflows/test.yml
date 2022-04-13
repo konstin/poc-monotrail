@@ -106,7 +106,7 @@ jobs:
 
       - name: Test purelib/pathlib
         if: matrix.os == 'ubuntu-latest'
-        run: python -m test.compare wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl
+        run: python -m test.compare test-data/wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl
 
       - name: Compare pip test wheels
         run: python -m test.test_piptests
