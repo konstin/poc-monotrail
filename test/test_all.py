@@ -9,7 +9,7 @@ from test.test_tqdm import test_tqdm
 def main():
     check_call(["cargo", "build", "--release"])
     purelib_platlib_wheel = get_root().joinpath(
-        "wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl"
+        "test-data/wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl"
     )
     compare_with_pip("purelib_platlib", [purelib_platlib_wheel], get_bin())
     test_piptests()
