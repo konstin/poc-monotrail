@@ -4,9 +4,11 @@ use crate::install_wheel;
 use crate::source_distribution::build_source_distribution_to_wheel_cached;
 use crate::spec::{DistributionType, FileOrUrl, RequestedSpec};
 use anyhow::{bail, Context};
+use git2::Repository;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::sync::{Arc, Mutex};
+use tempfile::TempDir;
 use tracing::{debug, info, trace};
 
 /// Naively returns name and version which is sufficient for the current system
@@ -21,7 +23,14 @@ pub fn install_specs(
         // silent with we do python preload and have nothing to do
         [] if background => Ok(vec![]),
         [spec] => {
-            info!("Installing {}", spec.requested);
+            if let Some(source) = &spec.source {
+                info!(
+                    "Installing {} ({})",
+                    spec.requested, source.resolved_reference
+                );
+            } else {
+                info!("Installing {}", spec.requested);
+            }
             let unique_version = download_and_install(spec, location, compatible_tags, no_compile)?;
             debug!("Installed {} {}", spec.name, unique_version);
             Ok(vec![(spec.name.clone(), unique_version)])
@@ -37,7 +46,14 @@ pub fn install_specs(
                     current.lock().unwrap().push(spec.name.clone());
                     pb.set_message(current.lock().unwrap().join(","));
                     if pb.is_hidden() {
-                        info!("Installing {}", spec.requested);
+                        if let Some(source) = &spec.source {
+                            info!(
+                                "Installing {} ({})",
+                                spec.requested, source.resolved_reference
+                            );
+                        } else {
+                            info!("Installing {}", spec.requested);
+                        }
                     }
 
                     let unique_version =
@@ -74,7 +90,7 @@ fn download_and_install(
     let spec = requested_spec.resolve(compatible_tags)?;
     trace!("requested: {:?}, resolved: {:?}", requested_spec, spec);
 
-    let (wheel_path, distribution_type) = match spec.location {
+    let (wheel_path, distribution_type) = match spec.location.clone() {
         FileOrUrl::File(file_path) => {
             if file_path.as_os_str().to_string_lossy().ends_with(".whl") {
                 (file_path, DistributionType::Wheel)
@@ -97,7 +113,37 @@ fn download_and_install(
                 download_distribution_cached(&spec.name, &spec.unique_version, &filename, &url)
                     .with_context(|| format!("Failed to download {} from pypi", spec.requested))?;
 
-            (wheel_path, spec.distribution_type)
+            (wheel_path, spec.distribution_type.clone())
+        }
+        FileOrUrl::Git { url, revision } => {
+            let temp_dir = TempDir::new()?;
+            let repo_dir = temp_dir.path().join(&spec.name);
+            // We need to first clone the entire thing and then checkout the revision we want
+            // https://stackoverflow.com/q/3489173/3549270
+            let repo = Repository::clone(&url, &repo_dir)
+                .with_context(|| format!("Failed to clone {}", url))?;
+            checkout_revision(&revision, repo)
+                .with_context(|| format!("failed to checkout revision {} for {}", revision, url))?;
+
+            // If we got an sdist until now, build it into a wheel
+            debug!(
+                "Building {} {} from source distribution to wheel",
+                spec.name, spec.unique_version
+            );
+            let wheel_path = build_source_distribution_to_wheel_cached(
+                &spec.name,
+                &spec.unique_version,
+                &repo_dir,
+                compatible_tags,
+            )
+            .with_context(|| {
+                format!(
+                    "Failed to build wheel from source for {} (repository: {} revision: {})",
+                    spec.name, url, revision
+                )
+            })?;
+
+            (wheel_path, DistributionType::Wheel)
         }
     };
 
@@ -106,7 +152,7 @@ fn download_and_install(
     } else {
         // If we got an sdist until now, build it into a wheel
         debug!(
-            "Build {} {} from source distribution to wheel",
+            "Building {} {} from source distribution to wheel",
             spec.name, spec.unique_version
         );
         build_source_distribution_to_wheel_cached(
@@ -123,8 +169,23 @@ fn download_and_install(
         })?
     };
     debug!("Installing {} {}", spec.name, spec.unique_version);
-    let unique_id = format!("{}-{}", spec.name, spec.unique_version);
+    let unique_id = format!("{}-{}", spec.normalized_name(), spec.unique_version);
     install_wheel(location, &wheel_path, !no_compile, &spec.extras, &unique_id)
         .with_context(|| format!("Failed to install {}", spec.requested))?;
     Ok(spec.unique_version)
+}
+
+/// https://stackoverflow.com/a/67240436/3549270
+fn checkout_revision(revision: &String, repo: Repository) -> Result<(), git2::Error> {
+    let (object, reference) = repo.revparse_ext(&revision)?;
+
+    repo.checkout_tree(&object, None)?;
+
+    match reference {
+        // gref is an actual reference like branches or tags
+        Some(gref) => repo.set_head(gref.name().unwrap()),
+        // this is a commit, not a reference
+        None => repo.set_head_detached(object.id()),
+    }?;
+    Ok(())
 }

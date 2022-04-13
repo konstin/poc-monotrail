@@ -132,6 +132,19 @@ impl RequestedSpec {
                     location: FileOrUrl::Url { url, filename },
                     distribution_type,
                 });
+            } else if let Some(source) = self.source.clone() {
+                return Ok(ResolvedSpec {
+                    requested: self.requested.clone(),
+                    name: self.name.clone(),
+                    python_version: python_version.clone(),
+                    unique_version: source.resolved_reference.clone(),
+                    extras: self.extras.clone(),
+                    location: FileOrUrl::Git {
+                        url: source.url,
+                        revision: source.resolved_reference,
+                    },
+                    distribution_type: DistributionType::SourceDistribution,
+                });
             }
         }
 
@@ -156,6 +169,7 @@ impl RequestedSpec {
 pub enum FileOrUrl {
     File(PathBuf),
     Url { url: String, filename: String },
+    Git { url: String, revision: String },
 }
 
 /// An installation request for a specific source, that unlike [RequestedSpec] definitely
@@ -171,4 +185,10 @@ pub struct ResolvedSpec {
     pub extras: Vec<String>,
     pub location: FileOrUrl,
     pub distribution_type: DistributionType,
+}
+
+impl ResolvedSpec {
+    pub fn normalized_name(&self) -> String {
+        self.name.to_lowercase().replace('-', "_")
+    }
 }

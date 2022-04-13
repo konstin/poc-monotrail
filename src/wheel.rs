@@ -738,7 +738,7 @@ pub fn install_wheel(
     wheel_path: &Path,
     compile: bool,
     extras: &[String],
-    // {name}-{unique_version}
+    // {normalize(name)}-{unique_version}
     unique_id: &str,
 ) -> Result<(String, String), WheelInstallerError> {
     let filename = wheel_path

@@ -39,7 +39,7 @@ pub fn build_source_distribution_to_wheel_cached(
     } else {
         let build_dir = TempDir::new()?;
 
-        let wheel = build_source_distribution_to_wheel(sdist, build_dir.path(), compatible_tags)?;
+        let wheel = build_to_wheel(sdist, build_dir.path(), compatible_tags)?;
         fs::create_dir_all(&target_dir)?;
         let wheel_in_cache = target_dir.join(wheel.file_name().unwrap_or(&OsString::new()));
         // rename only work on the same device :/
@@ -48,9 +48,9 @@ pub fn build_source_distribution_to_wheel_cached(
     }
 }
 
-/// Builds a wheel using pip
-pub fn build_source_distribution_to_wheel(
-    sdist: &Path,
+/// Builds a wheel from an source distribution or a repo checkout using pip
+pub fn build_to_wheel(
+    sdist_or_dir: &Path,
     // needs to be passed in or the tempdir will be deleted to early
     build_dir: &Path,
     compatible_tags: &[(String, String, String)],
@@ -58,7 +58,7 @@ pub fn build_source_distribution_to_wheel(
     let output = Command::new("pip")
         .current_dir(build_dir)
         .args(&["wheel", "--no-deps"])
-        .arg(sdist)
+        .arg(sdist_or_dir)
         .output()
         .context("Failed to invoke pip")?;
 
@@ -67,7 +67,7 @@ pub fn build_source_distribution_to_wheel(
             io::ErrorKind::Other,
             format!(
                 "Failed to run `pip wheel --no-deps {}`: {}\n---stdout:\n{}---stderr:\n{}",
-                sdist.display(),
+                sdist_or_dir.display(),
                 output.status,
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
