@@ -77,7 +77,7 @@ impl RequestedSpec {
             })
         } else {
             // TODO: check actual naming rules
-            let valid_name = Regex::new(r"[-_a-zA-Z0-9.]+").unwrap();
+            let valid_name = Regex::new(r"[-_a-zA-Z\d.]+").unwrap();
             if let Some((name, version)) = requested.as_ref().split_once("==") {
                 Ok(Self {
                     requested: requested.as_ref().to_string(),
@@ -136,7 +136,7 @@ impl RequestedSpec {
                 return Ok(ResolvedSpec {
                     requested: self.requested.clone(),
                     name: self.name.clone(),
-                    python_version: python_version.clone(),
+                    python_version,
                     unique_version: source.resolved_reference.clone(),
                     extras: self.extras.clone(),
                     location: FileOrUrl::Git {
@@ -178,7 +178,11 @@ pub enum FileOrUrl {
 pub struct ResolvedSpec {
     pub requested: String,
     pub name: String,
+    /// The pep440 version as importlib.metadata sees it
     pub python_version: String,
+    /// A (hopefully) unique identifier for that package. This is the same as python_version
+    /// for pypi downloaded wheel, or a git hash for git installs
+    ///
     /// We serialize the version to a (hopefully) unique string
     /// TODO: Make sure it's actually unique and document how we do that  
     pub unique_version: String,

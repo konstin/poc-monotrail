@@ -11,6 +11,31 @@ use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use tracing::{debug, info, trace};
 
+/// what we communicate back to python
+#[cfg(not(feature = "python_bindings"))]
+pub struct InstalledPackage {
+    pub name: String,
+    pub python_version: String,
+    pub unique_version: String,
+    /// The compatibility tag like "py3-none-any" or
+    /// "cp38-cp38-manylinux_2_12_x86_64.manylinux2010_x86_64"
+    pub tag: String,
+}
+
+/// TODO: write a pyo3 bug report to parse through cfg attr
+#[cfg(feature = "python_bindings")]
+#[pyo3::pyclass]
+pub struct InstalledPackage {
+    #[pyo3(get)]
+    pub name: String,
+    #[pyo3(get)]
+    pub python_version: String,
+    #[pyo3(get)]
+    pub unique_version: String,
+    #[pyo3(get)]
+    pub tag: String,
+}
+
 /// Naively returns name and version which is sufficient for the current system
 /// Returns name, python version, unique version
 pub fn install_specs(
@@ -19,7 +44,7 @@ pub fn install_specs(
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
     background: bool,
-) -> anyhow::Result<Vec<(String, String, String)>> {
+) -> anyhow::Result<Vec<InstalledPackage>> {
     match specs {
         // silent with we do python preload and have nothing to do
         [] if background => Ok(vec![]),
@@ -35,7 +60,13 @@ pub fn install_specs(
             let (python_version, unique_version) =
                 download_and_install(spec, location, compatible_tags, no_compile)?;
             debug!("Installed {} {}", spec.name, unique_version);
-            Ok(vec![(spec.name.clone(), python_version, unique_version)])
+            let installed_package = InstalledPackage {
+                name: spec.normalized_name(),
+                python_version,
+                unique_version,
+                tag: "".to_string(),
+            };
+            Ok(vec![installed_package])
         }
         _ => {
             let pb = ProgressBar::new(specs.len() as u64).with_style(
@@ -68,9 +99,15 @@ pub fn install_specs(
                         pb.inc(1);
                     }
 
-                    Ok((spec.name.clone(), python_version, unique_version))
+                    let installed_package = InstalledPackage {
+                        name: spec.normalized_name(),
+                        python_version,
+                        unique_version,
+                        tag: "".to_string(),
+                    };
+                    Ok(installed_package)
                 })
-                .collect::<Result<Vec<_>, anyhow::Error>>()?;
+                .collect::<Result<Vec<InstalledPackage>, anyhow::Error>>()?;
             pb.finish_and_clear();
             info!(
                 "Installed {} packages in {:.1}s",
@@ -178,8 +215,8 @@ fn download_and_install(
 }
 
 /// https://stackoverflow.com/a/67240436/3549270
-fn checkout_revision(revision: &String, repo: Repository) -> Result<(), git2::Error> {
-    let (object, reference) = repo.revparse_ext(&revision)?;
+fn checkout_revision(revision: &str, repo: Repository) -> Result<(), git2::Error> {
+    let (object, reference) = repo.revparse_ext(revision)?;
 
     repo.checkout_tree(&object, None)?;
 

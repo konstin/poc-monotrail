@@ -503,7 +503,7 @@ pub fn read_poetry_specs(
             let new_dep_name_norm = new_dep_name.to_lowercase().replace('-', "_");
             // Check the extras selected on the current dep activate the transitive dependency
             let (_new_dep_version, new_dep_extras) = match new_dep
-                .get_version_and_extras(&pep508_env, &self_extras)
+                .get_version_and_extras(pep508_env, &self_extras)
                 .map_err(WheelInstallerError::InvalidPoetry)?
             {
                 None => continue,

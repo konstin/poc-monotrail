@@ -1,3 +1,4 @@
+use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::requirements_txt::requirements_txt_to_specs;
 use crate::spec::RequestedSpec;
@@ -47,11 +48,10 @@ fn find_lockfile(file_running: &Path) -> Option<(PathBuf, LockfileType)> {
     None
 }
 
-#[allow(clippy::type_complexity)]
 pub fn filter_installed(
     specs: &[RequestedSpec],
     virtual_sprawl_root: &Path,
-) -> anyhow::Result<(Vec<RequestedSpec>, Vec<(String, String, String)>)> {
+) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     let read_dir = match fs::read_dir(Path::new(&virtual_sprawl_root)) {
         Ok(read_dir) => read_dir,
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
@@ -81,13 +81,15 @@ pub fn filter_installed(
             if installed_packages.iter().any(|(name, version, _path)| {
                 name == &spec.normalized_name() && version == &unique_version
             }) {
-                installed.push((
-                    spec.normalized_name(),
-                    spec.python_version
+                installed.push(InstalledPackage {
+                    name: spec.normalized_name(),
+                    python_version: spec
+                        .python_version
                         .clone()
                         .context("TODO: needs python version")?,
                     unique_version,
-                ));
+                    tag: "".to_string(),
+                });
             } else {
                 not_installed.push(spec.clone());
             }
@@ -98,13 +100,16 @@ pub fn filter_installed(
                 .iter()
                 .find(|(name, _version, _path)| name == &spec.normalized_name())
             {
-                installed.push((
-                    name.to_string(),
-                    spec.python_version
+                installed.push(InstalledPackage {
+                    // already normalized
+                    name: name.clone(),
+                    python_version: spec
+                        .python_version
                         .clone()
                         .context("TODO: needs python version")?,
-                    unique_version.to_string(),
-                ));
+                    unique_version: unique_version.to_string(),
+                    tag: "".to_string(),
+                });
             } else {
                 not_installed.push(spec.clone());
             }
@@ -122,7 +127,7 @@ pub fn setup_virtual_sprawl(
     python_version: (u8, u8),
     extras: &[String],
     pep508_env: &Pep508Environment,
-) -> anyhow::Result<(String, Vec<(String, String, String)>)> {
+) -> anyhow::Result<(String, Vec<InstalledPackage>)> {
     let virtual_sprawl_root = virtual_sprawl_root()?;
     let (lockfile, lockfile_type) = find_lockfile(file_running).with_context(|| {
         format!(
@@ -132,7 +137,7 @@ pub fn setup_virtual_sprawl(
     })?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
     let specs = match lockfile_type {
-        LockfileType::PyprojectToml => read_poetry_specs(&lockfile, false, extras, &pep508_env)?,
+        LockfileType::PyprojectToml => read_poetry_specs(&lockfile, false, extras, pep508_env)?,
         LockfileType::RequirementsTxt => {
             let requirements_txt = fs::read_to_string(&lockfile)?;
             requirements_txt_to_specs(&requirements_txt).with_context(|| {
@@ -161,20 +166,9 @@ pub fn setup_virtual_sprawl(
 
     installed.extend(installed_done);
 
-    let packages = installed
-        .into_iter()
-        .map(|(name, python_version, unique_version)| {
-            (
-                name.to_lowercase().replace('-', "_"),
-                python_version,
-                unique_version,
-            )
-        })
-        .collect();
-
     let virtual_sprawl_location_string = virtual_sprawl_root
         .to_str()
         .context("virtual sprawl path is cursed")?
         .to_string();
-    Ok((virtual_sprawl_location_string, packages))
+    Ok((virtual_sprawl_location_string, installed))
 }

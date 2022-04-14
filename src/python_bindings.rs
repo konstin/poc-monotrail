@@ -1,3 +1,4 @@
+use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::virtual_sprawl::setup_virtual_sprawl;
 use pyo3::exceptions::PyRuntimeError;
@@ -16,7 +17,7 @@ fn prepare_virtual_sprawl(
     file_running: &str,
     extras: Vec<String>,
     pep508_env: &str,
-) -> PyResult<(String, Vec<(String, String, String)>)> {
+) -> PyResult<(String, Vec<InstalledPackage>)> {
     debug!("file for virtual sprawl: {}", file_running);
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
 
@@ -50,5 +51,6 @@ fn virtual_sprawl(_py: Python, m: &PyModule) -> PyResult<()> {
         tracing_subscriber::fmt().event_format(format).init();
     }
     m.add_function(wrap_pyfunction!(prepare_virtual_sprawl, m)?)?;
+    m.add_class::<InstalledPackage>()?;
     Ok(())
 }
