@@ -1,0 +1,20 @@
+pip 22.0.4 from /home/konsti/virtual_sprawl/.venv-b/lib/python3.8/site-packages/pip (python 3.8)
+Poetry version 1.1.13
+warning: dropping unsupported crate type `cdylib` for target `x86_64-unknown-linux-musl`
+
+Benchmark 1: .venv/bin/pip install -q -r requirements-benchmark.txt
+  Time (mean ± σ):     11.216 s ±  0.305 s    [User: 9.048 s, System: 1.287 s]
+  Range (min … max):   10.879 s … 11.474 s    3 runs
+
+Benchmark 2: poetry install -q --no-root $BENCHMARK_OPTIONS
+  Time (mean ± σ):     13.317 s ±  1.371 s    [User: 30.791 s, System: 4.553 s]
+  Range (min … max):   12.056 s … 14.775 s    3 runs
+
+Benchmark 3: ../../../target/x86_64-unknown-linux-musl/release/virtual-sprawl poetry-install $BENCHMARK_OPTIONS
+  Time (mean ± σ):      5.756 s ±  0.108 s    [User: 14.584 s, System: 2.542 s]
+  Range (min … max):    5.659 s …  5.872 s    3 runs
+
+Summary
+  '../../../target/x86_64-unknown-linux-musl/release/virtual-sprawl poetry-install $BENCHMARK_OPTIONS' ran
+    1.95 ± 0.06 times faster than '.venv/bin/pip install -q -r requirements-benchmark.txt'
+    2.31 ± 0.24 times faster than 'poetry install -q --no-root $BENCHMARK_OPTIONS'

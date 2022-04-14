@@ -1,13 +1,16 @@
 *.so
 .cargo
+.pytest-cache
 .venv*
 /virtual_sprawl
 __pycache__
 _pip
 data_science_project/iris.png
 flamegraph*.svg
+hyperfine.json
 perf.data*
 popular-wheels
+requirements-benchmark.txt
 target
 test-venvs
 venv

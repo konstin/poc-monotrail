@@ -5,11 +5,15 @@ use crate::{compatible_tags, install_specs, read_poetry_specs, Arch, InstallLoca
 use anyhow::Context;
 use fs_err as fs;
 use std::env::current_dir;
-use std::io;
 use std::path::{Path, PathBuf};
+use std::{env, io};
 
 pub fn virtual_sprawl_root() -> anyhow::Result<PathBuf> {
-    Ok(PathBuf::from("/home/konsti/virtual_sprawl/virtual_sprawl"))
+    if let Some(env_root) = env::var_os("VIRTUAL_SPRAWL_ROOT") {
+        Ok(PathBuf::from(env_root))
+    } else {
+        Ok(PathBuf::from("/home/konsti/virtual_sprawl/virtual_sprawl"))
+    }
 }
 
 enum LockfileType {

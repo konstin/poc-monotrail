@@ -19,7 +19,7 @@ pub enum Cli {
         no_compile: bool,
     },
     PoetryInstall {
-        pyproject_toml: PathBuf,
+        pyproject_toml: Option<PathBuf>,
         #[clap(long)]
         no_compile: bool,
         #[clap(long)]
@@ -93,7 +93,12 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let compatible_tags = current_compatible_tags(venv)?;
             // TODO: don't parse this from subprocess but do it like maturin
             let pep508_env = Pep508Environment::from_python();
-            let specs = read_poetry_specs(&pyproject_toml, no_dev, &extras, &pep508_env)?;
+            let specs = read_poetry_specs(
+                &pyproject_toml.unwrap_or_else(|| PathBuf::from("pyproject.toml")),
+                no_dev,
+                &extras,
+                &pep508_env,
+            )?;
 
             if virtual_sprawl {
                 let virtual_sprawl_root = virtual_sprawl_root()?;

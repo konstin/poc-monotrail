@@ -16,6 +16,7 @@ configparser = "3.0.0"
 csv = "1.1.6"
 dirs = "4.0.0"
 fs-err = "2.6.0"
+git2 = "0.14.2"
 goblin = "0.4.3"
 indicatif = "0.16.2"
 indoc = "1.0.3"
@@ -38,11 +39,15 @@ tracing-subscriber = "0.3.3"
 ureq = { version = "2.3.1", features = ["json"] }
 walkdir = "2.3.2"
 zip = "0.5.13"
-git2 = "0.13.25"
 
 [features]
 #default = ["python_bindings"]
 python_bindings = ["pyo3"]
+
+# Otherwise we get pkg-config complaints
+[target.'cfg(target_env = "musl")'.dependencies.git2]
+version = "0.14.2"
+features = ["vendored-openssl"]
 
 [package.metadata.maturin]
 python-source = "python"

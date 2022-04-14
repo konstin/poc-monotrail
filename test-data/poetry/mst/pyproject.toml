@@ -1,18 +1,10 @@
 [tool.poetry]
-name = "meine-stadt-transparent"
+name = "mst"
 version = "0.2.13"
-description = "A website to bring municipal politics to citizens"
-authors = ["Tobias Hößl <tobias@hoessl.eu>", "Konstantin Schütze <konstin@mailbox.org>"]
+description = "A django project"
+authors = ["konstin <konstin@mailbox.org>"]
 license = "MIT"
 readme = "Readme.md"
-include = ["mainapp/assets/bundles/**/*", "mainapp/migrations/*", "manage.py", "node_modules/pdfjs-dist/viewer/**/*"]
-exclude = ["mainapp/assets/*"]
-packages = [
-    { include = "cms" },
-    { include = "importer" },
-    { include = "mainapp" },
-    { include = "meine_stadt_transparent" },
-]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -43,7 +35,6 @@ jsonfield = "^3.1"
 minio = ">=5,<8"
 mysqlclient = ">=1.3,<3.0"
 osm2geojson = "^0.1.28"
-pgpy = { version = "^0.5.2", optional = true }
 python-dateutil = "^2.7"
 python-slugify = ">=5,<7"
 requests = "^2.22"
@@ -64,20 +55,7 @@ tox = "^3.20"
 flake8 = "^4.0.1"
 
 [tool.poetry.extras]
-pgp = ["pgpy"]
 import-json = ["cattrs"]
-
-[tool.poetry.scripts]
-mst-manage = 'manage:main'
-
-[tool.black]
-extend-exclude = '''
-/(
-  | mainapp/migrations
-  | cms/migrations
-  | importer/migrations
-)/
-'''
 
 [build-system]
 requires = ["poetry~=1.1.0"]
