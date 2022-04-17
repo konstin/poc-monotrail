@@ -1,5 +1,5 @@
 use crate::cli::download_distribution_cached;
-use crate::install_location::InstallLocation;
+use crate::install_location::{InstallLocation, LockedDir};
 use crate::install_wheel;
 use crate::source_distribution::build_source_distribution_to_wheel_cached;
 use crate::spec::{DistributionType, FileOrUrl, RequestedSpec};
@@ -7,6 +7,7 @@ use anyhow::{bail, Context};
 use git2::Repository;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use tracing::{debug, info, trace};
@@ -40,11 +41,16 @@ pub struct InstalledPackage {
 /// Returns name, python version, unique version
 pub fn install_specs(
     specs: &[RequestedSpec],
-    location: &InstallLocation,
+    location: &InstallLocation<PathBuf>,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
     background: bool,
 ) -> anyhow::Result<Vec<InstalledPackage>> {
+    // Lock install directory to prevent races between multiple virtual sprawl porcesses
+    // Lock it here instead of install_wheel to allow multithreading, since we'll only install
+    // disjoint packages
+    let location = location.acquire_lock()?;
+
     match specs {
         // silent with we do python preload and have nothing to do
         [] if background => Ok(vec![]),
@@ -57,14 +63,14 @@ pub fn install_specs(
             } else {
                 info!("Installing {}", spec.requested);
             }
-            let (python_version, unique_version) =
-                download_and_install(spec, location, compatible_tags, no_compile)?;
+            let (python_version, unique_version, tag) =
+                download_and_install(spec, &location, compatible_tags, no_compile)?;
             debug!("Installed {} {}", spec.name, unique_version);
             let installed_package = InstalledPackage {
                 name: spec.normalized_name(),
                 python_version,
                 unique_version,
-                tag: "".to_string(),
+                tag,
             };
             Ok(vec![installed_package])
         }
@@ -89,8 +95,8 @@ pub fn install_specs(
                         }
                     }
 
-                    let (python_version, unique_version) =
-                        download_and_install(spec, location, compatible_tags, no_compile)?;
+                    let (python_version, unique_version, tag) =
+                        download_and_install(spec, &location, compatible_tags, no_compile)?;
                     debug!("Installed {} {}", spec.name, unique_version);
                     {
                         let mut current = current.lock().unwrap();
@@ -103,7 +109,7 @@ pub fn install_specs(
                         name: spec.normalized_name(),
                         python_version,
                         unique_version,
-                        tag: "".to_string(),
+                        tag,
                     };
                     Ok(installed_package)
                 })
@@ -122,10 +128,10 @@ pub fn install_specs(
 /// Returns the python version, unique version
 fn download_and_install(
     requested_spec: &RequestedSpec,
-    location: &InstallLocation,
+    location: &InstallLocation<LockedDir>,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
-) -> anyhow::Result<(String, String)> {
+) -> anyhow::Result<(String, String, String)> {
     let spec = requested_spec.resolve(compatible_tags)?;
     trace!("requested: {:?}, resolved: {:?}", requested_spec, spec);
 
@@ -208,10 +214,15 @@ fn download_and_install(
         })?
     };
     debug!("Installing {} {}", spec.name, spec.unique_version);
-    let unique_id = format!("{}-{}", spec.normalized_name(), spec.unique_version);
-    install_wheel(location, &wheel_path, !no_compile, &spec.extras, &unique_id)
-        .with_context(|| format!("Failed to install {}", spec.requested))?;
-    Ok((spec.python_version, spec.unique_version))
+    let tag = install_wheel(
+        location,
+        &wheel_path,
+        !no_compile,
+        &spec.extras,
+        &spec.unique_version,
+    )
+    .with_context(|| format!("Failed to install {}", spec.requested))?;
+    Ok((spec.python_version, spec.unique_version, tag))
 }
 
 /// https://stackoverflow.com/a/67240436/3549270

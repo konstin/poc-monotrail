@@ -1,7 +1,8 @@
-use crate::install_location::InstallLocation;
+use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
 use crate::WheelInstallerError;
 use configparser::ini::Ini;
+
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use regex::Regex;
@@ -278,7 +279,7 @@ fn unpack_wheel_files(
 /// We also pass venv_base so we can write the same path as pip does
 fn write_script_entrypoints(
     site_packages: &Path,
-    location: &InstallLocation,
+    python: &Path,
     entrypoints: &[Script],
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
@@ -286,11 +287,8 @@ fn write_script_entrypoints(
     fs::create_dir_all(site_packages.join("../../../bin"))?;
     for entrypoint in entrypoints {
         let entrypoint_relative = Path::new("../../../bin").join(&entrypoint.script_name);
-        let launcher_python_script = get_script_launcher(
-            &entrypoint.module,
-            &entrypoint.function,
-            &location.get_python()?,
-        );
+        let launcher_python_script =
+            get_script_launcher(&entrypoint.module, &entrypoint.function, python);
         write_file_recorded(
             site_packages,
             &entrypoint_relative,
@@ -734,13 +732,14 @@ fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelIns
 ///
 /// Wheel 1.0: https://www.python.org/dev/peps/pep-0427/
 pub fn install_wheel(
-    location: &InstallLocation,
+    location: &InstallLocation<LockedDir>,
     wheel_path: &Path,
     compile: bool,
     extras: &[String],
-    // {normalize(name)}-{unique_version}
-    unique_id: &str,
-) -> Result<(String, String), WheelInstallerError> {
+    unique_version: &str,
+) -> Result<String, WheelInstallerError> {
+    // TODO: A valid metadata parse should be given to this function, at least in two cases
+    // we have already done it anyway earlier. Neither should we have to return the tag
     let filename = wheel_path
         .file_name()
         .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
@@ -762,12 +761,13 @@ pub fn install_wheel(
             virtual_sprawl_root,
             ..
         } => {
-            // TODO: The version needs to be passed otherwise so we can also handle git hashes
-            // and such
-            let final_location = virtual_sprawl_root.join(unique_id);
-            fs::create_dir_all(&virtual_sprawl_root)?;
+            let name_version_dir = virtual_sprawl_root
+                .join(name.to_lowercase().replace('-', "_"))
+                .join(unique_version);
+            fs::create_dir_all(&name_version_dir)?;
+            let final_location = name_version_dir.join(filename.get_tag());
             // temp dir and rename for atomicity
-            let temp_dir = TempDir::new_in(&virtual_sprawl_root)?;
+            let temp_dir = TempDir::new_in(&name_version_dir)?;
             let base_location = temp_dir.path().to_path_buf();
             (Some((temp_dir, final_location)), base_location)
         }
@@ -827,8 +827,9 @@ pub fn install_wheel(
 
     debug!(name = name.as_str(), "Writing entrypoints");
     let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir, extras)?;
-    write_script_entrypoints(&site_packages, location, &console_scripts, &mut record)?;
-    write_script_entrypoints(&site_packages, location, &gui_scripts, &mut record)?;
+    let python = location.get_python();
+    write_script_entrypoints(&site_packages, &python, &console_scripts, &mut record)?;
+    write_script_entrypoints(&site_packages, &python, &gui_scripts, &mut record)?;
 
     let data_dir = site_packages.join(format!("{}-{}.data", escaped_name, version));
     // 2.a Unpacked archive includes distribution-1.0.dist-info/ and (if there is data) distribution-1.0.data/.
@@ -889,7 +890,7 @@ pub fn install_wheel(
         fs::rename(base_location, final_location)?;
     }
 
-    Ok((name.to_string(), version.to_string()))
+    Ok(filename.get_tag())
 }
 
 #[cfg(test)]

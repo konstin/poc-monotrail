@@ -20,9 +20,11 @@ class VirtualSprawlPathFinder(PathFinder, MetaPathFinder):
         self.sprawl_root = Path(sprawl_root)
         self.sprawl_packages = {package.name: package for package in sprawl_packages}
 
-    def _site_package_dir(self, name: str, unique_version: str) -> Path:
+    def _site_package_dir(self, package: InstalledPackage) -> Path:
         return (
-            self.sprawl_root.joinpath(name + "-" + unique_version)
+            self.sprawl_root.joinpath(package.name)
+            .joinpath(package.unique_version)
+            .joinpath(package.tag)
             .joinpath("lib")
             .joinpath(f"python{sys.version_info.major}.{sys.version_info.minor}")
             .joinpath("site-packages")
@@ -34,9 +36,7 @@ class VirtualSprawlPathFinder(PathFinder, MetaPathFinder):
         # e.g. "python-dateutil" actually ships a module "dateutil" but there's no indication about that
         site_packages = []
         for package in self.sprawl_packages.values():
-            site_packages_dir = self._site_package_dir(
-                package.name, package.unique_version
-            )
+            site_packages_dir = self._site_package_dir(package)
             assert (
                 site_packages_dir.is_dir()
             ), f"missing expected directory: {site_packages_dir}"
@@ -52,9 +52,9 @@ class VirtualSprawlPathFinder(PathFinder, MetaPathFinder):
         our Distribution object"""
         if context.name in self.sprawl_packages:
             package = self.sprawl_packages[context.name]
-            dist_info_dir = self._site_package_dir(
-                package.name, package.unique_version
-            ).joinpath(f"{package.name}-{package.python_version}.dist-info")
+            dist_info_dir = self._site_package_dir(package).joinpath(
+                f"{package.name}-{package.python_version}.dist-info"
+            )
             return iter([PathDistribution(dist_info_dir)])
         else:
             return iter([])

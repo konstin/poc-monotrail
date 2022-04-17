@@ -57,7 +57,7 @@ impl RequestedSpec {
     /// Parses "package_name", "package_name==version" and "some/path/tqdm-4.62.3-py2.py3-none-any.whl"
     pub fn from_requested(
         requested: impl AsRef<str>,
-        extras: Vec<String>,
+        extras: &[String],
     ) -> Result<Self, WheelInstallerError> {
         if requested.as_ref().ends_with(".whl") {
             let file_path = PathBuf::from(requested.as_ref());
@@ -71,7 +71,7 @@ impl RequestedSpec {
                 name: metadata.distribution.clone(),
                 python_version: Some(metadata.version.clone()),
                 source: None,
-                extras,
+                extras: extras.to_vec(),
                 file_path: Some((file_path, metadata)),
                 url: None,
             })
@@ -84,7 +84,7 @@ impl RequestedSpec {
                     name: name.to_string(),
                     python_version: Some(version.to_string()),
                     source: None,
-                    extras,
+                    extras: extras.to_vec(),
                     file_path: None,
                     url: None,
                 })
@@ -94,7 +94,7 @@ impl RequestedSpec {
                     name: requested.as_ref().to_string(),
                     python_version: None,
                     source: None,
-                    extras,
+                    extras: extras.to_vec(),
                     file_path: None,
                     url: None,
                 })
@@ -189,10 +189,4 @@ pub struct ResolvedSpec {
     pub extras: Vec<String>,
     pub location: FileOrUrl,
     pub distribution_type: DistributionType,
-}
-
-impl ResolvedSpec {
-    pub fn normalized_name(&self) -> String {
-        self.name.to_lowercase().replace('-', "_")
-    }
 }

@@ -5,9 +5,10 @@ use crate::spec::RequestedSpec;
 use crate::{compatible_tags, install_specs, read_poetry_specs, Arch, InstallLocation, Os};
 use anyhow::Context;
 use fs_err as fs;
+use fs_err::DirEntry;
+use std::env;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
-use std::{env, io};
 
 pub fn virtual_sprawl_root() -> anyhow::Result<PathBuf> {
     if let Some(env_root) = env::var_os("VIRTUAL_SPRAWL_ROOT") {
@@ -48,25 +49,49 @@ fn find_lockfile(file_running: &Path) -> Option<(PathBuf, LockfileType)> {
     None
 }
 
+fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
+    let read_dir =
+        fs::read_dir(Path::new(&dir)).context("Failed to load virtual sprawl directory")?;
+    Ok(read_dir
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().is_dir())
+        .collect())
+}
+
 pub fn filter_installed(
     specs: &[RequestedSpec],
     virtual_sprawl_root: &Path,
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
-    let read_dir = match fs::read_dir(Path::new(&virtual_sprawl_root)) {
-        Ok(read_dir) => read_dir,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
-            return Ok((specs.to_vec(), Vec::new()))
-        }
-        Err(err) => return Err(err).context("Failed to access virtual sprawl directory"),
-    };
-    let installed_packages: Vec<_> = read_dir
-        .filter_map(|dir| dir.ok())
-        .filter_map(|dir| {
-            let filename = dir.file_name();
-            let (name, version) = filename.to_str()?.split_once('-')?;
-            Some((name.to_string(), version.to_string(), dir.path()))
+    // Behold my monstrous iterator
+    // name -> version -> compatible tag
+    let installed_packages: Vec<(String, String, String)> = get_dir_content(virtual_sprawl_root)
+        // No virtual sprawl dir, no packages
+        .unwrap_or_default()
+        .iter()
+        .map(|name_dir| {
+            Ok(get_dir_content(&name_dir.path())?
+                .iter()
+                .map(|version_dir| {
+                    Ok(get_dir_content(&version_dir.path())?
+                        .iter()
+                        .map(|tag_dir| {
+                            (
+                                name_dir.file_name().to_string_lossy().to_string(),
+                                version_dir.file_name().to_string_lossy().to_string(),
+                                tag_dir.file_name().to_string_lossy().to_string(),
+                            )
+                        })
+                        .collect::<Vec<(String, String, String)>>())
+                })
+                .collect::<anyhow::Result<Vec<Vec<(String, String, String)>>>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>())
         })
-        .collect();
+        .collect::<anyhow::Result<Vec<Vec<(String, String, String)>>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
     let mut installed = Vec::new();
     let mut not_installed = Vec::new();
@@ -78,17 +103,21 @@ pub fn filter_installed(
         };
 
         if let Some(unique_version) = unique_version {
-            if installed_packages.iter().any(|(name, version, _path)| {
-                name == &spec.normalized_name() && version == &unique_version
-            }) {
+            if let Some((name, installed_version, tag)) =
+                installed_packages
+                    .iter()
+                    .find(|(name, installed_version, _tag)| {
+                        name == &spec.normalized_name() && installed_version == &unique_version
+                    })
+            {
                 installed.push(InstalledPackage {
-                    name: spec.normalized_name(),
+                    name: name.clone(),
                     python_version: spec
                         .python_version
                         .clone()
                         .context("TODO: needs python version")?,
-                    unique_version,
-                    tag: "".to_string(),
+                    unique_version: installed_version.clone(),
+                    tag: tag.clone(),
                 });
             } else {
                 not_installed.push(spec.clone());

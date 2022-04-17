@@ -64,6 +64,16 @@ impl WheelFilename {
         }
         false
     }
+
+    /// effectively undoes the wheel filename parsing step
+    pub fn get_tag(&self) -> String {
+        format!(
+            "{}-{}-{}",
+            self.python_tag.join("."),
+            self.abi_tag.join("."),
+            self.platform_tag.join(".")
+        )
+    }
 }
 
 pub fn current_compatible_tags(

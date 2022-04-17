@@ -6,7 +6,7 @@ use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
 use crate::virtual_sprawl::{filter_installed, virtual_sprawl_root};
 use crate::wheel_tags::current_compatible_tags;
-use crate::{install, install_specs, package_index, WheelInstallerError};
+use crate::{install_specs, package_index, WheelInstallerError};
 use clap::Parser;
 use std::path::{Path, PathBuf};
 use tracing::debug;
@@ -24,10 +24,11 @@ pub enum Cli {
         no_compile: bool,
         #[clap(long)]
         no_dev: bool,
-        #[clap(short = 'E')]
+        #[clap(long, short = 'E')]
         extras: Vec<String>,
         #[clap(long)]
         virtual_sprawl: bool,
+        /// Only relevant for venv install
         #[clap(long)]
         skip_existing: bool,
     },
@@ -59,10 +60,7 @@ pub fn download_distribution_cached(
 
 pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
     let python_version = get_venv_python_version(venv)?;
-    let installation_location = InstallLocation::Venv {
-        venv_base: venv.to_path_buf(),
-        python_version,
-    };
+    let venv_base = venv.canonicalize()?;
 
     match cli {
         Cli::Install {
@@ -72,9 +70,14 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let compatible_tags = current_compatible_tags(venv)?;
             let specs = targets
                 .iter()
-                .map(|target| RequestedSpec::from_requested(target, Vec::new()))
+                .map(|target| RequestedSpec::from_requested(target, &[]))
                 .collect::<Result<Vec<RequestedSpec>, WheelInstallerError>>()?;
-            install::install_specs(
+            let installation_location = InstallLocation::Venv {
+                venv_base,
+                python_version,
+            };
+
+            install_specs(
                 &specs,
                 &installation_location,
                 &compatible_tags,
@@ -91,7 +94,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             skip_existing,
         } => {
             let compatible_tags = current_compatible_tags(venv)?;
-            // TODO: don't parse this from subprocess but do it like maturin
+            // TODO: don't parse this from a subprocess but do it like maturin
             let pep508_env = Pep508Environment::from_python();
             let specs = read_poetry_specs(
                 &pyproject_toml.unwrap_or_else(|| PathBuf::from("pyproject.toml")),
@@ -104,7 +107,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 let virtual_sprawl_root = virtual_sprawl_root()?;
                 let location = InstallLocation::VirtualSprawl {
                     virtual_sprawl_root: virtual_sprawl_root.clone(),
-                    python: installation_location.get_python()?,
+                    python: venv_base.join("bin").join("python"),
                     python_version,
                 };
 
@@ -118,6 +121,11 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                     false,
                 )?;
             } else {
+                let installation_location = InstallLocation::Venv {
+                    venv_base: venv.canonicalize()?,
+                    python_version,
+                };
+
                 let specs = if skip_existing {
                     specs
                         .into_iter()
@@ -128,7 +136,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                                 }
                                 Some(version) => version,
                             };
-                            !installation_location.is_installed(&spec.name, &version)
+                            !installation_location.is_installed(&spec.normalized_name(), &version)
                         })
                         .collect()
                 } else {
