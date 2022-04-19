@@ -63,14 +63,14 @@ def compare_with_poetry(
         rmtree(env_rs)
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
-    call = [virtual_sprawl, "poetry-install", project_dir.joinpath("pyproject.toml")]
+    call = [virtual_sprawl, "poetry-install"]
     if no_dev:
         call.append("--no-dev")
     if extras:
         for extra in extras:
             call.extend(["-E", extra])
     try:
-        check_call(call, env=venv_env_vars)
+        check_call(call, env=venv_env_vars, cwd=project_dir)
     except CalledProcessError:
         env.rename(env_rs)
         sys.exit(1)

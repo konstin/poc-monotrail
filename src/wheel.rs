@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
@@ -314,28 +314,22 @@ fn write_script_entrypoints(
 /// > basic key: value format:
 fn parse_wheel_version(wheel_text: &str) -> Result<(), WheelInstallerError> {
     // {distribution}-{version}.dist-info/WHEEL is metadata about the archive itself in the same basic key: value format:
-    // The proper solution would probably also be using the email parser here
-    let wheel_file_data = wheel_text
-        .lines()
-        // Filter empty lines
-        .filter(|line| !line.trim().is_empty())
-        .map(|entry| {
-            entry
-                .split_once(": ")
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-        })
-        .collect::<Option<HashMap<String, String>>>()
-        .ok_or_else(|| {
-            WheelInstallerError::InvalidWheel(
-                "The contents of the WHEEL file are invalid".to_string(),
-            )
-        })?;
-    let wheel_version = wheel_file_data.get("Wheel-Version").ok_or_else(|| {
-        WheelInstallerError::InvalidWheel("Wheel-Version missing in WHEEL file".to_string())
-    })?;
-    let wheel_version = wheel_version.split_once('.').ok_or_else(|| {
-        WheelInstallerError::InvalidWheel("Invalid Wheel-Version in WHEEL file".to_string())
-    })?;
+    let data = parse_key_value_file(&mut wheel_text.as_bytes(), "WHEEL")?;
+
+    let wheel_version = if let Some(wheel_version) =
+        data.get("Wheel-Version").and_then(|wheel_versions| {
+            if let [wheel_version] = wheel_versions.as_slice() {
+                wheel_version.split_once('.')
+            } else {
+                None
+            }
+        }) {
+        wheel_version
+    } else {
+        return Err(WheelInstallerError::InvalidWheel(
+            "Invalid Wheel-Version in WHEEL file".to_string(),
+        ));
+    };
     // pip has some test wheels that use that ancient version,
     // and technically we only need to check that the version is not higher
     if wheel_version == ("0", "1") {
@@ -726,6 +720,32 @@ fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelIns
         .collect()
 }
 
+/// Parse a file with `Key: value` entries such as WHEEL and METADATA
+pub fn parse_key_value_file(
+    file: &mut impl Read,
+    debug_filename: &str,
+) -> Result<HashMap<String, Vec<String>>, WheelInstallerError> {
+    let mut data = HashMap::new();
+
+    let file = BufReader::new(file);
+    for (line_no, line) in file.lines().enumerate() {
+        let line = line?.trim().to_string();
+        if line.is_empty() {
+            continue;
+        }
+        let (key, value) = line.split_once(": ").ok_or_else(|| {
+            WheelInstallerError::InvalidWheel(format!(
+                "Line {} of the {} file is invalid",
+                line_no, debug_filename
+            ))
+        })?;
+        data.entry(key.to_string())
+            .or_insert_with(Vec::new)
+            .push(value.to_string())
+    }
+    Ok(data)
+}
+
 /// Install the given wheel to the given venv
 ///
 /// https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
@@ -897,8 +917,21 @@ pub fn install_wheel(
 mod test {
     use super::parse_wheel_version;
     use crate::venv_parser::get_pyvenv_cfg_python_version;
-    use crate::wheel::read_record_file;
+    use crate::wheel::{parse_key_value_file, read_record_file};
     use indoc::{formatdoc, indoc};
+
+    #[test]
+    fn test_parse_key_value_file() {
+        let text = indoc! {"
+            Wheel-Version: 1.0
+            Generator: bdist_wheel (0.37.1)
+            Root-Is-Purelib: false
+            Tag: cp38-cp38-manylinux_2_17_x86_64
+            Tag: cp38-cp38-manylinux2014_x86_64
+        "};
+
+        parse_key_value_file(&mut text.as_bytes(), "WHEEL").unwrap();
+    }
 
     #[test]
     fn test_parse_wheel_version() {

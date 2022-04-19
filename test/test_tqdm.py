@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from subprocess import check_call, SubprocessError, DEVNULL
 
-from test.compare import get_root
+from test.compare import get_root, get_bin
 
 
 def test_tqdm():
@@ -31,12 +31,9 @@ def test_tqdm():
     except FileNotFoundError:
         pass
 
+    tqdm_wheel = get_root().joinpath("popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl")
     check_call(
-        [
-            get_root().joinpath("target/release/virtual-sprawl"),
-            "install",
-            get_root().joinpath("popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl"),
-        ],
+        [get_bin(), "install", tqdm_wheel],
         env=env,
     )
     check_call(

@@ -14,6 +14,7 @@ use tracing::{debug, info, trace};
 
 /// what we communicate back to python
 #[cfg(not(feature = "python_bindings"))]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstalledPackage {
     pub name: String,
     pub python_version: String,
@@ -26,6 +27,7 @@ pub struct InstalledPackage {
 /// TODO: write a pyo3 bug report to parse through cfg attr
 #[cfg(feature = "python_bindings")]
 #[pyo3::pyclass]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstalledPackage {
     #[pyo3(get)]
     pub name: String,

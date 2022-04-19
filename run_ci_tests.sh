@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-#git clone --depth 1 --branch 22.0.3 -q https://github.com/pypa/pip _pip
 #pip download -d popular-wheels -r popular.txt
 #cargo build --release
 #cargo test --release

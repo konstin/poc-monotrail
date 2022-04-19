@@ -1,7 +1,7 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use clap::Parser;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use tracing::debug;
 use virtual_sprawl::{run, Cli};
 
@@ -10,17 +10,12 @@ fn cli() -> Result<()> {
     debug!("VIRTUAL_ENV: {:?}", env::var_os("VIRTUAL_ENV"));
     let venv = if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
         PathBuf::from(virtual_env)
-    } else if let Cli::PoetryInstall { pyproject_toml, .. } = &cli {
-        let venv = pyproject_toml
-            .as_deref()
-            .unwrap_or_else(|| Path::new("pyproject.toml"))
-            .parent()
-            .context("Invalid pyproject.toml path")?
-            .join(".venv");
+    } else if let Cli::PoetryInstall { .. } = &cli {
+        let venv = PathBuf::from(".venv");
         if venv.join("pyvenv.cfg").is_file() {
             venv
         } else {
-            bail!("No venv active or next to lockfile");
+            bail!("No .venv directory found");
         }
     } else {
         bail!("Will only install in a virtualenv");

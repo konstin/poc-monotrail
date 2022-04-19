@@ -58,7 +58,7 @@ fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
         .collect())
 }
 
-pub fn filter_installed(
+pub fn filter_installed_virtual_sprawl(
     specs: &[RequestedSpec],
     virtual_sprawl_root: &Path,
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
@@ -179,7 +179,7 @@ pub fn setup_virtual_sprawl(
     };
 
     let (to_install_specs, installed_done) =
-        filter_installed(&specs, Path::new(&virtual_sprawl_root))?;
+        filter_installed_virtual_sprawl(&specs, Path::new(&virtual_sprawl_root))?;
 
     let mut installed = install_specs(
         &to_install_specs,

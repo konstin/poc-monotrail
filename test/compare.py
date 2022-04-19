@@ -97,7 +97,7 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         r"_distutils_hack/__pycache__",
     ]
     pattern = (
-        r"^(lib/python3\.8/site-packages/(" + "|".join(dirs) + r")|bin/__pycache__)"
+        r"^(lib/python3\.8/site-packages/(" + "|".join(dirs) + r")|bin/__pycache__|virtual-sprawl.lock)"
     )
     env_rs_entries = set()
     for i in env_rs.glob("**/*"):

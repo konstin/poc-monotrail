@@ -1,13 +1,19 @@
 //! Multiplexing between venv install and virtual sprawl install
 
+use crate::install::InstalledPackage;
+use crate::spec::RequestedSpec;
+use crate::virtual_sprawl::filter_installed_virtual_sprawl;
+use crate::wheel::parse_key_value_file;
+use anyhow::Context;
 use fs2::FileExt;
-use fs_err::File;
+use fs_err as fs;
+use fs_err::{DirEntry, File};
+use std::io;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::{fs, io};
 use tracing::{error, warn};
 
-const VIRTUAL_SPRAWL_LOCKFILE: &'static str = "virtual-sprawl.lock";
+const VIRTUAL_SPRAWL_LOCKFILE: &str = "virtual-sprawl.lock";
 
 /// A directory for which we acquired a virtual-sprawl.lock lockfile
 pub struct LockedDir {
@@ -108,6 +114,25 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
         }
     }
 
+    pub fn filter_installed(
+        &self,
+        specs: &[RequestedSpec],
+    ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
+        match self {
+            InstallLocation::Venv {
+                venv_base,
+                python_version,
+            } => filter_installed_venv(specs, venv_base, python_version).context(format!(
+                "Failed to filter packages installed in the venv at {}",
+                venv_base.display()
+            )),
+            InstallLocation::VirtualSprawl {
+                virtual_sprawl_root,
+                ..
+            } => Ok(filter_installed_virtual_sprawl(specs, virtual_sprawl_root)?),
+        }
+    }
+
     pub fn is_installed(&self, normalized_name: &str, version: &str) -> bool {
         match self {
             InstallLocation::Venv {
@@ -168,4 +193,66 @@ impl InstallLocation<PathBuf> {
             },
         })
     }
+}
+
+/// Reads the installed packages through .dist-info/WHEEL files, returns the set that is installed
+/// and the one that still needs to be installed
+fn filter_installed_venv(
+    specs: &[RequestedSpec],
+    venv_base: &Path,
+    python_version: &(u8, u8),
+) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
+    let entries: Vec<DirEntry> = match fs::read_dir(
+        venv_base
+            .join("lib")
+            .join(format!("python{}.{}", python_version.0, python_version.1))
+            .join("site-packages"),
+    ) {
+        Ok(entries) => entries.collect::<io::Result<Vec<DirEntry>>>()?,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(err) => return Err(err.into()),
+    };
+    let venv_packages: Vec<InstalledPackage> = entries
+        .iter()
+        .filter_map(|entry| {
+            let filename = entry.file_name().to_string_lossy().to_string();
+            let (name, version) = filename.strip_suffix(".dist-info")?.split_once('-')?;
+            let name = name.to_lowercase().replace('-', "_");
+            Some((entry, name, version.to_string()))
+        })
+        .map(|(entry, name, version)| {
+            let wheel_data =
+                parse_key_value_file(&mut File::open(entry.path().join("WHEEL"))?, "WHEEL")?;
+            let tag = wheel_data
+                .get("Tag")
+                .map(|tags| tags.join("."))
+                .unwrap_or_default();
+
+            Ok(InstalledPackage {
+                name,
+                python_version: version.clone(),
+                unique_version: version,
+                tag,
+            })
+        })
+        .collect::<anyhow::Result<_>>()?;
+
+    let mut installed = Vec::new();
+    let mut not_installed = Vec::new();
+    for spec in specs {
+        let matching_package = venv_packages.iter().find(|package| {
+            if let Some(spec_version) = &spec.python_version {
+                // TODO: use PEP440
+                package.name == spec.name && &package.python_version == spec_version
+            } else {
+                package.name == spec.name
+            }
+        });
+        if let Some(package) = matching_package {
+            installed.push(package.clone());
+        } else {
+            not_installed.push(spec.clone())
+        }
+    }
+    Ok((not_installed, installed))
 }

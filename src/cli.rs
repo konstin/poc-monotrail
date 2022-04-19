@@ -4,12 +4,27 @@ use crate::package_index::download_distribution;
 use crate::poetry::read_poetry_specs;
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
-use crate::virtual_sprawl::{filter_installed, virtual_sprawl_root};
+use crate::virtual_sprawl::{filter_installed_virtual_sprawl, virtual_sprawl_root};
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install_specs, package_index, WheelInstallerError};
 use clap::Parser;
 use std::path::{Path, PathBuf};
 use tracing::debug;
+
+#[derive(Parser)]
+pub struct PoetryOptions {
+    #[clap(long)]
+    no_compile: bool,
+    #[clap(long)]
+    no_dev: bool,
+    #[clap(long, short = 'E')]
+    extras: Vec<String>,
+    #[clap(long)]
+    virtual_sprawl: bool,
+    /// Only relevant for venv install
+    #[clap(long)]
+    skip_existing: bool,
+}
 
 #[derive(Parser)]
 pub enum Cli {
@@ -19,18 +34,12 @@ pub enum Cli {
         no_compile: bool,
     },
     PoetryInstall {
-        pyproject_toml: Option<PathBuf>,
-        #[clap(long)]
-        no_compile: bool,
-        #[clap(long)]
-        no_dev: bool,
-        #[clap(long, short = 'E')]
-        extras: Vec<String>,
-        #[clap(long)]
-        virtual_sprawl: bool,
-        /// Only relevant for venv install
-        #[clap(long)]
-        skip_existing: bool,
+        #[clap(flatten)]
+        options: PoetryOptions,
+    },
+    PoetryRun {
+        #[clap(flatten)]
+        options: PoetryOptions,
     },
 }
 
@@ -86,22 +95,20 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             )?;
         }
         Cli::PoetryInstall {
-            pyproject_toml,
-            no_compile,
-            no_dev,
-            extras,
-            virtual_sprawl,
-            skip_existing,
+            options:
+                PoetryOptions {
+                    no_compile,
+                    no_dev,
+                    extras,
+                    virtual_sprawl,
+                    skip_existing,
+                },
         } => {
             let compatible_tags = current_compatible_tags(venv)?;
             // TODO: don't parse this from a subprocess but do it like maturin
             let pep508_env = Pep508Environment::from_python();
-            let specs = read_poetry_specs(
-                &pyproject_toml.unwrap_or_else(|| PathBuf::from("pyproject.toml")),
-                no_dev,
-                &extras,
-                &pep508_env,
-            )?;
+            let specs =
+                read_poetry_specs(Path::new("pyproject.toml"), no_dev, &extras, &pep508_env)?;
 
             if virtual_sprawl {
                 let virtual_sprawl_root = virtual_sprawl_root()?;
@@ -112,7 +119,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 };
 
                 let (to_install_specs, _installed_done) =
-                    filter_installed(&specs, Path::new(&virtual_sprawl_root))?;
+                    filter_installed_virtual_sprawl(&specs, Path::new(&virtual_sprawl_root))?;
                 install_specs(
                     &to_install_specs,
                     &location,
@@ -121,12 +128,12 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                     false,
                 )?;
             } else {
-                let installation_location = InstallLocation::Venv {
+                let location = InstallLocation::Venv {
                     venv_base: venv.canonicalize()?,
                     python_version,
                 };
 
-                let specs = if skip_existing {
+                let to_install_specs = if skip_existing {
                     specs
                         .into_iter()
                         .filter(|spec| {
@@ -136,20 +143,23 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                                 }
                                 Some(version) => version,
                             };
-                            !installation_location.is_installed(&spec.normalized_name(), &version)
+                            !location.is_installed(&spec.normalized_name(), &version)
                         })
                         .collect()
                 } else {
                     specs
                 };
                 install_specs(
-                    &specs,
-                    &installation_location,
+                    &to_install_specs,
+                    &location,
                     &compatible_tags,
                     no_compile,
                     false,
                 )?;
             }
+        }
+        Cli::PoetryRun { options: _ } => {
+            todo!()
         }
     };
     Ok(())
