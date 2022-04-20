@@ -122,7 +122,7 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
             InstallLocation::Venv {
                 venv_base,
                 python_version,
-            } => filter_installed_venv(specs, venv_base, python_version).context(format!(
+            } => filter_installed_venv(specs, venv_base, *python_version).context(format!(
                 "Failed to filter packages installed in the venv at {}",
                 venv_base.display()
             )),
@@ -197,10 +197,10 @@ impl InstallLocation<PathBuf> {
 
 /// Reads the installed packages through .dist-info/WHEEL files, returns the set that is installed
 /// and the one that still needs to be installed
-fn filter_installed_venv(
+pub fn filter_installed_venv(
     specs: &[RequestedSpec],
     venv_base: &Path,
-    python_version: &(u8, u8),
+    python_version: (u8, u8),
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     let entries: Vec<DirEntry> = match fs::read_dir(
         venv_base

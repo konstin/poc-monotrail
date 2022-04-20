@@ -1,10 +1,11 @@
+use crate::install::InstalledPackage;
 use crate::install_location::InstallLocation;
 use crate::markers::Pep508Environment;
 use crate::package_index::download_distribution;
 use crate::poetry::read_poetry_specs;
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
-use crate::virtual_sprawl::{filter_installed_virtual_sprawl, virtual_sprawl_root};
+use crate::virtual_sprawl::virtual_sprawl_root;
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install_specs, package_index, WheelInstallerError};
 use clap::Parser;
@@ -67,9 +68,50 @@ pub fn download_distribution_cached(
     Ok(target_file)
 }
 
+fn install_location_specs(
+    venv: &Path,
+    python_version: (u8, u8),
+    venv_canon: &Path,
+    no_compile: bool,
+    no_dev: bool,
+    extras: &[String],
+    virtual_sprawl: bool,
+    skip_existing: bool,
+) -> anyhow::Result<Vec<InstalledPackage>> {
+    let compatible_tags = current_compatible_tags(venv)?;
+    // TODO: don't parse this from a subprocess but do it like maturin
+    let pep508_env = Pep508Environment::from_python();
+    let specs = read_poetry_specs(Path::new("pyproject.toml"), no_dev, extras, &pep508_env)?;
+
+    let location = if virtual_sprawl {
+        let virtual_sprawl_root = virtual_sprawl_root()?;
+        InstallLocation::VirtualSprawl {
+            virtual_sprawl_root,
+            python: venv_canon.join("bin").join("python"),
+            python_version,
+        }
+    } else {
+        let venv_base = venv.canonicalize()?;
+        InstallLocation::Venv {
+            venv_base,
+            python_version,
+        }
+    };
+
+    let (to_install, mut installed_done) = if skip_existing || virtual_sprawl {
+        location.filter_installed(&specs)?
+    } else {
+        (specs, Vec::new())
+    };
+    let mut installed_new =
+        install_specs(&to_install, &location, &compatible_tags, no_compile, false)?;
+    installed_done.append(&mut installed_new);
+    Ok(installed_done)
+}
+
 pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
     let python_version = get_venv_python_version(venv)?;
-    let venv_base = venv.canonicalize()?;
+    let venv_canon = venv.canonicalize()?;
 
     match cli {
         Cli::Install {
@@ -82,7 +124,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 .map(|target| RequestedSpec::from_requested(target, &[]))
                 .collect::<Result<Vec<RequestedSpec>, WheelInstallerError>>()?;
             let installation_location = InstallLocation::Venv {
-                venv_base,
+                venv_base: venv_canon,
                 python_version,
             };
 
@@ -104,61 +146,29 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                     skip_existing,
                 },
         } => {
-            let compatible_tags = current_compatible_tags(venv)?;
-            // TODO: don't parse this from a subprocess but do it like maturin
-            let pep508_env = Pep508Environment::from_python();
-            let specs =
-                read_poetry_specs(Path::new("pyproject.toml"), no_dev, &extras, &pep508_env)?;
-
-            if virtual_sprawl {
-                let virtual_sprawl_root = virtual_sprawl_root()?;
-                let location = InstallLocation::VirtualSprawl {
-                    virtual_sprawl_root: virtual_sprawl_root.clone(),
-                    python: venv_base.join("bin").join("python"),
-                    python_version,
-                };
-
-                let (to_install_specs, _installed_done) =
-                    filter_installed_virtual_sprawl(&specs, Path::new(&virtual_sprawl_root))?;
-                install_specs(
-                    &to_install_specs,
-                    &location,
-                    &compatible_tags,
-                    no_compile,
-                    false,
-                )?;
-            } else {
-                let location = InstallLocation::Venv {
-                    venv_base: venv.canonicalize()?,
-                    python_version,
-                };
-
-                let to_install_specs = if skip_existing {
-                    specs
-                        .into_iter()
-                        .filter(|spec| {
-                            let version = match spec.get_unique_version() {
-                                None => {
-                                    panic!("lockfile specs must have a version")
-                                }
-                                Some(version) => version,
-                            };
-                            !location.is_installed(&spec.normalized_name(), &version)
-                        })
-                        .collect()
-                } else {
-                    specs
-                };
-                install_specs(
-                    &to_install_specs,
-                    &location,
-                    &compatible_tags,
-                    no_compile,
-                    false,
-                )?;
-            }
+            install_location_specs(
+                venv,
+                python_version,
+                &venv_canon,
+                no_compile,
+                no_dev,
+                &extras,
+                virtual_sprawl,
+                skip_existing,
+            )?;
         }
-        Cli::PoetryRun { options: _ } => {
+        Cli::PoetryRun { options } => {
+            let installed = install_location_specs(
+                venv,
+                python_version,
+                &venv_canon,
+                options.no_compile,
+                options.no_dev,
+                &options.extras,
+                options.virtual_sprawl,
+                options.skip_existing,
+            )?;
+            dbg!(installed);
             todo!()
         }
     };
