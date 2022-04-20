@@ -14,15 +14,15 @@ use tracing::debug;
 #[pyfunction]
 fn prepare_virtual_sprawl(
     py: Python,
-    file_running: &str,
+    file_running: Option<String>,
     extras: Vec<String>,
     pep508_env: &str,
 ) -> PyResult<(String, Vec<InstalledPackage>)> {
-    debug!("file for virtual sprawl: {}", file_running);
+    debug!("file for virtual sprawl: {:?}", file_running);
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
 
     let virtual_sprawl = setup_virtual_sprawl(
-        Path::new(file_running),
+        file_running.as_deref().map(Path::new),
         Path::new(&sys_executable),
         (py.version_info().major, py.version_info().minor),
         &extras,

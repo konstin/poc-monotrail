@@ -5,8 +5,6 @@ if os.environ.get("VIRTUAL_SPRAWL"):
     import sys
     from .get_pep508_env import get_pep508_env
     from .virtual_sprawl_path_finder import VirtualSprawlPathFinder
-
-    # noinspection PyUnresolvedReferences
     from .virtual_sprawl import prepare_virtual_sprawl
 
     try:
@@ -14,7 +12,13 @@ if os.environ.get("VIRTUAL_SPRAWL"):
         if Path(sys.argv[0]).name == "pydevd.py":
             filename = sys.argv[sys.argv.index("--file") + 1]
         else:
+            # If we start python with no args, sys.argv is ['']
             filename = sys.argv[0]
+
+        # remove the empty string
+        if not filename or filename == "-m":
+            filename = None
+
         if extras := os.environ.get("VIRTUAL_SPRAWL_EXTRAS"):
             extras = extras.split(",")
         else:

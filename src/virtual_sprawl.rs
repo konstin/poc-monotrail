@@ -3,7 +3,7 @@ use crate::markers::Pep508Environment;
 use crate::requirements_txt::requirements_txt_to_specs;
 use crate::spec::RequestedSpec;
 use crate::{compatible_tags, install_specs, read_poetry_specs, Arch, InstallLocation, Os};
-use anyhow::Context;
+use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::DirEntry;
 use std::env;
@@ -23,17 +23,8 @@ enum LockfileType {
     RequirementsTxt,
 }
 
-fn find_lockfile(file_running: &Path) -> Option<(PathBuf, LockfileType)> {
-    let mut parent = if file_running.is_absolute() {
-        file_running.parent().map(|path| path.to_path_buf())
-    } else {
-        file_running.parent().map(|relative| {
-            current_dir()
-                .unwrap_or_else(|_| PathBuf::from(""))
-                .join(relative)
-        })
-    };
-
+fn find_lockfile(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
+    let mut parent = Some(dir_running.to_path_buf());
     while let Some(dir) = parent {
         if dir.join("pyproject.toml").exists() {
             return Some((dir.join("pyproject.toml"), LockfileType::PyprojectToml));
@@ -151,17 +142,38 @@ pub fn filter_installed_virtual_sprawl(
 /// Returns a list name, python version, unique version
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn setup_virtual_sprawl(
-    file_running: &Path,
+    file_running: Option<&Path>,
     python: &Path,
     python_version: (u8, u8),
     extras: &[String],
     pep508_env: &Pep508Environment,
 ) -> anyhow::Result<(String, Vec<InstalledPackage>)> {
+    let dir_running = match file_running {
+        None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
+        Some(file) if file.is_file() => {
+            if let Some(parent) = file.parent() {
+                parent.to_path_buf()
+            } else {
+                bail!("File has no parent directory ಠ_ಠ: {}", file.display())
+            }
+        }
+        Some(dir) if dir.is_dir() => dir.to_path_buf(),
+        Some(neither) => {
+            bail!(
+                "Running file is neither file not directory (is the python invocation unsupported?): {}",
+                neither.display()
+            )
+        }
+    };
+
     let virtual_sprawl_root = virtual_sprawl_root()?;
-    let (lockfile, lockfile_type) = find_lockfile(file_running).with_context(|| {
+    let (lockfile, lockfile_type) = find_lockfile(&dir_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
-            file_running.display()
+            file_running.map_or_else(
+                || "current directory".to_string(),
+                |file_running| file_running.display().to_string()
+            )
         )
     })?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
