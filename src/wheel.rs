@@ -459,7 +459,7 @@ fn move_folder_recorded(
     src_dir: &Path,
     dest_dir: &Path,
     site_packages: &Path,
-    record: &mut Vec<RecordEntry>,
+    record: &mut [RecordEntry],
 ) -> Result<(), WheelInstallerError> {
     if !dest_dir.is_dir() {
         fs::create_dir_all(&dest_dir)?;
@@ -504,8 +504,9 @@ fn move_folder_recorded(
 fn install_script(
     venv_base: &Path,
     site_packages: &Path,
-    record: &mut Vec<RecordEntry>,
+    record: &mut [RecordEntry],
     file: DirEntry,
+    rewrite_shebang: bool,
 ) -> Result<(), WheelInstallerError> {
     let path = file.path();
     if !path.is_file() {
@@ -524,12 +525,15 @@ fn install_script(
     //
     // > The b'#!pythonw' convention is allowed. b'#!pythonw' indicates a GUI script
     // > instead of a console script.
+    //
+    // We do this in venvs as required, but in virtual sprawl mode we keep the original fake shebang
+    // for later launch tricks
     let placeholder_python = b"#!python";
-    // scripts might be binaries, so
+    // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
     let mut start = Vec::new();
     start.resize(placeholder_python.len(), 0);
     script.read_exact(&mut start)?;
-    let size_and_encoded_hash = if start == placeholder_python {
+    let size_and_encoded_hash = if start == placeholder_python && rewrite_shebang {
         start = format!("#!{}/bin/python", venv_base.canonicalize()?.display())
             .as_bytes()
             .to_vec();
@@ -587,7 +591,8 @@ fn install_data(
     python_version: (u8, u8),
     console_scripts: &[Script],
     gui_scripts: &[Script],
-    record: &mut Vec<RecordEntry>,
+    record: &mut [RecordEntry],
+    rewrite_shebang: bool,
 ) -> Result<(), WheelInstallerError> {
     for data_entry in fs::read_dir(data_dir)? {
         let data_entry = data_entry?;
@@ -616,7 +621,7 @@ fn install_data(
                         continue;
                     }
 
-                    install_script(venv_base, site_packages, record, file)?;
+                    install_script(venv_base, site_packages, record, file, rewrite_shebang)?;
                 }
             }
             Some("headers") => {
@@ -865,6 +870,9 @@ pub fn install_wheel(
             &console_scripts,
             &gui_scripts,
             &mut record,
+            // For the virtual sprawl install, we want to keep the fake shebang for our own
+            // later replacement logic
+            matches!(location, InstallLocation::Venv { .. }),
         )?;
         // 2.c If applicable, update scripts starting with #!python to point to the correct interpreter.
         // Script are unsupported through data

@@ -21,6 +21,7 @@ git2 = "0.14.2"
 goblin = "0.4.3"
 indicatif = "0.16.2"
 indoc = "1.0.3"
+nix = { version = "0.24.0", features = ["process"] }
 pep440 = "0.2.0"
 platform-info = "0.2.0"
 plist = "1.3.1"

@@ -701,6 +701,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f6d99b651ff9697d6710f9613a07c5b4e0d655040faf56b3b471af108d55597"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "libc",
+ "memoffset",
+]
+
+[[package]]
 name = "num_cpus"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1540,6 +1552,7 @@ dependencies = [
  "goblin",
  "indicatif",
  "indoc 1.0.4",
+ "nix",
  "pep440",
  "platform-info",
  "plist",

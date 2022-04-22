@@ -9,6 +9,7 @@ use fs_err::DirEntry;
 use std::env;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 pub fn virtual_sprawl_root() -> anyhow::Result<PathBuf> {
     if let Some(env_root) = env::var_os("VIRTUAL_SPRAWL_ROOT") {
@@ -211,5 +212,6 @@ pub fn setup_virtual_sprawl(
         .to_str()
         .context("virtual sprawl path is cursed")?
         .to_string();
+    debug!("python extension has {} packages", installed.len());
     Ok((virtual_sprawl_location_string, installed))
 }

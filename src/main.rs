@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use clap::Parser;
 use std::env;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use tracing::debug;
 use virtual_sprawl::{run, Cli};
 

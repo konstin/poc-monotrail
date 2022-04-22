@@ -8,7 +8,13 @@ use crate::venv_parser::get_venv_python_version;
 use crate::virtual_sprawl::virtual_sprawl_root;
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install_specs, package_index, WheelInstallerError};
+use anyhow::{bail, format_err, Context};
 use clap::Parser;
+use fs_err::File;
+use nix::unistd;
+use std::env;
+use std::ffi::CString;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
@@ -41,6 +47,9 @@ pub enum Cli {
     PoetryRun {
         #[clap(flatten)]
         options: PoetryOptions,
+        command: String,
+        #[clap(last = true)]
+        command_args: Vec<String>,
     },
 }
 
@@ -72,18 +81,19 @@ fn install_location_specs(
     venv: &Path,
     python_version: (u8, u8),
     venv_canon: &Path,
-    no_compile: bool,
-    no_dev: bool,
-    extras: &[String],
-    virtual_sprawl: bool,
-    skip_existing: bool,
-) -> anyhow::Result<Vec<InstalledPackage>> {
+    options: &PoetryOptions,
+) -> anyhow::Result<(InstallLocation<PathBuf>, Vec<InstalledPackage>)> {
     let compatible_tags = current_compatible_tags(venv)?;
     // TODO: don't parse this from a subprocess but do it like maturin
     let pep508_env = Pep508Environment::from_python();
-    let specs = read_poetry_specs(Path::new("pyproject.toml"), no_dev, extras, &pep508_env)?;
+    let specs = read_poetry_specs(
+        Path::new("pyproject.toml"),
+        options.no_dev,
+        &options.extras,
+        &pep508_env,
+    )?;
 
-    let location = if virtual_sprawl {
+    let location = if options.virtual_sprawl {
         let virtual_sprawl_root = virtual_sprawl_root()?;
         InstallLocation::VirtualSprawl {
             virtual_sprawl_root,
@@ -98,15 +108,20 @@ fn install_location_specs(
         }
     };
 
-    let (to_install, mut installed_done) = if skip_existing || virtual_sprawl {
+    let (to_install, mut installed_done) = if options.skip_existing || options.virtual_sprawl {
         location.filter_installed(&specs)?
     } else {
         (specs, Vec::new())
     };
-    let mut installed_new =
-        install_specs(&to_install, &location, &compatible_tags, no_compile, false)?;
+    let mut installed_new = install_specs(
+        &to_install,
+        &location,
+        &compatible_tags,
+        options.no_compile,
+        false,
+    )?;
     installed_done.append(&mut installed_new);
-    Ok(installed_done)
+    Ok((location, installed_done))
 }
 
 pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
@@ -136,40 +151,77 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 false,
             )?;
         }
-        Cli::PoetryInstall {
-            options:
-                PoetryOptions {
-                    no_compile,
-                    no_dev,
-                    extras,
-                    virtual_sprawl,
-                    skip_existing,
-                },
-        } => {
-            install_location_specs(
-                venv,
-                python_version,
-                &venv_canon,
-                no_compile,
-                no_dev,
-                &extras,
-                virtual_sprawl,
-                skip_existing,
-            )?;
+        Cli::PoetryInstall { options } => {
+            install_location_specs(venv, python_version, &venv_canon, &options)?;
         }
-        Cli::PoetryRun { options } => {
-            let installed = install_location_specs(
-                venv,
-                python_version,
-                &venv_canon,
-                options.no_compile,
-                options.no_dev,
-                &options.extras,
-                options.virtual_sprawl,
-                options.skip_existing,
-            )?;
-            dbg!(installed);
-            todo!()
+        Cli::PoetryRun {
+            options,
+            command,
+            command_args,
+        } => {
+            let (location, installed) =
+                install_location_specs(venv, python_version, &venv_canon, &options)?;
+            let executable = match location {
+                // Using virtual sprawl as launcher is kinda pointless when we're already in a venv ¯\_(ツ)_/¯
+                InstallLocation::Venv { venv_base, .. } => {
+                    let bin_dir = venv_base.join("bin");
+                    let executable = bin_dir.join(&command);
+                    if !executable.is_file() {
+                        bail!("No such command '{}' in {}", command, bin_dir.display());
+                    }
+                    executable
+                }
+                InstallLocation::VirtualSprawl {
+                    virtual_sprawl_root,
+                    ..
+                } => installed
+                    .iter()
+                    .map(|installed_package| {
+                        virtual_sprawl_root
+                            .join(&installed_package.name)
+                            .join(&installed_package.unique_version)
+                            .join(&installed_package.tag)
+                            .join("bin")
+                            .join(&command)
+                    })
+                    .find(|candidate| candidate.is_file())
+                    .with_context(|| {
+                        format_err!("Couldn't find command {} in installed packages", command)
+                    })?,
+            };
+
+            // Check whether we're launching a virtual sprawl python script
+            let mut executable_file = File::open(&executable)
+                .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
+            let placeholder_python = b"#!python";
+            // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
+            let mut start = Vec::new();
+            start.resize(placeholder_python.len(), 0);
+            executable_file.read_exact(&mut start)?;
+            if start == placeholder_python {
+                todo!()
+            }
+
+            // Sorry for the to_string_lossy
+            // https://stackoverflow.com/a/38948854/3549270
+            let executable_c_str = CString::new(executable.to_string_lossy().as_bytes())
+                .context("Failed to convert executable path")?;
+            let args_c_string = command_args
+                .iter()
+                .map(|arg| {
+                    CString::new(arg.as_bytes()).context("Failed to convert executable argument")
+                })
+                .collect::<anyhow::Result<Vec<CString>>>()?;
+
+            env::set_var("VIRTUAL_SPRAWL", "1");
+            env::set_var("VIRTUAL_SPRAWL_CWD", env::current_dir()?.as_os_str());
+
+            debug!("launching (execv) {}", executable.display());
+
+            // We replace the current process with the new process is it's like actually just running
+            // the real thing
+            // note the that this may launch a python script, a native binary or anything else
+            unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
         }
     };
     Ok(())
