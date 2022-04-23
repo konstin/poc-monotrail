@@ -282,9 +282,15 @@ fn write_script_entrypoints(
     python: &Path,
     entrypoints: &[Script],
     record: &mut Vec<RecordEntry>,
+    rewrite_shebang: bool,
 ) -> Result<(), WheelInstallerError> {
     // for virtual_sprawl
     fs::create_dir_all(site_packages.join("../../../bin"))?;
+    let python = if rewrite_shebang {
+        python
+    } else {
+        Path::new("python")
+    };
     for entrypoint in entrypoints {
         let entrypoint_relative = Path::new("../../../bin").join(&entrypoint.script_name);
         let launcher_python_script =
@@ -518,6 +524,7 @@ fn install_script(
 
     let target_path = Path::new("../../../bin").join(file.file_name());
     let mut script = File::open(&path)?;
+    // https://sphinx-locales.github.io/peps/pep-0427/#recommended-installer-features
     // > In wheel, scripts are packaged in {distribution}-{version}.data/scripts/.
     // > If the first line of a file in scripts/ starts with exactly b'#!python',
     // > rewrite to point to the correct interpreter. Unix installers may need to
@@ -853,8 +860,21 @@ pub fn install_wheel(
     debug!(name = name.as_str(), "Writing entrypoints");
     let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir, extras)?;
     let python = location.get_python();
-    write_script_entrypoints(&site_packages, &python, &console_scripts, &mut record)?;
-    write_script_entrypoints(&site_packages, &python, &gui_scripts, &mut record)?;
+    let rewrite_shebang = matches!(location, InstallLocation::Venv { .. });
+    write_script_entrypoints(
+        &site_packages,
+        &python,
+        &console_scripts,
+        &mut record,
+        rewrite_shebang,
+    )?;
+    write_script_entrypoints(
+        &site_packages,
+        &python,
+        &gui_scripts,
+        &mut record,
+        rewrite_shebang,
+    )?;
 
     let data_dir = site_packages.join(format!("{}-{}.data", escaped_name, version));
     // 2.a Unpacked archive includes distribution-1.0.dist-info/ and (if there is data) distribution-1.0.data/.
@@ -872,7 +892,7 @@ pub fn install_wheel(
             &mut record,
             // For the virtual sprawl install, we want to keep the fake shebang for our own
             // later replacement logic
-            matches!(location, InstallLocation::Venv { .. }),
+            rewrite_shebang,
         )?;
         // 2.c If applicable, update scripts starting with #!python to point to the correct interpreter.
         // Script are unsupported through data

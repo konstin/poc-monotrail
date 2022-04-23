@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 class InstalledPackage:
     name: str
@@ -7,5 +7,5 @@ class InstalledPackage:
     tag: str
 
 def prepare_virtual_sprawl(
-    file_running: str, extras: List[str], pep508_env: str
+    file_running: Optional[str], extras: List[str], pep508_env: str
 ) -> Tuple[str, List[InstalledPackage]]: ...
