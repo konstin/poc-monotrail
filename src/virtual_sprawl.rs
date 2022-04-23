@@ -1,5 +1,6 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
+use crate::package_index::cache_dir;
 use crate::requirements_txt::requirements_txt_to_specs;
 use crate::spec::RequestedSpec;
 use crate::{compatible_tags, install_specs, read_poetry_specs, Arch, InstallLocation, Os};
@@ -15,7 +16,7 @@ pub fn virtual_sprawl_root() -> anyhow::Result<PathBuf> {
     if let Some(env_root) = env::var_os("VIRTUAL_SPRAWL_ROOT") {
         Ok(PathBuf::from(env_root))
     } else {
-        Ok(PathBuf::from("/home/konsti/virtual_sprawl/virtual_sprawl"))
+        Ok(cache_dir()?.join("virtual_sprawl"))
     }
 }
 
