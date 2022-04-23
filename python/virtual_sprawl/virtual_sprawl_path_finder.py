@@ -43,6 +43,14 @@ class VirtualSprawlPathFinder(PathFinder, MetaPathFinder):
             site_packages.append(str(site_packages_dir))
         return super().find_spec(fullname, site_packages, target)
 
+    def _single_distribution(self, package: InstalledPackage) -> PathDistribution:
+        # TODO: Don't glob, but somehow handle that package can use the non-canonical name here
+        [dist_info_dir] = self._site_package_dir(package).glob(
+            f"*-{package.python_version}.dist-info"
+        )
+        assert dist_info_dir.is_dir(), dist_info_dir
+        return PathDistribution(dist_info_dir)
+
     def find_distributions(
         self, context: DistributionFinder.Context = DistributionFinder.Context()
     ):
@@ -52,9 +60,11 @@ class VirtualSprawlPathFinder(PathFinder, MetaPathFinder):
         our Distribution object"""
         if context.name in self.sprawl_packages:
             package = self.sprawl_packages[context.name]
-            dist_info_dir = self._site_package_dir(package).joinpath(
-                f"{package.name}-{package.python_version}.dist-info"
-            )
-            return iter([PathDistribution(dist_info_dir)])
+            return iter([self._single_distribution(package)])
+        elif context.name is None:
+            path_distributions = []
+            for package in self.sprawl_packages.values():
+                path_distributions.append(self._single_distribution(package))
+            return iter(path_distributions)
         else:
             return iter([])
