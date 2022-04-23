@@ -21,7 +21,11 @@ In the background, virtual sprawl uses a `.pth` hook which runs on python startu
 ```
 pip install virtualenv
 virtualenv .venv
-.venv/bin/pip install virtual-sprawl # MISSING, currently it's git clone and `maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"`
+# TODO: .venv/bin/pip install virtual-sprawl
+git clone https://github.com/PyO3/konstin-poc-virtual-sprawl 
+maturin build --release --strip -i python  --cargo-extra-args="--features=python_bindings"
+zip -ur target/wheels/virtual_sprawl-*.whl load_virtual_sprawl.pth
+.venv/bin/pip install -q target/wheels/virtual_sprawl-*.whl
 .venv/bin/python path/to/your/script.py
 ```
 
