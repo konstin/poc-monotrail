@@ -62,9 +62,10 @@ class VirtualSprawlPathFinder(PathFinder, MetaPathFinder):
             package = self.sprawl_packages[context.name]
             return iter([self._single_distribution(package)])
         elif context.name is None:
-            path_distributions = []
-            for package in self.sprawl_packages.values():
-                path_distributions.append(self._single_distribution(package))
-            return iter(path_distributions)
+            # return all packages, this is used e.g. by pytest -> pluggy for plugin discovery
+            return (
+                self._single_distribution(package)
+                for package in self.sprawl_packages.values()
+            )
         else:
             return iter([])
