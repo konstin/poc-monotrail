@@ -5,10 +5,10 @@ from importlib.metadata import DistributionFinder, PathDistribution
 from pathlib import Path
 from typing import Union, List, Dict
 
-from .virtual_sprawl import InstalledPackage
+from .monorail import InstalledPackage
 
 
-class VirtualSprawlPathFinder(PathFinder, MetaPathFinder):
+class MonorailPathFinder(PathFinder, MetaPathFinder):
     sprawl_root: Path
     sprawl_packages: Dict[str, InstalledPackage]
 

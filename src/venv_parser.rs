@@ -3,7 +3,7 @@ use fs_err as fs;
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Parse pyvenv.cfg from the root of the virtual env and returns the python major and minor version
+/// Parse pyvenv.cfg from the root of the virtualenv and returns the python major and minor version
 pub fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerError> {
     let pyvenv_cfg = venv.join("pyvenv.cfg");
     if !pyvenv_cfg.is_file() {
@@ -15,7 +15,7 @@ pub fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerEr
     get_pyvenv_cfg_python_version(&fs::read_to_string(pyvenv_cfg)?)
 }
 
-/// Parse pyvenv.cfg from the root of the virtual env and returns the python major and minor version
+/// Parse pyvenv.cfg from the root of the virtualenv and returns the python major and minor version
 pub fn get_pyvenv_cfg_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError> {
     let pyvenv_cfg: HashMap<String, String> = pyvenv_cfg
         .lines()

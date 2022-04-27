@@ -9,13 +9,13 @@ from shutil import rmtree
 from subprocess import check_call, DEVNULL, CalledProcessError
 from typing import List
 
-from test.compare import get_bin, get_root, diff_envs
+from test.compare_pip import get_bin, get_root, diff_envs
 
 
 def compare_with_poetry(
     env_base: str,
     project_dir: Path,
-    virtual_sprawl: Path,
+    monorail: Path,
     no_dev: bool,
     extras: List[str],
     clear_rs: bool = True,
@@ -63,7 +63,7 @@ def compare_with_poetry(
         rmtree(env_rs)
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
-    call = [virtual_sprawl, "poetry-install"]
+    call = [monorail, "poetry-install"]
     if no_dev:
         call.append("--no-dev")
     if extras:

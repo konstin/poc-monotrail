@@ -12,6 +12,7 @@ mod cli;
 mod install;
 mod install_location;
 mod markers;
+mod monorail;
 mod package_index;
 mod poetry;
 #[cfg(feature = "python_bindings")]
@@ -20,7 +21,6 @@ mod requirements_txt;
 mod source_distribution;
 mod spec;
 mod venv_parser;
-mod virtual_sprawl;
 mod wheel;
 mod wheel_tags;
 

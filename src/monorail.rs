@@ -12,11 +12,11 @@ use std::env::current_dir;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
-pub fn virtual_sprawl_root() -> anyhow::Result<PathBuf> {
-    if let Some(env_root) = env::var_os("VIRTUAL_SPRAWL_ROOT") {
+pub fn monorail_root() -> anyhow::Result<PathBuf> {
+    if let Some(env_root) = env::var_os("MONORAIL_ROOT") {
         Ok(PathBuf::from(env_root))
     } else {
-        Ok(cache_dir()?.join("virtual_sprawl"))
+        Ok(cache_dir()?.join("monorail"))
     }
 }
 
@@ -43,22 +43,22 @@ fn find_lockfile(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
 }
 
 fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
-    let read_dir =
-        fs::read_dir(Path::new(&dir)).context("Failed to load virtual sprawl directory")?;
+    let read_dir = fs::read_dir(Path::new(&dir))
+        .with_context(|| format!("Failed to load {} directory", env!("CARGO_PKG_NAME")))?;
     Ok(read_dir
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.path().is_dir())
         .collect())
 }
 
-pub fn filter_installed_virtual_sprawl(
+pub fn filter_installed_monorail(
     specs: &[RequestedSpec],
-    virtual_sprawl_root: &Path,
+    monorail_root: &Path,
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     // Behold my monstrous iterator
     // name -> version -> compatible tag
-    let installed_packages: Vec<(String, String, String)> = get_dir_content(virtual_sprawl_root)
-        // No virtual sprawl dir, no packages
+    let installed_packages: Vec<(String, String, String)> = get_dir_content(monorail_root)
+        // No monorail dir, no packages
         .unwrap_or_default()
         .iter()
         .map(|name_dir| {
@@ -143,7 +143,7 @@ pub fn filter_installed_virtual_sprawl(
 
 /// Returns a list name, python version, unique version
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn setup_virtual_sprawl(
+pub fn setup_monorail(
     file_running: Option<&Path>,
     python: &Path,
     python_version: (u8, u8),
@@ -168,7 +168,7 @@ pub fn setup_virtual_sprawl(
         }
     };
 
-    let virtual_sprawl_root = virtual_sprawl_root()?;
+    let monorail_root = monorail_root()?;
     let (lockfile, lockfile_type) = find_lockfile(&dir_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
@@ -193,12 +193,12 @@ pub fn setup_virtual_sprawl(
     };
 
     let (to_install_specs, installed_done) =
-        filter_installed_virtual_sprawl(&specs, Path::new(&virtual_sprawl_root))?;
+        filter_installed_monorail(&specs, Path::new(&monorail_root))?;
 
     let mut installed = install_specs(
         &to_install_specs,
-        &InstallLocation::VirtualSprawl {
-            virtual_sprawl_root: PathBuf::from(&virtual_sprawl_root),
+        &InstallLocation::Monorail {
+            monorail_root: PathBuf::from(&monorail_root),
             python: python.to_path_buf(),
             python_version,
         },
@@ -209,10 +209,10 @@ pub fn setup_virtual_sprawl(
 
     installed.extend(installed_done);
 
-    let virtual_sprawl_location_string = virtual_sprawl_root
+    let monorail_location_string = monorail_root
         .to_str()
-        .context("virtual sprawl path is cursed")?
+        .with_context(|| format!("{} path is cursed", env!("CARGO_PKG_NAME")))?
         .to_string();
     debug!("python extension has {} packages", installed.len());
-    Ok((virtual_sprawl_location_string, installed))
+    Ok((monorail_location_string, installed))
 }

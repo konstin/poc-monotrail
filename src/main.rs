@@ -1,9 +1,9 @@
 use anyhow::{bail, Result};
 use clap::Parser;
+use monorail::{run, Cli};
 use std::env;
 use std::path::PathBuf;
 use tracing::debug;
-use virtual_sprawl::{run, Cli};
 
 fn cli() -> Result<()> {
     let cli = Cli::parse();

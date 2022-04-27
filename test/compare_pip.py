@@ -16,18 +16,26 @@ def get_root() -> Path:
 
 
 def get_bin() -> Path:
-    release_bin = get_root().joinpath("target/release/virtual-sprawl")
+    musl_release_bin = get_root().joinpath("target/x86_64-unknown-linux-musl/release/monorail")
+    if musl_release_bin.is_file():
+        musl_release_ctime = musl_release_bin.stat().st_ctime
+    else:
+        musl_release_ctime = 0
+    release_bin = get_root().joinpath("target/release/monorail")
     if release_bin.is_file():
         release_ctime = release_bin.stat().st_ctime
     else:
         release_ctime = 0
-    debug_bin = get_root().joinpath("target/debug/virtual-sprawl")
+    debug_bin = get_root().joinpath("target/debug/monorail")
     if debug_bin.is_file():
         debug_ctime = debug_bin.stat().st_ctime
     else:
         debug_ctime = 0
 
-    if release_ctime > debug_ctime:
+    if musl_release_ctime > release_ctime and musl_release_ctime > debug_ctime:
+        print("Using musl release")
+        bin = musl_release_bin
+    elif release_ctime > debug_ctime:
         print("Using release")
         bin = release_bin
     else:
@@ -40,7 +48,7 @@ def get_bin() -> Path:
 def compare_with_pip(
     env_name: str,
     wheels: List[Union[str, Path]],
-    virtual_sprawl: Path,
+    monorail: Path,
     clear_rs: bool = True,
     clear_pip: bool = False,
 ):
@@ -70,7 +78,7 @@ def compare_with_pip(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [virtual_sprawl, "install", *wheels],
+        [monorail, "install", *wheels],
         stdout=DEVNULL,
         env=dict(os.environ, VIRTUAL_ENV=env),
     )
@@ -99,7 +107,7 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
     pattern = (
         r"^(lib/python3\.8/site-packages/("
         + "|".join(dirs)
-        + r")|bin/__pycache__|virtual-sprawl.lock)"
+        + r")|bin/__pycache__|monorail.lock)"
     )
     env_rs_entries = set()
     for i in env_rs.glob("**/*"):

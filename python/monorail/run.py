@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from .get_pep508_env import get_pep508_env
-from .virtual_sprawl import prepare_virtual_sprawl
+from .monorail import prepare_monorail
 
 # arg 1 is always the current script
 if len(sys.argv) == 1:
@@ -11,15 +11,15 @@ if len(sys.argv) == 1:
     sys.exit(1)
 
 script_name = sys.argv[1]
-if not os.environ.get("VIRTUAL_SPRAWL"):
+if not os.environ.get("MONORAIL"):
     os.execv(script_name, sys.argv[1:])
 
-if extras := os.environ.get("VIRTUAL_SPRAWL_EXTRAS"):
+if extras := os.environ.get("MONORAIL_EXTRAS"):
     extras = extras.split(",")
 else:
     extras = []
 # Install all required packages and get their location (in rust)
-sprawl_root, sprawl_packages = prepare_virtual_sprawl(None, extras, get_pep508_env())
+sprawl_root, sprawl_packages = prepare_monorail(None, extras, get_pep508_env())
 
 # Find the actual location of the entrypoint
 for package in sprawl_packages:

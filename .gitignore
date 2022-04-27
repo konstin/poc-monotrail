@@ -2,7 +2,6 @@
 .cargo
 .pytest-cache
 .venv*
-/virtual_sprawl
 __pycache__
 _pip
 data_science_project/iris.png

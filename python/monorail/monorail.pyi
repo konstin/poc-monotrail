@@ -6,6 +6,6 @@ class InstalledPackage:
     unique_version: str
     tag: str
 
-def prepare_virtual_sprawl(
+def prepare_monorail(
     file_running: Optional[str], extras: List[str], pep508_env: str
 ) -> Tuple[str, List[InstalledPackage]]: ...

@@ -9,7 +9,7 @@ BENCHMARK_OPTIONS="-E tqdm_feature"
 
 pip --version
 poetry --version
-cargo build -q --release --target x86_64-unknown-linux-musl --bin virtual-sprawl
+cargo build -q --release --target x86_64-unknown-linux-musl --bin monorail
 
 cd "$(dirname "$0")/$BENCHMARK_DIR"
 
@@ -23,4 +23,4 @@ VIRTUAL_ENV=$(pwd)/.venv PATH="../../../target/x86_64-unknown-linux-musl/release
   --export-markdown hyperfine.md \
   ".venv/bin/pip install -q -r requirements-benchmark.txt" \
   "poetry install -q --no-root $BENCHMARK_OPTIONS" \
-  "virtual-sprawl poetry-install $BENCHMARK_OPTIONS"
+  "monorail poetry-install $BENCHMARK_OPTIONS"

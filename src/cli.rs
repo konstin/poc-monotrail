@@ -1,11 +1,11 @@
 use crate::install::InstalledPackage;
 use crate::install_location::InstallLocation;
 use crate::markers::Pep508Environment;
+use crate::monorail::monorail_root;
 use crate::package_index::download_distribution;
 use crate::poetry::read_poetry_specs;
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
-use crate::virtual_sprawl::virtual_sprawl_root;
 use crate::wheel_tags::current_compatible_tags;
 use crate::{install_specs, package_index, WheelInstallerError};
 use anyhow::{bail, format_err, Context};
@@ -27,7 +27,7 @@ pub struct PoetryOptions {
     #[clap(long, short = 'E')]
     extras: Vec<String>,
     #[clap(long)]
-    virtual_sprawl: bool,
+    monorail: bool,
     /// Only relevant for venv install
     #[clap(long)]
     skip_existing: bool,
@@ -93,10 +93,10 @@ fn install_location_specs(
         &pep508_env,
     )?;
 
-    let location = if options.virtual_sprawl {
-        let virtual_sprawl_root = virtual_sprawl_root()?;
-        InstallLocation::VirtualSprawl {
-            virtual_sprawl_root,
+    let location = if options.monorail {
+        let monorail_root = monorail_root()?;
+        InstallLocation::Monorail {
+            monorail_root,
             python: venv_canon.join("bin").join("python"),
             python_version,
         }
@@ -108,7 +108,7 @@ fn install_location_specs(
         }
     };
 
-    let (to_install, mut installed_done) = if options.skip_existing || options.virtual_sprawl {
+    let (to_install, mut installed_done) = if options.skip_existing || options.monorail {
         location.filter_installed(&specs)?
     } else {
         (specs, Vec::new())
@@ -162,7 +162,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let (location, installed) =
                 install_location_specs(venv, python_version, &venv_canon, &options)?;
             let executable = match location {
-                // Using virtual sprawl as launcher is kinda pointless when we're already in a venv ¯\_(ツ)_/¯
+                // Using monorail as launcher is kinda pointless when we're already in a venv ¯\_(ツ)_/¯
                 InstallLocation::Venv { venv_base, .. } => {
                     let bin_dir = venv_base.join("bin");
                     let executable = bin_dir.join(&command);
@@ -171,13 +171,10 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                     }
                     executable
                 }
-                InstallLocation::VirtualSprawl {
-                    virtual_sprawl_root,
-                    ..
-                } => installed
+                InstallLocation::Monorail { monorail_root, .. } => installed
                     .iter()
                     .map(|installed_package| {
-                        virtual_sprawl_root
+                        monorail_root
                             .join(&installed_package.name)
                             .join(&installed_package.unique_version)
                             .join(&installed_package.tag)
@@ -190,7 +187,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                     })?,
             };
 
-            // Check whether we're launching a virtual sprawl python script
+            // Check whether we're launching a monorail python script
             let mut executable_file = File::open(&executable)
                 .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
             let placeholder_python = b"#!python";
@@ -213,8 +210,8 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 })
                 .collect::<anyhow::Result<Vec<CString>>>()?;
 
-            env::set_var("VIRTUAL_SPRAWL", "1");
-            env::set_var("VIRTUAL_SPRAWL_CWD", env::current_dir()?.as_os_str());
+            env::set_var("MONORAIL", "1");
+            env::set_var("MONORAIL_CWD", env::current_dir()?.as_os_str());
 
             debug!("launching (execv) {}", executable.display());
 

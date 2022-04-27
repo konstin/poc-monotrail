@@ -2,18 +2,17 @@
 
 use anyhow::{bail, Error, Result};
 use clap::Parser;
+use monorail::{run, Cli};
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
-use virtual_sprawl::{run, Cli};
 
 fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let temp_dir = TempDir::new()?;
     let venv = temp_dir.path().join(".venv");
     Command::new("virtualenv").arg(&venv).output()?;
     let wheel = Path::new("test-data/pip-test-packages").join(name);
-    let cli: Cli =
-        Cli::try_parse_from(&["virtual-sprawl", "install", &wheel.display().to_string()])?;
+    let cli: Cli = Cli::try_parse_from(&["monorail", "install", &wheel.display().to_string()])?;
     if let Err(err) = run(cli, &venv) {
         let err: Error = err;
         let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();

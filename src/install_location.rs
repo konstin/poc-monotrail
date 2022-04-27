@@ -1,8 +1,8 @@
-//! Multiplexing between venv install and virtual sprawl install
+//! Multiplexing between venv install and monorail install
 
 use crate::install::InstalledPackage;
+use crate::monorail::filter_installed_monorail;
 use crate::spec::RequestedSpec;
-use crate::virtual_sprawl::filter_installed_virtual_sprawl;
 use crate::wheel::parse_key_value_file;
 use anyhow::Context;
 use fs2::FileExt;
@@ -13,20 +13,20 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use tracing::{error, warn};
 
-const VIRTUAL_SPRAWL_LOCKFILE: &str = "virtual-sprawl.lock";
+const MONORAIL_LOCKFILE: &str = "monorail.lock";
 
-/// A directory for which we acquired a virtual-sprawl.lock lockfile
+/// A directory for which we acquired a monorail.lock lockfile
 pub struct LockedDir {
     /// The directory to lock
     path: PathBuf,
-    /// handle on the virtual-sprawl.lock that drops the lock
+    /// handle on the monorail.lock that drops the lock
     lockfile: File,
 }
 
 impl LockedDir {
     /// Tries to lock the directory, returns Ok(None) if it is already locked
     pub fn try_acquire(path: &Path) -> io::Result<Option<Self>> {
-        let lockfile = File::create(path.join(VIRTUAL_SPRAWL_LOCKFILE))?;
+        let lockfile = File::create(path.join(MONORAIL_LOCKFILE))?;
         if lockfile.file().try_lock_exclusive().is_ok() {
             Ok(Some(Self {
                 path: path.to_path_buf(),
@@ -39,7 +39,7 @@ impl LockedDir {
 
     /// Locks the directory, if necessary blocking until the lock becomes free
     pub fn acquire(path: &Path) -> io::Result<Self> {
-        let lockfile = File::create(path.join(VIRTUAL_SPRAWL_LOCKFILE))?;
+        let lockfile = File::create(path.join(MONORAIL_LOCKFILE))?;
         lockfile.file().lock_exclusive()?;
         Ok(Self {
             path: path.to_path_buf(),
@@ -68,15 +68,15 @@ impl Deref for LockedDir {
     }
 }
 
-/// Multiplexing between venv install and virtual sprawl install
+/// Multiplexing between venv install and monorail install
 ///
-/// For virtual sprawl, we have a structure that is {virtual sprawl}/{normalized(name)}/{version}/tag
+/// For monorail, we have a structure that is {monorail}/{normalized(name)}/{version}/tag
 ///
 /// We use a lockfile to prevent multiple instance writing stuff on the same time
 /// As of pip 22.0, e.g. `pip install numpy; pip install numpy; pip install numpy` will
 /// nondeterministically fail
 ///
-/// I was also thinking about making a shared lock on the import side, but virtual sprawl install
+/// I was also thinking about making a shared lock on the import side, but monorail install
 /// is supposedly atomic (by directory renaming), while for venv installation there can't be
 /// atomicity (we need to add lots of different file without a top level directory / key-turn
 /// file we could rename) and the locking would also need to happen in the import mechanism
@@ -87,8 +87,8 @@ pub enum InstallLocation<T: Deref<Target = Path>> {
         venv_base: T,
         python_version: (u8, u8),
     },
-    VirtualSprawl {
-        virtual_sprawl_root: T,
+    Monorail {
+        monorail_root: T,
         python: PathBuf,
         python_version: (u8, u8),
     },
@@ -102,15 +102,15 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
                 // canonicalize on python would resolve the symlink
                 venv_base.join("bin").join("python")
             }
-            // TODO: For virtual_sprawl use the virtual_sprawl launcher
-            InstallLocation::VirtualSprawl { python, .. } => python.clone(),
+            // TODO: For monorail use the monorail launcher
+            InstallLocation::Monorail { python, .. } => python.clone(),
         }
     }
 
     pub fn get_python_version(&self) -> (u8, u8) {
         match self {
             InstallLocation::Venv { python_version, .. } => *python_version,
-            InstallLocation::VirtualSprawl { python_version, .. } => *python_version,
+            InstallLocation::Monorail { python_version, .. } => *python_version,
         }
     }
 
@@ -126,10 +126,9 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
                 "Failed to filter packages installed in the venv at {}",
                 venv_base.display()
             )),
-            InstallLocation::VirtualSprawl {
-                virtual_sprawl_root,
-                ..
-            } => Ok(filter_installed_virtual_sprawl(specs, virtual_sprawl_root)?),
+            InstallLocation::Monorail { monorail_root, .. } => {
+                Ok(filter_installed_monorail(specs, monorail_root)?)
+            }
         }
     }
 
@@ -144,10 +143,7 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
                 .join("site-packages")
                 .join(format!("{}-{}.dist-info", normalized_name, version))
                 .is_dir(),
-            InstallLocation::VirtualSprawl {
-                virtual_sprawl_root,
-                ..
-            } => virtual_sprawl_root
+            InstallLocation::Monorail { monorail_root, .. } => monorail_root
                 .join(format!("{}-{}", normalized_name, version))
                 .is_dir(),
         }
@@ -158,13 +154,10 @@ impl InstallLocation<PathBuf> {
     pub fn acquire_lock(&self) -> io::Result<InstallLocation<LockedDir>> {
         let root = match self {
             Self::Venv { venv_base, .. } => venv_base,
-            Self::VirtualSprawl {
-                virtual_sprawl_root,
-                ..
-            } => virtual_sprawl_root,
+            Self::Monorail { monorail_root, .. } => monorail_root,
         };
 
-        // If necessary, create virtual sprawl dir
+        // If necessary, create monorail dir
         fs::create_dir_all(root)?;
 
         let locked_dir = if let Some(locked_dir) = LockedDir::try_acquire(root)? {
@@ -182,12 +175,12 @@ impl InstallLocation<PathBuf> {
                 venv_base: locked_dir,
                 python_version: *python_version,
             },
-            Self::VirtualSprawl {
+            Self::Monorail {
                 python_version,
                 python,
                 ..
-            } => InstallLocation::VirtualSprawl {
-                virtual_sprawl_root: locked_dir,
+            } => InstallLocation::Monorail {
+                monorail_root: locked_dir,
                 python: python.clone(),
                 python_version: *python_version,
             },

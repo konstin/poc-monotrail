@@ -2,15 +2,16 @@
 set -e
 
 maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
-zip -ur target/wheels/virtual_sprawl-*.whl load_virtual_sprawl.pth
-.venv/bin/pip uninstall -y -q virtual-sprawl
-.venv/bin/pip install -q target/wheels/virtual_sprawl-*.whl
+# VIRTUAL_ENV=/home/konsti/monorail/.venv maturin develop --release --strip --cargo-extra-args="--features=python_bindings"
+zip -ur target/wheels/monorail-*.whl load_monorail.pth
+.venv/bin/pip uninstall -y -q monorail
+.venv/bin/pip install -q target/wheels/monorail-*.whl
 # Run pytest, entrypoint
-(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 VIRTUAL_SPRAWL=1 VIRTUAL_SPRAWL_EXTRAS="import-json" ../virtual_sprawl/.venv/bin/python -m virtual_sprawl.run pytest)
+(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONORAIL=1 MONORAIL_EXTRAS="import-json" ../monorail/.venv/bin/python -m monorail.run pytest)
 # Run pytest, module
-(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 VIRTUAL_SPRAWL=1 VIRTUAL_SPRAWL_EXTRAS="import-json" ../virtual_sprawl/.venv/bin/python -m pytest)
+(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONORAIL=1 MONORAIL_EXTRAS="import-json" ../monorail/.venv/bin/python -m pytest)
 # Test interactive console
-(cd ../meine-stadt-transparent && VIRTUAL_SPRAWL=1 ../virtual_sprawl/.venv/bin/python -c "print('hi')")
+(cd ../meine-stadt-transparent && MONORAIL=1 ../monorail/.venv/bin/python -c "import django; print('hi django ' + django.__version__)")
 # Test manage.py script
-VIRTUAL_SPRAWL=1 ENV_PATH=../meine-stadt-transparent/.env .venv/bin/python ../meine-stadt-transparent/manage.py | wc -l
-#(cd ../meine-stadt-transparent && VIRTUAL_SPRAWL=1 VIRTUAL_SPRAWL_EXTRAS="import-json" ../virtual_sprawl/.venv/bin/python manage.py runserver)
+MONORAIL=1 ENV_PATH=../meine-stadt-transparent/.env .venv/bin/python ../meine-stadt-transparent/manage.py | wc -l
+#(cd ../meine-stadt-transparent && MONORAIL=1 MONORAIL_EXTRAS="import-json" ../monorail/.venv/bin/python manage.py runserver)

@@ -13,7 +13,7 @@ poetry --version
 # Something with relative/absolute paths is broken
 (
   cd ../../..
-  cargo build -q --release --target x86_64-unknown-linux-musl --bin virtual-sprawl
+  cargo build -q --release --target x86_64-unknown-linux-musl --bin monorail
   cd -
 )
 
@@ -28,8 +28,8 @@ rm -rf .venv && virtualenv -q .venv
 time VIRTUAL_ENV=$(pwd)/.venv PATH="$PATH:$(pwd)/.venv/bin" poetry install -q --no-root $BENCHMARK_OPTIONS
 # real    0m16,924s   user    0m38,731s   sys     0m5,372s
 
-# virtual sprawl benchmark
+# monorail benchmark
 rm -rf .venv && virtualenv -q .venv
 # shellcheck disable=SC2086
-time VIRTUAL_ENV=$(pwd)/.venv PATH="$PATH:$(pwd)/.venv/bin" ../../../target/x86_64-unknown-linux-musl/release/virtual-sprawl poetry-install $BENCHMARK_OPTIONS
+time VIRTUAL_ENV=$(pwd)/.venv PATH="$PATH:$(pwd)/.venv/bin" ../../../target/x86_64-unknown-linux-musl/release/monorail poetry-install $BENCHMARK_OPTIONS
 # real    0m5,414s    user    0m13,421s   sys     0m2,300s

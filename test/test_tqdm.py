@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from subprocess import check_call, SubprocessError, DEVNULL
 
-from test.compare import get_root, get_bin
+from test.compare_pip import get_root, get_bin
 
 
 def test_tqdm():
