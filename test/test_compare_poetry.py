@@ -9,7 +9,8 @@ from shutil import rmtree
 from subprocess import check_call, DEVNULL, CalledProcessError
 from typing import List
 
-from test.compare_pip import get_bin, get_root, diff_envs
+from test.test_compare_pip import diff_envs
+from test.utils import get_bin, get_root
 
 
 def compare_with_poetry(
@@ -84,6 +85,16 @@ def compare_with_poetry(
 
     if clear_rs:
         shutil.rmtree(env_rs)
+
+
+def test_data_science_project():
+    compare_with_poetry(
+        "data_science_project",
+        get_root().joinpath("data_science_project"),
+        get_bin(),
+        False,
+        ["tqdm_feature"],
+    )
 
 
 def main():

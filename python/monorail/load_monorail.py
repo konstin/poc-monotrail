@@ -11,9 +11,7 @@ from .monorail_path_finder import MonorailPathFinder
 
 def load_monorail(filename: str, extras: List[str]):
     # Install all required packages and get their location (in rust)
-    sprawl_root, sprawl_packages = prepare_monorail(
-        filename, extras, get_pep508_env()
-    )
+    sprawl_root, sprawl_packages = prepare_monorail(filename, extras, get_pep508_env())
 
     # Remove existing monorail path finder
     i = 0
@@ -54,7 +52,9 @@ def monorail_from_env():
         # TODO extras normalization PEP
         # TODO non-ascii identifiers?
         if not set(extra) < set("_-" + string.ascii_letters + string.digits):
-            raise ValueError("Invalid extra name '{}' allowed are underscore, minus, letters and digits")
+            raise ValueError(
+                "Invalid extra name '{}' allowed are underscore, minus, letters and digits"
+            )
     try:
         load_monorail(filename, extras)
     except Exception as e:

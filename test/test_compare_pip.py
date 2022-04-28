@@ -10,39 +10,7 @@ from shutil import rmtree
 from subprocess import check_call, DEVNULL
 from typing import List, Union
 
-
-def get_root() -> Path:
-    return Path(__file__).parent.parent
-
-
-def get_bin() -> Path:
-    musl_release_bin = get_root().joinpath("target/x86_64-unknown-linux-musl/release/monorail")
-    if musl_release_bin.is_file():
-        musl_release_ctime = musl_release_bin.stat().st_ctime
-    else:
-        musl_release_ctime = 0
-    release_bin = get_root().joinpath("target/release/monorail")
-    if release_bin.is_file():
-        release_ctime = release_bin.stat().st_ctime
-    else:
-        release_ctime = 0
-    debug_bin = get_root().joinpath("target/debug/monorail")
-    if debug_bin.is_file():
-        debug_ctime = debug_bin.stat().st_ctime
-    else:
-        debug_ctime = 0
-
-    if musl_release_ctime > release_ctime and musl_release_ctime > debug_ctime:
-        print("Using musl release")
-        bin = musl_release_bin
-    elif release_ctime > debug_ctime:
-        print("Using release")
-        bin = release_bin
-    else:
-        print("Using debug")
-        bin = debug_bin
-
-    return bin
+from test.utils import get_bin, get_root
 
 
 def compare_with_pip(
@@ -123,6 +91,20 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
     if symmetric_difference:
         print(env_name, symmetric_difference)
         sys.exit(1)
+
+
+def test_purelib_platlib():
+    purelib_platlib_wheel = get_root().joinpath(
+        "test-data/wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl"
+    )
+    compare_with_pip("purelib_platlib", [purelib_platlib_wheel], get_bin())
+
+
+def test_tqdm():
+    purelib_platlib_wheel = get_root().joinpath(
+        "popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl"
+    )
+    compare_with_pip("tqdm", [purelib_platlib_wheel], get_bin())
 
 
 def main():

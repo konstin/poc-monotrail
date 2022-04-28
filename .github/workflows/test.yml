@@ -43,9 +43,9 @@ jobs:
         with:
           python-version: "3.8"
 
-      - name: Install virtualenv
+      - name: Install virtualenv, maturin pytest
         run: |
-          pip install -U pip virtualenv
+          pip install -U pip virtualenv maturin pytest
           virtualenv --upgrade-embed-wheels
       - name: Install stable rust
         uses: actions-rs/toolchain@v1
@@ -83,11 +83,12 @@ jobs:
         with:
           key: monorail-${{ runner.os }}
 
+      # We use x86_64-unknown-linux-musl to avoid cache conflicts with maturin's linker flags
       - name: cargo build
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release
+          args: --release --target x86_64-unknown-linux-musl
 
       - name: Download popular wheels
         run: pip download -d popular-wheels -r popular.txt
@@ -96,26 +97,13 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          args: --release --target x86_64-unknown-linux-musl
 
-      # quick test, includes package and console script
-      - name: Compare tqdm
-        run: python -m test.compare popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl
-      - name: Test tqdm
-        run: python -m test.test_tqdm
+      - name: pytest
+        run: pytest
 
-      - name: Test purelib/pathlib
-        if: matrix.os == 'ubuntu-latest'
-        run: python -m test.compare test-data/wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl
-
-      - name: Compare pip test wheels
-        run: python -m test.test_piptests
-
-      - name: Compare popular wheels
-        run: python -m test.test_popular
-
-      - name: Compare popular poetry
-        run: python -m test.compare_poetry data_science_project -E tqdm_feature
+      - name: make paper
+        run: bash make_paper.sh
 
       - name: Benchmark plotly and tqdm
         #if: matrix.os == 'ubuntu-latest'

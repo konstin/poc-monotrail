@@ -1,6 +1,6 @@
 *.so
 .cargo
-.pytest-cache
+.pytest_cache
 .venv*
 __pycache__
 _pip
