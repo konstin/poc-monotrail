@@ -3,9 +3,9 @@ set -e
 
 CARGO_TARGET_DIR=target-maturin maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
 # VIRTUAL_ENV=/home/konsti/monorail/.venv maturin develop --release --strip --cargo-extra-args="--features=python_bindings"
-zip -ur target/wheels/monorail-*.whl load_monorail.pth
+zip -ur target-maturin/wheels/monorail-*.whl load_monorail.pth
 .venv/bin/pip uninstall -y -q monorail
-.venv/bin/pip install -q target/wheels/monorail-*.whl
+.venv/bin/pip install -q target-maturin/wheels/monorail-*.whl
 # Run pytest, entrypoint
 (cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONORAIL=1 MONORAIL_EXTRAS="import-json" ../monorail/.venv/bin/python -m monorail.run pytest)
 # Run pytest, module
