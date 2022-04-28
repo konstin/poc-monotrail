@@ -11,5 +11,6 @@ perf.data*
 popular-wheels
 requirements-benchmark.txt
 target
+target-maturin
 test-venvs
 venv

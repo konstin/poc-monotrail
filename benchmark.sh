@@ -9,7 +9,7 @@ BENCHMARK_OPTIONS="-E tqdm_feature"
 
 pip --version
 poetry --version
-cargo build -q --release --target x86_64-unknown-linux-musl --bin monorail
+cargo build -q --release --bin monorail
 
 cd "$(dirname "$0")/$BENCHMARK_DIR"
 

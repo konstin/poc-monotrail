@@ -10,7 +10,7 @@ def main():
     from test.test_tqdm import test_tqdm
 
     # build release only with maturin because cargo caching breaks when we switch linker options
-    check_call("cargo build --release --target x86_64-unknown-linux-musl".split(" "))
+    check_call("cargo build --release".split(" "))
     test_purelib_platlib()
     test_piptests()
     test_popular()

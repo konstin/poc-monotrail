@@ -58,6 +58,6 @@ def monorail_from_env():
     try:
         load_monorail(filename, extras)
     except Exception as e:
-        print("VIRTUAL SPRAWL ERROR: PACKAGES WILL NOT BE AVAILABLE", e)
+        print("MONORAIL ERROR: PACKAGES WILL NOT BE AVAILABLE", e)
     except BaseException as e:  # Rust panic
-        print("VIRTUAL SPRAWL CRASH (RUST PANIC): PACKAGES WILL NOT BE AVAILABLE", e)
+        print("MONORAIL CRASH (RUST PANIC): PACKAGES WILL NOT BE AVAILABLE", e)

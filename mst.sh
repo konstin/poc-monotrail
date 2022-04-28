@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
+CARGO_TARGET_DIR=target-maturin maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
 # VIRTUAL_ENV=/home/konsti/monorail/.venv maturin develop --release --strip --cargo-extra-args="--features=python_bindings"
 zip -ur target/wheels/monorail-*.whl load_monorail.pth
 .venv/bin/pip uninstall -y -q monorail

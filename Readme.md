@@ -1,4 +1,4 @@
-# Proof Of Concept: Virtual Sprawl
+# Proof Of Concept: Monorail
 
 This proof of concept shows two things:
 
@@ -19,7 +19,7 @@ In the background, monorail uses a `.pth` hook which runs on python startup befo
 ## Usage
 
 ```
-pip install virtualenv
+pip install -U pip virtualenv maturin
 virtualenv .venv
 # TODO: .venv/bin/pip install monorail
 git clone https://github.com/PyO3/konstin-poc-monorail 

@@ -13,7 +13,7 @@ poetry --version
 # Something with relative/absolute paths is broken
 (
   cd ../../..
-  cargo build -q --release --target x86_64-unknown-linux-musl --bin monorail
+  cargo build -q --release --bin monorail
   cd -
 )
 

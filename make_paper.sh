@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
+CARGO_TARGET_DIR=target-maturin maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
 zip -ur target/wheels/monorail-*.whl load_monorail.pth
 rm -rf .venv
 virtualenv .venv
