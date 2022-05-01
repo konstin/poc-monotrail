@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use clap::Parser;
-use monorail::{run, Cli};
+use monotrail::{run, Cli};
 use std::env;
 use std::path::PathBuf;
 use tracing::debug;

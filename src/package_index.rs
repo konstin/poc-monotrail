@@ -90,7 +90,7 @@ pub fn search_release(
     debug!("Getting Releases");
     let url = format!("https://pypi.org/pypi/{}/json", name);
     let pypi_project: PypiProject = ureq::get(&url)
-        .set("User-Agent", "monorail (konstin@mailbox.org)")
+        .set("User-Agent", "monotrail (konstin@mailbox.org)")
         .call()
         .context("Failed to contact pypi. Is your internet connection working?")?
         .into_json()
@@ -131,7 +131,7 @@ pub(crate) fn download_distribution(
     let mut temp_file = tempfile::NamedTempFile::new_in(&target_dir)
         .context("Couldn't create file for download")?;
     let request_for_file = ureq::get(url)
-        .set("User-Agent", "monorail (konstin@mailbox.org)")
+        .set("User-Agent", "monotrail (konstin@mailbox.org)")
         .call()
         .context("Error during pypi request")?;
     io::copy(&mut request_for_file.into_reader(), &mut temp_file)
@@ -142,7 +142,7 @@ pub(crate) fn download_distribution(
     Ok(())
 }
 
-/// `~/.cache/monorail`
+/// `~/.cache/monotrail`
 pub(crate) fn cache_dir() -> result::Result<PathBuf, WheelInstallerError> {
     Ok(dirs::cache_dir()
         .ok_or_else(|| {

@@ -1,11 +1,12 @@
 [package]
-name = "monorail"
+name = "monotrail"
 version = "0.0.1"
 edition = "2021"
+readme = "Readme.md"
 
 [lib]
 crate-type = ["rlib", "cdylib"]
-name = "monorail"
+name = "monotrail"
 
 [dependencies]
 anyhow = "1.0.51"

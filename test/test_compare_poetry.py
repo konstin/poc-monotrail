@@ -16,7 +16,7 @@ from test.utils import get_bin, get_root
 def compare_with_poetry(
     env_base: str,
     project_dir: Path,
-    monorail: Path,
+    monotrail: Path,
     no_dev: bool,
     extras: List[str],
     clear_rs: bool = True,
@@ -64,7 +64,7 @@ def compare_with_poetry(
         rmtree(env_rs)
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
-    call = [monorail, "poetry-install"]
+    call = [monotrail, "poetry-install"]
     if no_dev:
         call.append("--no-dev")
     if extras:

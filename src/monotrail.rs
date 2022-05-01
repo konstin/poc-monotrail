@@ -12,11 +12,11 @@ use std::env::current_dir;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
-pub fn monorail_root() -> anyhow::Result<PathBuf> {
-    if let Some(env_root) = env::var_os("MONORAIL_ROOT") {
+pub fn monotrail_root() -> anyhow::Result<PathBuf> {
+    if let Some(env_root) = env::var_os("MONOTRAIL_ROOT") {
         Ok(PathBuf::from(env_root))
     } else {
-        Ok(cache_dir()?.join("monorail"))
+        Ok(cache_dir()?.join("monotrail"))
     }
 }
 
@@ -51,14 +51,14 @@ fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
         .collect())
 }
 
-pub fn filter_installed_monorail(
+pub fn filter_installed_monotrail(
     specs: &[RequestedSpec],
-    monorail_root: &Path,
+    monotrail_root: &Path,
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     // Behold my monstrous iterator
     // name -> version -> compatible tag
-    let installed_packages: Vec<(String, String, String)> = get_dir_content(monorail_root)
-        // No monorail dir, no packages
+    let installed_packages: Vec<(String, String, String)> = get_dir_content(monotrail_root)
+        // No monotrail dir, no packages
         .unwrap_or_default()
         .iter()
         .map(|name_dir| {
@@ -144,7 +144,7 @@ pub fn filter_installed_monorail(
 /// script can be a manually set working directory or the python script we're running.
 /// Returns a list name, python version, unique version
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn setup_monorail(
+pub fn setup_monotrail(
     script: Option<&Path>,
     python: &Path,
     python_version: (u8, u8),
@@ -171,7 +171,7 @@ pub fn setup_monorail(
 
     debug!("python project dir: {}", dir_running.display());
 
-    let monorail_root = monorail_root()?;
+    let monotrail_root = monotrail_root()?;
     let (lockfile, lockfile_type) = find_lockfile(&dir_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
@@ -196,12 +196,12 @@ pub fn setup_monorail(
     };
 
     let (to_install_specs, installed_done) =
-        filter_installed_monorail(&specs, Path::new(&monorail_root))?;
+        filter_installed_monotrail(&specs, Path::new(&monotrail_root))?;
 
     let mut installed = install_specs(
         &to_install_specs,
-        &InstallLocation::Monorail {
-            monorail_root: PathBuf::from(&monorail_root),
+        &InstallLocation::Monotrail {
+            monotrail_root: PathBuf::from(&monotrail_root),
             python: python.to_path_buf(),
             python_version,
         },
@@ -212,10 +212,10 @@ pub fn setup_monorail(
 
     installed.extend(installed_done);
 
-    let monorail_location_string = monorail_root
+    let monotrail_location_string = monotrail_root
         .to_str()
         .with_context(|| format!("{} path is cursed", env!("CARGO_PKG_NAME")))?
         .to_string();
     debug!("python extension has {} packages", installed.len());
-    Ok((monorail_location_string, installed))
+    Ok((monotrail_location_string, installed))
 }

@@ -18,7 +18,7 @@ from test.utils import get_bin, get_root
 def compare_with_pip(
     env_name: str,
     wheels: List[Union[str, Path]],
-    monorail: Path,
+    monotrail: Path,
     clear_rs: bool = True,
     clear_pip: bool = False,
 ):
@@ -48,7 +48,7 @@ def compare_with_pip(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [monorail, "install", *wheels],
+        [monotrail, "install", *wheels],
         stdout=DEVNULL,
         env=dict(os.environ, VIRTUAL_ENV=env),
     )
@@ -77,7 +77,7 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
     pattern = (
         r"^(lib/python3\.8/site-packages/("
         + "|".join(dirs)
-        + r")|bin/__pycache__|monorail.lock)"
+        + r")|bin/__pycache__|monotrail.lock)"
     )
     env_rs_entries = set()
     for i in env_rs.glob("**/*"):

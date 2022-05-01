@@ -1,7 +1,7 @@
 use crate::install::InstalledPackage;
 use crate::install_location::InstallLocation;
 use crate::markers::Pep508Environment;
-use crate::monorail::monorail_root;
+use crate::monotrail::monotrail_root;
 use crate::package_index::download_distribution;
 use crate::poetry::read_poetry_specs;
 use crate::spec::RequestedSpec;
@@ -27,7 +27,7 @@ pub struct PoetryOptions {
     #[clap(long, short = 'E')]
     extras: Vec<String>,
     #[clap(long)]
-    monorail: bool,
+    monotrail: bool,
     /// Only relevant for venv install
     #[clap(long)]
     skip_existing: bool,
@@ -93,10 +93,10 @@ fn install_location_specs(
         &pep508_env,
     )?;
 
-    let location = if options.monorail {
-        let monorail_root = monorail_root()?;
-        InstallLocation::Monorail {
-            monorail_root,
+    let location = if options.monotrail {
+        let monotrail_root = monotrail_root()?;
+        InstallLocation::Monotrail {
+            monotrail_root,
             python: venv_canon.join("bin").join("python"),
             python_version,
         }
@@ -108,7 +108,7 @@ fn install_location_specs(
         }
     };
 
-    let (to_install, mut installed_done) = if options.skip_existing || options.monorail {
+    let (to_install, mut installed_done) = if options.skip_existing || options.monotrail {
         location.filter_installed(&specs)?
     } else {
         (specs, Vec::new())
@@ -162,7 +162,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             let (location, installed) =
                 install_location_specs(venv, python_version, &venv_canon, &options)?;
             let executable = match location {
-                // Using monorail as launcher is kinda pointless when we're already in a venv ¯\_(ツ)_/¯
+                // Using monotrail as launcher is kinda pointless when we're already in a venv ¯\_(ツ)_/¯
                 InstallLocation::Venv { venv_base, .. } => {
                     let bin_dir = venv_base.join("bin");
                     let executable = bin_dir.join(&command);
@@ -171,10 +171,10 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                     }
                     executable
                 }
-                InstallLocation::Monorail { monorail_root, .. } => installed
+                InstallLocation::Monotrail { monotrail_root, .. } => installed
                     .iter()
                     .map(|installed_package| {
-                        monorail_root
+                        monotrail_root
                             .join(&installed_package.name)
                             .join(&installed_package.unique_version)
                             .join(&installed_package.tag)
@@ -187,7 +187,7 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                     })?,
             };
 
-            // Check whether we're launching a monorail python script
+            // Check whether we're launching a monotrail python script
             let mut executable_file = File::open(&executable)
                 .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
             let placeholder_python = b"#!python";
@@ -210,8 +210,8 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 })
                 .collect::<anyhow::Result<Vec<CString>>>()?;
 
-            env::set_var("MONORAIL", "1");
-            env::set_var("MONORAIL_CWD", env::current_dir()?.as_os_str());
+            env::set_var("MONOTRAIL", "1");
+            env::set_var("MONOTRAIL_CWD", env::current_dir()?.as_os_str());
 
             debug!("launching (execv) {}", executable.display());
 

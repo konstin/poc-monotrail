@@ -12,7 +12,7 @@ mod cli;
 mod install;
 mod install_location;
 mod markers;
-mod monorail;
+mod monotrail;
 mod package_index;
 mod poetry;
 #[cfg(feature = "python_bindings")]

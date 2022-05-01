@@ -3,18 +3,18 @@ from pathlib import Path
 
 def get_bin() -> Path:
     musl_release_bin = get_root().joinpath(
-        "target/x86_64-unknown-linux-musl/release/monorail"
+        "target/x86_64-unknown-linux-musl/release/monotrail"
     )
     if musl_release_bin.is_file():
         musl_release_ctime = musl_release_bin.stat().st_ctime
     else:
         musl_release_ctime = 0
-    release_bin = get_root().joinpath("target/release/monorail")
+    release_bin = get_root().joinpath("target/release/monotrail")
     if release_bin.is_file():
         release_ctime = release_bin.stat().st_ctime
     else:
         release_ctime = 0
-    debug_bin = get_root().joinpath("target/debug/monorail")
+    debug_bin = get_root().joinpath("target/debug/monotrail")
     if debug_bin.is_file():
         debug_ctime = debug_bin.stat().st_ctime
     else:

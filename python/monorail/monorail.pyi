@@ -6,7 +6,7 @@ class InstalledPackage:
     unique_version: str
     tag: str
 
-def prepare_monorail(
+def prepare_monotrail(
     script: Optional[str], extras: List[str], pep508_env: str
 ) -> Tuple[str, List[InstalledPackage]]: ...
-def prepare_monorail_from_env(args: List[str]) -> Tuple[str, List[InstalledPackage]]: ...
+def prepare_monotrail_from_env(args: List[str]) -> Tuple[str, List[InstalledPackage]]: ...

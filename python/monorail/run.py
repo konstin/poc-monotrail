@@ -2,7 +2,7 @@ import os
 import sys
 from pathlib import Path
 
-from .monorail import prepare_monorail_from_env
+from .monotrail import prepare_monotrail_from_env
 
 # arg 1 is always the current script
 if len(sys.argv) == 1:
@@ -10,11 +10,11 @@ if len(sys.argv) == 1:
     sys.exit(1)
 
 script_name = sys.argv[1]
-if not os.environ.get("MONORAIL"):
+if not os.environ.get("MONOTRAIL"):
     os.execv(script_name, sys.argv[1:])
 
 # Install all required packages and get their location (in rust)
-sprawl_root, sprawl_packages = prepare_monorail_from_env([])
+sprawl_root, sprawl_packages = prepare_monotrail_from_env([])
 
 # Find the actual location of the entrypoint
 for package in sprawl_packages:

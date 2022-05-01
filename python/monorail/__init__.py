@@ -1,10 +1,10 @@
 """
-Loading this module will run monorail, installing all required packages and making them loadable
+Loading this module will run monotrail, installing all required packages and making them loadable
 """
 
 import os
 
-if os.environ.get("MONORAIL"):
-    from .load_monorail import load_monorail
+if os.environ.get("MONOTRAIL"):
+    from .load_monotrail import load_monotrail
 
-    load_monorail()
+    load_monotrail()

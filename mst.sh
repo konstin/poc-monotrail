@@ -2,16 +2,16 @@
 set -e
 
 CARGO_TARGET_DIR=target-maturin maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
-# VIRTUAL_ENV=/home/konsti/monorail/.venv maturin develop --release --strip --cargo-extra-args="--features=python_bindings"
-zip -ur target-maturin/wheels/monorail-*.whl load_monorail.pth
-.venv/bin/pip uninstall -y -q monorail
-.venv/bin/pip install -q target-maturin/wheels/monorail-*.whl
+# VIRTUAL_ENV=/home/konsti/monotrail/.venv maturin develop --release --strip --cargo-extra-args="--features=python_bindings"
+zip -ur target-maturin/wheels/monotrail-*.whl load_monotrail.pth
+.venv/bin/pip uninstall -y -q monotrail
+.venv/bin/pip install -q target-maturin/wheels/monotrail-*.whl
 # Run pytest, entrypoint
-(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONORAIL=1 MONORAIL_EXTRAS="import-json" ../monorail/.venv/bin/python -m monorail.run pytest)
+(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONOTRAIL=1 MONOTRAIL_EXTRAS="import-json" ../monotrail/.venv/bin/python -m monotrail.run pytest)
 # Run pytest, module
-(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONORAIL=1 MONORAIL_EXTRAS="import-json" ../monorail/.venv/bin/python -m pytest)
+(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONOTRAIL=1 MONOTRAIL_EXTRAS="import-json" ../monotrail/.venv/bin/python -m pytest)
 # Test interactive console
-(cd ../meine-stadt-transparent && MONORAIL=1 ../monorail/.venv/bin/python -c "import django; print('hi django ' + django.__version__)")
+(cd ../meine-stadt-transparent && MONOTRAIL=1 ../monotrail/.venv/bin/python -c "import django; print('hi django ' + django.__version__)")
 # Test manage.py script
-MONORAIL=1 ENV_PATH=../meine-stadt-transparent/.env .venv/bin/python ../meine-stadt-transparent/manage.py | wc -l
-#(cd ../meine-stadt-transparent && MONORAIL=1 MONORAIL_EXTRAS="import-json" ../monorail/.venv/bin/python manage.py runserver)
+MONOTRAIL=1 ENV_PATH=../meine-stadt-transparent/.env .venv/bin/python ../meine-stadt-transparent/manage.py | wc -l
+#(cd ../meine-stadt-transparent && MONOTRAIL=1 MONOTRAIL_EXTRAS="import-json" ../monotrail/.venv/bin/python manage.py runserver)

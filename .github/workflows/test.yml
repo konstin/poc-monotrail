@@ -81,12 +81,12 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v1
         with:
-          key: monorail-${{ runner.os }}
+          key: monotrail-${{ runner.os }}
       # For some reason, alternating between maturin and cargo invalidates the cache
       - name: Cache maturin build
         uses: Swatinem/rust-cache@v1
         with:
-          key: monorail-maturin-${{ runner.os }}
+          key: monotrail-maturin-${{ runner.os }}
           target-dir: target-maturin
 
       - name: cargo build
@@ -117,15 +117,15 @@ jobs:
           virtualenv .venv-benchmark
           
           VIRTUAL_ENV=.venv-benchmark hyperfine -r 5 -p ".venv-benchmark/bin/pip uninstall -y plotly" \
-            "target/release/monorail install popular-wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+            "target/release/monotrail install popular-wheels/plotly-5.5.0-py2.py3-none-any.whl" \
             ".venv-benchmark/bin/pip install --no-deps popular-wheels/plotly-5.5.0-py2.py3-none-any.whl"
           
           VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y tqdm" \
-            "target/release/monorail install popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl" \
+            "target/release/monotrail install popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl" \
             ".venv-benchmark/bin/pip install --no-deps popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl"
 
           #VIRTUAL_ENV=.venv-benchmark hyperfine -r 5 -p ".venv-benchmark/bin/pip uninstall -y plotly" \
-          #  "target/release/monorail install --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+          #  "target/release/monotrail install --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
           #  ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
           
           rm -r .venv-benchmark

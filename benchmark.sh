@@ -9,7 +9,7 @@ BENCHMARK_OPTIONS="-E tqdm_feature"
 
 pip --version
 poetry --version
-cargo build -q --release --bin monorail
+cargo build -q --release --bin monotrail
 
 cd "$(dirname "$0")/$BENCHMARK_DIR"
 
@@ -23,4 +23,4 @@ VIRTUAL_ENV=$(pwd)/.venv PATH="../../../target/x86_64-unknown-linux-musl/release
   --export-markdown hyperfine.md \
   ".venv/bin/pip install -q -r requirements-benchmark.txt" \
   "poetry install -q --no-root $BENCHMARK_OPTIONS" \
-  "monorail poetry-install $BENCHMARK_OPTIONS"
+  "monotrail poetry-install $BENCHMARK_OPTIONS"
