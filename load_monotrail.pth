@@ -1,1 +1,1 @@
-import sys; exec("try:\n    import monotrail\nexcept:\n    pass\n")
+import monotrail

@@ -10,7 +10,10 @@ def load_monotrail():
     # https://stackoverflow.com/a/62087608/3549270
     # for some reason the last argument is missing with -m pytest (becomes -m),
     # and i have no idea how to debug where it went. esp since we sometimes cut the first arguments, but never the last
-    args = open("/proc/{}/cmdline".format(os.getpid())).read()[:-1].split("\x00")[1:]
+    if sys.platform == "linux":
+        args = open("/proc/{}/cmdline".format(os.getpid())).read()[:-1].split("\x00")[1:]
+    else:
+        args = sys.argv
     try:
         # Install all required packages and get their location (in rust)
         sprawl_root, sprawl_packages = prepare_monotrail_from_env(args)
