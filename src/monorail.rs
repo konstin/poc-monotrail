@@ -141,16 +141,17 @@ pub fn filter_installed_monorail(
     Ok((not_installed, installed))
 }
 
+/// script can be a manually set working directory or the python script we're running.
 /// Returns a list name, python version, unique version
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn setup_monorail(
-    file_running: Option<&Path>,
+    script: Option<&Path>,
     python: &Path,
     python_version: (u8, u8),
     extras: &[String],
     pep508_env: &Pep508Environment,
 ) -> anyhow::Result<(String, Vec<InstalledPackage>)> {
-    let dir_running = match file_running {
+    let dir_running = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(file) if file.is_file() => {
             if let Some(parent) = file.parent() {
@@ -168,11 +169,13 @@ pub fn setup_monorail(
         }
     };
 
+    debug!("python project dir: {}", dir_running.display());
+
     let monorail_root = monorail_root()?;
     let (lockfile, lockfile_type) = find_lockfile(&dir_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
-            file_running.map_or_else(
+            script.map_or_else(
                 || "current directory".to_string(),
                 |file_running| file_running.display().to_string()
             )

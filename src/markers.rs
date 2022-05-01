@@ -14,7 +14,7 @@ use std::io;
 use std::process::{Command, Stdio};
 use std::str::FromStr;
 
-static PEP508_QUERY_SCRIPT: &str = include_str!("get_pep508_env.py");
+static PEP508_QUERY_SCRIPT: &str = include_str!("get_pep508_env_direct.py");
 
 /// The version and platform information required to evaluate marker expressions according to PEP 508
 #[derive(Debug, Eq, PartialEq, Deserialize)]

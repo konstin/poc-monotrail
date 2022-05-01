@@ -5,6 +5,6 @@ Loading this module will run monorail, installing all required packages and maki
 import os
 
 if os.environ.get("MONORAIL"):
-    from .load_monorail import monorail_from_env
+    from .load_monorail import load_monorail
 
-    monorail_from_env()
+    load_monorail()

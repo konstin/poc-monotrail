@@ -7,5 +7,6 @@ class InstalledPackage:
     tag: str
 
 def prepare_monorail(
-    file_running: Optional[str], extras: List[str], pep508_env: str
+    script: Optional[str], extras: List[str], pep508_env: str
 ) -> Tuple[str, List[InstalledPackage]]: ...
+def prepare_monorail_from_env(args: List[str]) -> Tuple[str, List[InstalledPackage]]: ...
