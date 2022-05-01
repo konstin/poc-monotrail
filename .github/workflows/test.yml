@@ -104,11 +104,11 @@ jobs:
           command: test
           args: --release
 
-      - name: pytest
-        run: pytest
-
       - name: make paper
         run: bash make_paper.sh
+
+      - name: pytest
+        run: pytest
 
       - name: Benchmark plotly and tqdm
         #if: matrix.os == 'ubuntu-latest'
