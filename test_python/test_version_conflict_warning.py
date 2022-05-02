@@ -1,12 +1,11 @@
 import io
 from contextlib import redirect_stdout, redirect_stderr
 
-# noinspection PyUnresolvedReferences
-import monotrail
-
 
 # noinspection PyUnresolvedReferences
 def main():
+    import monotrail
+
     stdout_io = io.StringIO()
     stderr_io = io.StringIO()
     with redirect_stdout(stdout_io), redirect_stderr(stderr_io):

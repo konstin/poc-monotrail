@@ -12,7 +12,7 @@ from typing import List, Union
 
 import pytest
 
-from test.utils import get_bin, get_root
+from test_binary.utils import get_bin, get_root
 
 
 def compare_with_pip(

@@ -9,8 +9,8 @@ from shutil import rmtree
 from subprocess import check_call, DEVNULL, CalledProcessError
 from typing import List
 
-from test.test_compare_pip import diff_envs
-from test.utils import get_bin, get_root
+from test_binary.test_compare_pip import diff_envs
+from test_binary.utils import get_bin, get_root
 
 
 def compare_with_poetry(
