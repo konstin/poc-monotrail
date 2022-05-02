@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ] #, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      # Make this the active python
+      - name: Install python 3.8
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.8"
+      - name: Install virtualenv, maturin pytest
+        run: |
+          pip install -U pip virtualenv maturin pytest jupyter nbconvert
+          virtualenv --upgrade-embed-wheels
+      - name: Install stable rust
+        uses: actions-rs/toolchain@v1
+        id: rustup
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Install poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+      - name: Add poetry to path
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      # Caching
+      # Install gnu-tar because BSD tar is buggy
+      # https://github.com/actions/cache/issues/403
+      - name: Install GNU tar (Macos)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+      # For some reason, alternating between maturin and cargo invalidates the cache
+      - name: Cache maturin build
+        uses: Swatinem/rust-cache@v1
+        with:
+          key: monotrail-maturin-${{ runner.os }}
+          target-dir: target-maturin
+
+      - name: make paper
+        run: bash make_paper.sh
+      - name: test notebook integration
+        run: jupyter nbconvert --inplace --execute test_python/jupyter_integration.ipynb

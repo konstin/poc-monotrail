@@ -15,34 +15,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      # Install all the pythons
-      - name: Install python 3.7
-        uses: actions/setup-python@v2
-        with:
-          python-version: "3.7"
-      # 3.8 is activated below
-      - name: Install python 3.9
-        uses: actions/setup-python@v2
-        with:
-          python-version: "3.9"
-      - name: Install python 3.10
-        uses: actions/setup-python@v2
-        with:
-          python-version: "3.10"
-      - name: Install pypy 3.7
-        uses: actions/setup-python@v2
-        with:
-          python-version: "pypy-3.7"
-      - name: Install pypy 3.8
-        uses: actions/setup-python@v2
-        with:
-          python-version: "pypy-3.8"
       # Make this the active python
       - name: Install python 3.8
         uses: actions/setup-python@v2
         with:
           python-version: "3.8"
-
       - name: Install virtualenv, maturin pytest
         run: |
           pip install -U pip virtualenv maturin pytest jupyter nbconvert
@@ -54,17 +31,6 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: Install hyperfine (linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          mkdir -p $HOME/.local/bin
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          hyperfine_version="v1.12.0"
-          hyperfine_url="https://github.com/sharkdp/hyperfine/releases/download/$hyperfine_version/hyperfine-$hyperfine_version-x86_64-unknown-linux-musl.tar.gz"
-          curl -L $hyperfine_url | tar -zxv --strip-components 1 -C $HOME/.local/bin hyperfine-$hyperfine_version-x86_64-unknown-linux-musl/hyperfine
-      - name: Install hyperfine (mac)
-        if: matrix.os == 'macos-latest'
-        run: brew install hyperfine
       - name: Install poetry
         run: curl -sSL https://install.python-poetry.org | python3 -
       - name: Add poetry to path
@@ -81,13 +47,7 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v1
         with:
-          key: monotrail-${{ runner.os }}
-      # For some reason, alternating between maturin and cargo invalidates the cache
-      - name: Cache maturin build
-        uses: Swatinem/rust-cache@v1
-        with:
-          key: monotrail-maturin-${{ runner.os }}
-          target-dir: target-maturin
+          key: monotrail-cargo-${{ runner.os }}
 
       - name: cargo build
         uses: actions-rs/cargo@v1
@@ -104,15 +64,20 @@ jobs:
           command: test
           args: --release
 
-      - name: make paper
-        run: bash make_paper.sh
-
       - name: pytest
         run: pytest
-        
-      - name: test notebook integration
-        run: .venv/bin/jupyter nbconvert --inplace --execute jupyter_integration.ipynb
 
+      - name: Install hyperfine (linux)
+        if: matrix.os == 'ubuntu-latest-skip-for-slowness'
+        run: |
+          mkdir -p $HOME/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          hyperfine_version="v1.12.0"
+          hyperfine_url="https://github.com/sharkdp/hyperfine/releases/download/$hyperfine_version/hyperfine-$hyperfine_version-x86_64-unknown-linux-musl.tar.gz"
+          curl -L $hyperfine_url | tar -zxv --strip-components 1 -C $HOME/.local/bin hyperfine-$hyperfine_version-x86_64-unknown-linux-musl/hyperfine
+      - name: Install hyperfine (mac)
+        if: matrix.os == 'macos-latest-skip-for-slowness'
+        run: brew install hyperfine
       - name: Benchmark plotly and tqdm
         #if: matrix.os == 'ubuntu-latest'
         if: matrix.os == 'skip-for-slowness'

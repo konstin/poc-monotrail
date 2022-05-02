@@ -1,3 +1,4 @@
+import logging
 import sys
 from importlib.abc import MetaPathFinder
 from importlib.machinery import PathFinder
@@ -6,6 +7,8 @@ from pathlib import Path
 from typing import Union, List, Dict, Optional
 
 from .monotrail import InstalledPackage
+
+logger = logging.getLogger(__name__)
 
 # exploits that modules are only loaded once
 _path_finder_singleton: Optional["MonotrailPathFinder"] = None
@@ -58,11 +61,10 @@ class MonotrailPathFinder(PathFinder, MetaPathFinder):
             if not existing:
                 continue
             if new.unique_version != existing.unique_version:
-                print(
+                logger.warning(
                     f"Version conflict: {existing.name} {existing.unique_version} is loaded, "
                     f"but {new.unique_version} is now required. "
-                    f"Please restart your jupyter kernel/your python interpreter",
-                    file=sys.stderr,
+                    f"Please restart your jupyter kernel or python interpreter",
                 )
 
     def _site_package_dir(self, package: InstalledPackage) -> Path:
