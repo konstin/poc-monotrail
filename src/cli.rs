@@ -3,7 +3,7 @@ use crate::install_location::InstallLocation;
 use crate::markers::Pep508Environment;
 use crate::monotrail::monotrail_root;
 use crate::package_index::download_distribution;
-use crate::poetry::read_poetry_specs;
+use crate::poetry::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
 use crate::wheel_tags::current_compatible_tags;
@@ -86,8 +86,10 @@ fn install_location_specs(
     let compatible_tags = current_compatible_tags(venv)?;
     // TODO: don't parse this from a subprocess but do it like maturin
     let pep508_env = Pep508Environment::from_python();
+    let (poetry_toml, poetry_lock) = read_toml_files(&env::current_dir()?)?;
     let specs = read_poetry_specs(
-        Path::new("pyproject.toml"),
+        poetry_toml,
+        poetry_lock,
         options.no_dev,
         &options.extras,
         &pep508_env,

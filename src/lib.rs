@@ -1,9 +1,9 @@
 use crate::install::install_specs;
 use crate::install_location::InstallLocation;
-use crate::poetry::read_poetry_specs;
 pub use crate::wheel::install_wheel;
 use crate::wheel_tags::{compatible_tags, Arch, Os};
 pub use cli::{run, Cli};
+use poetry::read_dependencies::read_poetry_specs;
 use std::io;
 use thiserror::Error;
 use zip::result::ZipError;

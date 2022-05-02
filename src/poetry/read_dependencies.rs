@@ -1,8 +1,9 @@
 //! Parsing of pyproject.toml and poetry.lock
 
 use crate::markers::Pep508Environment;
-use crate::poetry::poetry_lock::{Package, PoetryLock};
-use crate::poetry::poetry_toml::Dependency;
+use crate::poetry::poetry_lock::PoetryLock;
+use crate::poetry::poetry_toml::PoetryPyprojectToml;
+use crate::poetry::{poetry_lock, poetry_toml};
 use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use crate::wheel_tags::WheelFilename;
 use crate::WheelInstallerError;
@@ -12,238 +13,6 @@ use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::str::FromStr;
-
-mod poetry_lock {
-    use crate::markers::{parse_markers, Pep508Environment};
-    use regex::Regex;
-    use serde::Deserialize;
-    use std::collections::{HashMap, HashSet};
-
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    pub struct PoetryLock {
-        pub package: Vec<Package>,
-        pub metadata: Metadata,
-    }
-
-    /// `[[package]]`
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    #[allow(dead_code)]
-    pub struct Package {
-        pub name: String,
-        pub version: String,
-        pub description: String,
-        pub category: String,
-        pub optional: bool,
-        pub python_versions: String,
-        #[serde(default)]
-        pub extras: HashMap<String, Vec<String>>,
-        pub dependencies: Option<HashMap<String, Dependency>>,
-        pub source: Option<Source>,
-    }
-
-    /// e.g. `{version = ">=1.21.0", markers = "python_version >= \"3.10\""}`
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    pub struct DependencyExpanded {
-        pub version: String,
-        pub markers: Option<String>,
-        pub extras: Option<Vec<String>>,
-    }
-
-    /// `[package.dependencies]`
-    ///
-    /// Can be one of three formats:
-    /// ```toml
-    /// attrs = ">=17.4.0"
-    /// colorama = {version = "*", markers = "sys_platform == \"win32\""}
-    /// numpy = [
-    ///     {version = ">=1.18.5", markers = "platform_machine != \"aarch64\" and platform_machine != \"arm64\" and python_version < \"3.10\""},
-    ///     {version = ">=1.19.2", markers = "platform_machine == \"aarch64\" and python_version < \"3.10\""},
-    ///     {version = ">=1.20.0", markers = "platform_machine == \"arm64\" and python_version < \"3.10\""},
-    ///     {version = ">=1.21.0", markers = "python_version >= \"3.10\""},
-    /// ]
-    /// ```
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(untagged, rename_all = "kebab-case")]
-    pub enum Dependency {
-        Compact(String),
-        Expanded(DependencyExpanded),
-        List(Vec<DependencyExpanded>),
-    }
-
-    impl Dependency {
-        /// checks if we need to install given the markers and returns the matching version constraint
-        ///
-        /// For the extras we give in a set of extras the is activated for self to check if we need
-        /// self->dep, and return the extras active for self->dep
-        pub fn get_version_and_extras(
-            &self,
-            environment: &Pep508Environment,
-            self_extras: &HashSet<String>,
-        ) -> Result<Option<(String, Vec<String>)>, String> {
-            let extra_re = Regex::new(r#"^extra == "([\w\d_-]+)"$"#).unwrap();
-
-            Ok(match self {
-                Dependency::Compact(version) => Some((version.to_string(), Vec::new())),
-                Dependency::Expanded(DependencyExpanded {
-                    version,
-                    markers,
-                    extras,
-                }) => {
-                    if let Some(markers) = markers {
-                        if let Some(captures) = extra_re.captures(markers) {
-                            if self_extras.contains(&captures[1].to_string()) {
-                                Some((version.to_string(), extras.clone().unwrap_or_default()))
-                            } else {
-                                None
-                            }
-                        } else if parse_markers(markers).unwrap().evaluate(environment)? {
-                            Some((version.to_string(), extras.clone().unwrap_or_default()))
-                        } else {
-                            None
-                        }
-                    } else {
-                        Some((version.to_string(), extras.clone().unwrap_or_default()))
-                    }
-                }
-                Dependency::List(options) => {
-                    for option in options {
-                        if let Some(markers) = &option.markers {
-                            if let Some(captures) = extra_re.captures(markers) {
-                                if self_extras.contains(&captures[1].to_string()) {
-                                    return Ok(Some((
-                                        option.version.to_string(),
-                                        option.extras.clone().unwrap_or_default(),
-                                    )));
-                                } else {
-                                    continue;
-                                };
-                            }
-                            if parse_markers(markers).unwrap().evaluate(environment)? {
-                                return Ok(Some((
-                                    option.version.to_string(),
-                                    option.extras.clone().unwrap_or_default(),
-                                )));
-                            }
-                        } else {
-                            return Ok(Some((
-                                option.version.to_string(),
-                                option.extras.clone().unwrap_or_default(),
-                            )));
-                        }
-                    }
-                    None
-                }
-            })
-        }
-    }
-
-    /// `[[package]] [package.source]`
-    #[derive(Deserialize, Debug, Clone)]
-    #[allow(dead_code)]
-    pub struct Source {
-        #[serde(rename = "type")]
-        pub source_type: String,
-        pub url: String,
-        pub reference: String,
-        pub resolved_reference: String,
-    }
-
-    /// `[metadata]`
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    #[allow(dead_code)]
-    pub struct Metadata {
-        pub lock_version: String,
-        pub python_versions: String,
-        pub content_hash: String,
-        /// `[metadata.files]`
-        pub files: HashMap<String, Vec<HashedFile>>,
-    }
-
-    /// e.g. `{file = "attrs-21.4.0-py2.py3-none-any.whl", hash = "sha256:2d27e3784d7a565d36ab851fe94887c5eccd6a463168875832a1be79c82828b4"}`
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    #[allow(dead_code)]
-    pub struct HashedFile {
-        pub file: String,
-        pub hash: String,
-    }
-}
-
-mod poetry_toml {
-    use serde::Deserialize;
-    use std::collections::HashMap;
-
-    /// ```toml
-    /// [tool]
-    /// ```
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    pub struct PoetryPyprojectToml {
-        pub tool: ToolSection,
-    }
-
-    /// ```toml
-    /// [tool.poetry]
-    /// ```
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    pub struct ToolSection {
-        pub poetry: PoetrySection,
-    }
-
-    /// ```toml
-    /// [tool.poetry.dependencies]
-    /// dep1 = "1.2.3"
-    /// dep2 = { version = "4.5.6", optional = true }
-    /// ```
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(untagged, rename_all = "kebab-case")]
-    #[allow(dead_code)]
-    pub enum Dependency {
-        Compact(String),
-        Expanded {
-            version: Option<String>,
-            optional: Option<bool>,
-            extras: Option<Vec<String>>,
-            git: Option<String>,
-            branch: Option<String>,
-        },
-    }
-
-    impl Dependency {
-        pub fn is_optional(&self) -> bool {
-            match self {
-                Dependency::Compact(_) => false,
-                Dependency::Expanded { optional, .. } => optional.unwrap_or(false),
-            }
-        }
-
-        pub fn get_extras(&self) -> &[String] {
-            match self {
-                Dependency::Compact(_) => &[],
-                Dependency::Expanded { extras, .. } => extras.as_deref().unwrap_or_default(),
-            }
-        }
-    }
-
-    /// ```toml
-    /// [tool.poetry.dependencies]
-    /// [tool.poetry.dev-dependencies]
-    /// [tool.poetry.extras]
-    /// ``
-    #[derive(Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
-    #[allow(dead_code)]
-    pub struct PoetrySection {
-        pub dependencies: HashMap<String, Dependency>,
-        pub dev_dependencies: HashMap<String, Dependency>,
-        pub extras: HashMap<String, Vec<String>>,
-    }
-}
 
 /// Resolves a single package's filename and url inside a poetry lockfile
 ///
@@ -350,7 +119,7 @@ fn parse_dep_extra(
 }
 
 fn resolution_to_specs(
-    packages: HashMap<String, Package>,
+    packages: HashMap<String, poetry_lock::Package>,
     deps_with_extras: HashMap<String, HashSet<String>>,
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     let mut specs = Vec::new();
@@ -386,19 +155,11 @@ fn resolution_to_specs(
 /// Get the root deps from pyproject.toml, already filtered by activated extras.
 /// The is no root package in poetry.lock that we could use so we also need to read pyproject.toml
 fn get_root_info(
-    pyproject_toml: &&Path,
+    pyproject_toml: &PoetryPyprojectToml,
     no_dev: bool,
     extras: &[String],
-) -> anyhow::Result<HashMap<String, Dependency>> {
-    // read/get deps from poetry.toml
-    let poetry_pyproject_toml: poetry_toml::PoetryPyprojectToml =
-        toml::from_str(&fs::read_to_string(pyproject_toml)?).with_context(|| {
-            format!(
-                "Invalid poetry pyproject.toml: {}",
-                pyproject_toml.display()
-            )
-        })?;
-    let poetry_section = poetry_pyproject_toml.tool.poetry;
+) -> anyhow::Result<HashMap<String, poetry_toml::Dependency>> {
+    let poetry_section = pyproject_toml.tool.poetry.clone();
 
     let root_deps = if no_dev {
         poetry_section.dependencies.clone()
@@ -437,27 +198,32 @@ fn get_root_info(
     Ok(root_deps)
 }
 
-fn get_packages_from_lockfile(pyproject_toml: &Path) -> anyhow::Result<HashMap<String, Package>> {
-    // read lockfile
-    let lockfile = pyproject_toml
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .join("poetry.lock");
-    let lockfile: poetry_lock::PoetryLock = toml::from_str(&fs::read_to_string(&lockfile)?)
-        .with_context(|| format!("Invalid lockfile: {}", lockfile.display()))?;
-
+fn get_packages_from_lockfile(
+    poetry_lock: &PoetryLock,
+) -> anyhow::Result<HashMap<String, poetry_lock::Package>> {
     // keys are normalized names since `[package.dependencies]` also uses normalized names
-    let packages: HashMap<String, poetry_lock::Package> = lockfile
+    let packages: HashMap<String, poetry_lock::Package> = poetry_lock
         .package
+        .clone()
         .into_iter()
         .map(|package| (package.name.replace('-', "_"), package))
         .collect();
     Ok(packages)
 }
 
+/// Reads pyproject.toml and poetry.lock
+pub fn read_toml_files(dir: &Path) -> anyhow::Result<(PoetryPyprojectToml, PoetryLock)> {
+    let poetry_toml = toml::from_str(&fs::read_to_string(dir.join("pyproject.toml"))?)
+        .context("Invalid pyproject.toml")?;
+    let poetry_lock = toml::from_str(&fs::read_to_string(dir.join("poetry.lock"))?)
+        .context("Invalid pyproject.toml")?;
+    Ok((poetry_toml, poetry_lock))
+}
+
 /// Parses pyproject.toml and poetry.lock and returns a list of packages to install
 pub fn read_poetry_specs(
-    pyproject_toml: &Path,
+    pyproject_toml: PoetryPyprojectToml,
+    poetry_lock: PoetryLock,
     no_dev: bool,
     extras: &[String],
     pep508_env: &Pep508Environment,
@@ -466,7 +232,7 @@ pub fn read_poetry_specs(
     // poetry.lock (raw names)
     let root_deps = get_root_info(&pyproject_toml, no_dev, extras)?;
     // All the details info from poetry.lock, indexed by normalized name
-    let packages = get_packages_from_lockfile(pyproject_toml)?;
+    let packages = get_packages_from_lockfile(&poetry_lock)?;
 
     // This is the thing we want to build: a list with all transitive dependencies and
     // all their (transitively activated) features
@@ -538,7 +304,7 @@ pub fn read_poetry_specs(
 #[cfg(test)]
 mod test {
     use crate::markers::Pep508Environment;
-    use crate::poetry::parse_dep_extra;
+    use crate::poetry::read_dependencies::{parse_dep_extra, read_toml_files};
     use crate::read_poetry_specs;
     use std::collections::HashSet;
     use std::path::Path;
@@ -585,8 +351,8 @@ mod test {
             python_version: "3.8".to_string(),
             sys_platform: "linux".to_string(),
         };
-        let mst = Path::new("test-data/poetry/mst/pyproject.toml");
-        let data_science = Path::new("test-data/poetry/data-science/pyproject.toml");
+        let mst = Path::new("test-data/poetry/mst");
+        let data_science = Path::new("test-data/poetry/data-science");
 
         let expected = [
             (mst, true, vec![], 95),
@@ -599,8 +365,10 @@ mod test {
             (data_science, false, vec!["tqdm_feature".to_string()], 21),
         ];
 
-        for (pyproject_toml, no_dev, extras, specs_count) in expected {
-            let specs = read_poetry_specs(pyproject_toml, no_dev, &extras, &pep508_env).unwrap();
+        for (toml_dir, no_dev, extras, specs_count) in expected {
+            let (poetry_toml, poetry_lock) = read_toml_files(toml_dir).unwrap();
+            let specs =
+                read_poetry_specs(poetry_toml, poetry_lock, no_dev, &extras, &pep508_env).unwrap();
             assert_eq!(specs.len(), specs_count);
         }
     }

@@ -1,6 +1,7 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::package_index::cache_dir;
+use crate::poetry::read_dependencies::read_toml_files;
 use crate::requirements_txt::requirements_txt_to_specs;
 use crate::spec::RequestedSpec;
 use crate::{compatible_tags, install_specs, read_poetry_specs, Arch, InstallLocation, Os};
@@ -144,59 +145,16 @@ pub fn filter_installed_monotrail(
 /// script can be a manually set working directory or the python script we're running.
 /// Returns a list name, python version, unique version
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn setup_monotrail(
-    script: Option<&Path>,
+pub fn install_requested(
+    specs: &[RequestedSpec],
     python: &Path,
     python_version: (u8, u8),
-    extras: &[String],
-    pep508_env: &Pep508Environment,
 ) -> anyhow::Result<(String, Vec<InstalledPackage>)> {
-    let dir_running = match script {
-        None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
-        Some(file) if file.is_file() => {
-            if let Some(parent) = file.parent() {
-                parent.to_path_buf()
-            } else {
-                bail!("File has no parent directory ಠ_ಠ: {}", file.display())
-            }
-        }
-        Some(dir) if dir.is_dir() => dir.to_path_buf(),
-        Some(neither) => {
-            bail!(
-                "Running file is neither file not directory (is the python invocation unsupported?): {}",
-                neither.display()
-            )
-        }
-    };
-
-    debug!("python project dir: {}", dir_running.display());
-
     let monotrail_root = monotrail_root()?;
-    let (lockfile, lockfile_type) = find_lockfile(&dir_running).with_context(|| {
-        format!(
-            "pyproject.toml not found next to {} nor in any parent directory",
-            script.map_or_else(
-                || "current directory".to_string(),
-                |file_running| file_running.display().to_string()
-            )
-        )
-    })?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
-    let specs = match lockfile_type {
-        LockfileType::PyprojectToml => read_poetry_specs(&lockfile, false, extras, pep508_env)?,
-        LockfileType::RequirementsTxt => {
-            let requirements_txt = fs::read_to_string(&lockfile)?;
-            requirements_txt_to_specs(&requirements_txt).with_context(|| {
-                format!(
-                    "requirements specification is invalid: {}",
-                    lockfile.display()
-                )
-            })?
-        }
-    };
 
     let (to_install_specs, installed_done) =
-        filter_installed_monotrail(&specs, Path::new(&monotrail_root))?;
+        filter_installed_monotrail(specs, Path::new(&monotrail_root))?;
 
     let mut installed = install_specs(
         &to_install_specs,
@@ -218,4 +176,56 @@ pub fn setup_monotrail(
         .to_string();
     debug!("python extension has {} packages", installed.len());
     Ok((monotrail_location_string, installed))
+}
+
+#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+pub fn get_requested_specs(
+    script: Option<&Path>,
+    extras: &[String],
+    pep508_env: &Pep508Environment,
+) -> anyhow::Result<Vec<RequestedSpec>> {
+    let dir_running = match script {
+        None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
+        Some(file) if file.is_file() => {
+            if let Some(parent) = file.parent() {
+                parent.to_path_buf()
+            } else {
+                bail!("File has no parent directory ಠ_ಠ: {}", file.display())
+            }
+        }
+        Some(dir) if dir.is_dir() => dir.to_path_buf(),
+        Some(neither) => {
+            bail!(
+                "Running file is neither file not directory (is the python invocation unsupported?): {}",
+                neither.display()
+            )
+        }
+    };
+    debug!("python project dir: {}", dir_running.display());
+
+    let (lockfile, lockfile_type) = find_lockfile(&dir_running).with_context(|| {
+        format!(
+            "pyproject.toml not found next to {} nor in any parent directory",
+            script.map_or_else(
+                || "current directory".to_string(),
+                |file_running| file_running.display().to_string()
+            )
+        )
+    })?;
+    let specs = match lockfile_type {
+        LockfileType::PyprojectToml => {
+            let (poetry_toml, poetry_lock) = read_toml_files(&dir_running)?;
+            read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?
+        }
+        LockfileType::RequirementsTxt => {
+            let requirements_txt = fs::read_to_string(&lockfile)?;
+            requirements_txt_to_specs(&requirements_txt).with_context(|| {
+                format!(
+                    "requirements specification is invalid: {}",
+                    lockfile.display()
+                )
+            })?
+        }
+    };
+    Ok(specs)
 }

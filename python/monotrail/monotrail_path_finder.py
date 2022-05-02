@@ -3,22 +3,67 @@ from importlib.abc import MetaPathFinder
 from importlib.machinery import PathFinder
 from importlib.metadata import DistributionFinder, PathDistribution
 from pathlib import Path
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Optional
 
 from .monotrail import InstalledPackage
+
+# exploits that modules are only loaded once
+_path_finder_singleton: Optional["MonotrailPathFinder"] = None
 
 
 class MonotrailPathFinder(PathFinder, MetaPathFinder):
     sprawl_root: Path
     sprawl_packages: Dict[str, InstalledPackage]
 
-    def __init__(
+    def __init__(self):
+        """dummy, actual initializer is update_and_activate"""
+        # TODO: This dummy is unsound typing-wise. First init should always also set path and packages
+        self.sprawl_packages = {}
+
+    @staticmethod
+    def get_singleton() -> "MonotrailPathFinder":
+        """We want only one monotrail path finder to be active at any given time"""
+        global _path_finder_singleton
+        if not _path_finder_singleton:
+            _path_finder_singleton = MonotrailPathFinder()
+            sys.meta_path.append(_path_finder_singleton)
+        return _path_finder_singleton
+
+    def update_and_activate(
         self,
         sprawl_root: Union[str, Path],
         sprawl_packages: List[InstalledPackage],
     ):
+        """Update the set of installed/available packages on the fly"""
         self.sprawl_root = Path(sprawl_root)
+        self.warn_on_conflicts(self.sprawl_packages, sprawl_packages)
         self.sprawl_packages = {package.name: package for package in sprawl_packages}
+
+    @classmethod
+    def warn_on_conflicts(
+        cls,
+        existing_packages: Dict[str, InstalledPackage],
+        new_packages: List[InstalledPackage],
+    ):
+        """if we already have a different version loaded that version will stay loaded, so we have a conflict,
+        and the only solution is really to restart python. We could remove it from sys.modules, but anything
+        already imported from the module will stay loaded and cause strange undebuggable conflicts
+        """
+        for new in new_packages:
+            # not yet loaded, not a problem
+            if new.name not in sys.modules:
+                continue
+            existing = existing_packages.get(new.name)
+            # no version, no comparison
+            if not existing:
+                continue
+            if new.unique_version != existing.unique_version:
+                print(
+                    f"Version conflict: {existing.name} {existing.unique_version} is loaded, "
+                    f"but {new.unique_version} is now required. "
+                    f"Please restart your jupyter kernel/your python interpreter",
+                    file=sys.stderr,
+                )
 
     def _site_package_dir(self, package: InstalledPackage) -> Path:
         return (

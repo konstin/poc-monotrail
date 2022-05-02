@@ -1,5 +1,6 @@
 *.so
 .cargo
+.ipynb_checkpoints
 .pytest_cache
 .venv*
 __pycache__

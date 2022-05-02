@@ -1,6 +1,8 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
-use crate::monotrail::setup_monotrail;
+use crate::monotrail::{get_requested_specs, install_requested};
+use crate::poetry::lock::resolve;
+use crate::read_poetry_specs;
 use anyhow::{bail, Context};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
@@ -20,7 +22,7 @@ fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<String>, 
         "-x",
     ];
     let arg_opts = ["--check-hash-based-pycs", "-W", "-X"];
-    let mut arg_iter = args.into_iter();
+    let mut arg_iter = args.iter();
     loop {
         if let Some(arg) = arg_iter.next() {
             if bool_opts.contains(&arg.as_ref()) {
@@ -75,13 +77,13 @@ fn get_pep508_env(py: Python) -> PyResult<String> {
 /// Parses the environment variables and returns the monotrail root and a list of
 /// monotrail modules
 #[pyfunction]
-pub fn prepare_monotrail_from_env(
+pub fn monotrail_from_env(
     py: Python,
     args: Vec<String>,
 ) -> PyResult<(String, Vec<InstalledPackage>)> {
     // We parse the python args even if we take MONOTRAIL_CWD as a validation
     // step
-    let script = naive_python_arg_parser(&args).map_err(|err| PyRuntimeError::new_err(err))?;
+    let script = naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
     let script = if let Some(script) =
         env::var_os(&format!("{}_CWD", env!("CARGO_PKG_NAME").to_uppercase()))
     {
@@ -97,14 +99,34 @@ pub fn prepare_monotrail_from_env(
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    setup_monotrail(
-        script.as_deref(),
-        Path::new(&sys_executable),
-        python_version,
-        &extras,
-        &pep508_env,
-    )
-    .map_err(format_monotrail_error)
+    let specs = get_requested_specs(script.as_deref(), &extras, &pep508_env)
+        .map_err(format_monotrail_error)?;
+    install_requested(&specs, Path::new(&sys_executable), python_version)
+        .map_err(format_monotrail_error)
+}
+
+/// User gives a `[tool.poetry.dependencies]`
+#[pyfunction]
+pub fn monotrail_from_requested(
+    py: Python,
+    requested: String,
+) -> PyResult<(String, Vec<InstalledPackage>)> {
+    let requested = serde_json::from_str(&requested)
+        .map_err(|serde_err| PyRuntimeError::new_err(format!("Invalid dependency format: {}.\n See https://python-poetry.org/docs/dependency-specification/", serde_err)))?;
+
+    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
+    let python_version = (py.version_info().major, py.version_info().minor);
+    debug!("python: {:?} {}", python_version, sys_executable);
+
+    let (poetry_toml, poetry_lock) = resolve(requested, python_version)
+        .context("Failed to resolve requested dependencies through poetry")
+        .map_err(format_monotrail_error)?;
+    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
+    let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], &pep508_env)
+        .map_err(format_monotrail_error)?;
+
+    install_requested(&specs, Path::new(&sys_executable), python_version)
+        .map_err(format_monotrail_error)
 }
 
 fn parse_extras() -> anyhow::Result<Vec<String>> {
@@ -114,7 +136,7 @@ fn parse_extras() -> anyhow::Result<Vec<String>> {
             .into_string()
             .ok() // can't use the original OsString
             .with_context(|| format!("{} must only contain utf-8 characters", extras_env_var))?
-            .split(",")
+            .split(',')
             .map(ToString::to_string)
             .collect();
         for extra in &extras {
@@ -133,30 +155,6 @@ fn parse_extras() -> anyhow::Result<Vec<String>> {
     Ok(extras)
 }
 
-/// Installs all required packages and returns package information to python
-///
-/// script can be a manually set working directory or the python script we're running.
-/// Returns the monotrail root and a list of monotrail modules
-#[pyfunction]
-pub fn prepare_monotrail(
-    py: Python,
-    script: Option<String>,
-    extras: Vec<String>,
-    pep508_env: &str,
-) -> PyResult<(String, Vec<InstalledPackage>)> {
-    debug!("file for {}: {:?}", env!("CARGO_PKG_NAME"), script);
-    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
-
-    setup_monotrail(
-        script.as_deref().map(Path::new),
-        Path::new(&sys_executable),
-        (py.version_info().major, py.version_info().minor),
-        &extras,
-        &Pep508Environment::from_json_str(pep508_env),
-    )
-    .map_err(format_monotrail_error)
-}
-
 #[pymodule]
 pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
     // Good enough for now
@@ -170,8 +168,8 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
             .compact();
         tracing_subscriber::fmt().event_format(format).init();
     }
-    m.add_function(wrap_pyfunction!(prepare_monotrail, m)?)?;
-    m.add_function(wrap_pyfunction!(prepare_monotrail_from_env, m)?)?;
+    m.add_function(wrap_pyfunction!(monotrail_from_env, m)?)?;
+    m.add_function(wrap_pyfunction!(monotrail_from_requested, m)?)?;
     m.add_class::<InstalledPackage>()?;
     Ok(())
 }

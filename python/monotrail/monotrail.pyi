@@ -1,4 +1,4 @@
-from typing import Tuple, List, Optional
+from typing import Tuple, List
 
 class InstalledPackage:
     name: str
@@ -6,7 +6,9 @@ class InstalledPackage:
     unique_version: str
     tag: str
 
-def prepare_monotrail(
-    script: Optional[str], extras: List[str], pep508_env: str
+def monotrail_from_env(
+    args: List[str],
 ) -> Tuple[str, List[InstalledPackage]]: ...
-def prepare_monotrail_from_env(args: List[str]) -> Tuple[str, List[InstalledPackage]]: ...
+def monotrail_from_requested(
+    requested: str,
+) -> Tuple[str, List[InstalledPackage]]: ...

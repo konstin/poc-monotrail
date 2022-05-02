@@ -45,7 +45,7 @@ jobs:
 
       - name: Install virtualenv, maturin pytest
         run: |
-          pip install -U pip virtualenv maturin pytest
+          pip install -U pip virtualenv maturin pytest jupyter nbconvert
           virtualenv --upgrade-embed-wheels
       - name: Install stable rust
         uses: actions-rs/toolchain@v1
@@ -109,6 +109,9 @@ jobs:
 
       - name: pytest
         run: pytest
+        
+      - name: test notebook integration
+        run: .venv/bin/jupyter nbconvert --inplace --execute jupyter_integration.ipynb
 
       - name: Benchmark plotly and tqdm
         #if: matrix.os == 'ubuntu-latest'

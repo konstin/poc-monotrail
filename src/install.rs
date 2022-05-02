@@ -48,7 +48,7 @@ pub fn install_specs(
     no_compile: bool,
     background: bool,
 ) -> anyhow::Result<Vec<InstalledPackage>> {
-    // Lock install directory to prevent races between multiple monotrail porcesses
+    // Lock install directory to prevent races between multiple monotrail processes
     // Lock it here instead of install_wheel to allow multithreading, since we'll only install
     // disjoint packages
     let location = location.acquire_lock()?;
