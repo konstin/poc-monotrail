@@ -20,6 +20,7 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.8"
+          cache: pip
       - name: Install virtualenv, maturin pytest
         run: |
           pip install -U pip virtualenv maturin pytest jupyter nbconvert
@@ -51,7 +52,10 @@ jobs:
           key: monotrail-maturin-${{ runner.os }}
           target-dir: target-maturin
 
+      # The whole venv management is overly complex
       - name: make paper
         run: bash make_paper.sh
+      - name: pip install monotrail
+        run: pip install target-maturin/wheels/monotrail-*.whl
       - name: test notebook integration
         run: jupyter nbconvert --inplace --execute test_python/jupyter_integration.ipynb

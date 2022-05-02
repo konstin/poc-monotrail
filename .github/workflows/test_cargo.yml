@@ -20,7 +20,8 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.8"
-      - name: Install virtualenv, maturin pytest
+          cache: pip
+      - name: Install virtualenv maturin pytest jupyter nbconvert
         run: |
           pip install -U pip virtualenv maturin pytest jupyter nbconvert
           virtualenv --upgrade-embed-wheels
