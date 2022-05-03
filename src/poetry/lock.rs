@@ -18,7 +18,14 @@ pub fn resolve(
     // Add python entry with current version; resolving will otherwise fail with complaints
     dependencies.insert(
         "python".to_string(),
-        poetry_toml::Dependency::Compact(format!("{}.{}", python_version.0, python_version.1)),
+        // For some reason on github actions 3.8.12 is not 3.8 compatible, so we name the range explicitly
+        poetry_toml::Dependency::Compact(format!(
+            ">={}.{},<{}.{}",
+            python_version.0,
+            python_version.1,
+            python_version.0,
+            python_version.1 + 1
+        )),
     );
     // build dummy poetry pyproject.toml
     let pyproject_toml_content = poetry_toml::PoetryPyprojectToml {
