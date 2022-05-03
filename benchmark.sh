@@ -16,7 +16,7 @@ cd "$(dirname "$0")/$BENCHMARK_DIR"
 # shellcheck disable=SC2086
 poetry export -q --without-hashes -o requirements-benchmark.txt $BENCHMARK_OPTIONS
 
-VIRTUAL_ENV=$(pwd)/.venv PATH="../../../target/x86_64-unknown-linux-musl/release/:$(pwd)/.venv/bin:$PATH" hyperfine \
+VIRTUAL_ENV=$(pwd)/.venv PATH="../../../target/release/:$(pwd)/.venv/bin:$PATH" hyperfine \
   --prepare "rm -rf .venv && virtualenv -q .venv" \
   --runs 3 \
   --export-json hyperfine.json \

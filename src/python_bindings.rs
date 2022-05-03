@@ -110,7 +110,8 @@ pub fn monotrail_from_env(
 pub fn monotrail_from_requested(
     py: Python,
     requested: String,
-) -> PyResult<(String, Vec<InstalledPackage>)> {
+    lockfile: Option<String>,
+) -> PyResult<(String, Vec<InstalledPackage>, String)> {
     let requested = serde_json::from_str(&requested)
         .map_err(|serde_err| PyRuntimeError::new_err(format!("Invalid dependency format: {}.\n See https://python-poetry.org/docs/dependency-specification/", serde_err)))?;
 
@@ -118,15 +119,18 @@ pub fn monotrail_from_requested(
     let python_version = (py.version_info().major, py.version_info().minor);
     debug!("python: {:?} {}", python_version, sys_executable);
 
-    let (poetry_toml, poetry_lock) = resolve(requested, python_version)
-        .context("Failed to resolve requested dependencies through poetry")
-        .map_err(format_monotrail_error)?;
+    let (poetry_toml, poetry_lock, lockfile) =
+        resolve(requested, python_version, lockfile.as_deref())
+            .context("Failed to resolve requested dependencies through poetry")
+            .map_err(format_monotrail_error)?;
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
     let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
-    install_requested(&specs, Path::new(&sys_executable), python_version)
-        .map_err(format_monotrail_error)
+    let (sprawl_root, sprawl_packages) =
+        install_requested(&specs, Path::new(&sys_executable), python_version)
+            .map_err(format_monotrail_error)?;
+    Ok((sprawl_root, sprawl_packages, lockfile))
 }
 
 fn parse_extras() -> anyhow::Result<Vec<String>> {

@@ -14,7 +14,12 @@ use tempfile::tempdir;
 pub fn resolve(
     mut dependencies: HashMap<String, poetry_toml::Dependency>,
     python_version: (u8, u8),
-) -> anyhow::Result<(poetry_toml::PoetryPyprojectToml, poetry_lock::PoetryLock)> {
+    lockfile: Option<&str>,
+) -> anyhow::Result<(
+    poetry_toml::PoetryPyprojectToml,
+    poetry_lock::PoetryLock,
+    String,
+)> {
     // Add python entry with current version; resolving will otherwise fail with complaints
     dependencies.insert(
         "python".to_string(),
@@ -46,6 +51,14 @@ pub fn resolve(
     let resolve_dir = tempdir()?;
     let pyproject_toml_path = resolve_dir.path().join("pyproject.toml");
     fs::write(&pyproject_toml_path, toml::to_vec(&pyproject_toml_content)?)?;
+    // If we have a previous lockfile, we want to reuse it for two reasons:
+    // * if there wasn't any change in requirements, we don't need to do any resolution
+    // * if requirements changed, we want to maximize the chance of not changing versions
+    //   and minimize the resolution work
+    let poetry_lock_path = resolve_dir.path().join("poetry.lock");
+    if let Some(lockfile) = lockfile {
+        fs::write(&poetry_lock_path, &lockfile)?;
+    }
     // Call poetry to resolve dependencies. This will generate `poetry.lock` in the same directory
     let result = Command::new("poetry")
         .args(&["lock", "--no-update"])
@@ -73,8 +86,9 @@ pub fn resolve(
     if pyproject_toml_content != pyproject_toml_reread {
         bail!("Consistency check failed: pyproject.toml we read is no the one we wrote");
     }
+    let lockfile = fs::read_to_string(poetry_lock_path)?;
     // read poetry lock with the dependencies resolved by poetry
     let poetry_lock = toml::from_str(&fs::read_to_string(resolve_dir.path().join("poetry.lock"))?)?;
 
-    Ok((pyproject_toml_content, poetry_lock))
+    Ok((pyproject_toml_content, poetry_lock, lockfile))
 }

@@ -1,4 +1,5 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
+
 
 class InstalledPackage:
     name: str
@@ -10,5 +11,5 @@ def monotrail_from_env(
     args: List[str],
 ) -> Tuple[str, List[InstalledPackage]]: ...
 def monotrail_from_requested(
-    requested: str,
-) -> Tuple[str, List[InstalledPackage]]: ...
+    requested: str, lockfile: Optional[str]
+) -> Tuple[str, List[InstalledPackage], str]: ...
