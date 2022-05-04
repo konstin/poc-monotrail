@@ -2,11 +2,12 @@
 
 set -e
 
-BENCHMARK_DIR=test-data/poetry/data-science
-BENCHMARK_OPTIONS="-E tqdm_feature"
-#BENCHMARK_DIR=test-data/poetry/mst
-#BENCHMARK_OPTIONS="-E import-json"
+#BENCHMARK_DIR=test-data/poetry/data-science
+#BENCHMARK_OPTIONS="-E tqdm_feature"
+BENCHMARK_DIR=test-data/poetry/mst
+BENCHMARK_OPTIONS="-E import-json"
 
+echo "$BENCHMARK_DIR $BENCHMARK_OPTIONS"
 pip --version
 poetry --version
 cargo build -q --release --bin monotrail

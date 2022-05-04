@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "install-wheel-rs"
-version = "0.1.0"
+version = "0.0.3"
 dependencies = [
  "base64",
  "configparser",
@@ -779,13 +779,12 @@ dependencies = [
 
 [[package]]
 name = "monotrail"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "clap",
  "dirs",
  "fs-err",
- "fs2",
  "git2",
  "indicatif",
  "indoc 1.0.4",

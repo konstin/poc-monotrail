@@ -1,5 +1,5 @@
 | Command | Mean [s] | Min [s] | Max [s] | Relative |
 |:---|---:|---:|---:|---:|
-| `.venv/bin/pip install -q -r requirements-benchmark.txt` | 54.001 ± 31.527 | 34.221 | 90.359 | 4.65 ± 2.75 |
-| `poetry install -q --no-root $BENCHMARK_OPTIONS` | 83.132 ± 5.611 | 79.385 | 89.583 | 7.16 ± 0.83 |
-| `../../../target/x86_64-unknown-linux-musl/release/monotrail poetry-install $BENCHMARK_OPTIONS` | 11.614 ± 1.102 | 10.597 | 12.785 | 1.00 |
+| `.venv/bin/pip install -q -r requirements-benchmark.txt` | 29.481 ± 0.186 | 29.331 | 29.690 | 2.75 ± 0.37 |
+| `poetry install -q --no-root -E import-json` | 70.291 ± 1.366 | 69.020 | 71.735 | 6.56 ± 0.88 |
+| `monotrail poetry-install -E import-json` | 10.714 ± 1.423 | 9.504 | 12.282 | 1.00 |

@@ -1,6 +1,6 @@
 [package]
 name = "monotrail"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 readme = "Readme.md"
 
@@ -18,11 +18,10 @@ anyhow = "1.0.51"
 clap = { version = "3.0.7", features = ["derive"] }
 dirs = "4.0.0"
 fs-err = "2.6.0"
-fs2 = "0.4.3"
 git2 = "0.14.2"
 indicatif = "0.16.2"
 indoc = "1.0.3"
-install-wheel-rs = { version = "0.1.0", path = "install-wheel-rs" }
+install-wheel-rs = { version = "0.0.3", path = "install-wheel-rs" }
 nix = { version = "0.24.0", features = ["process"] }
 pep440 = "0.2.0"
 pyo3 = { version = "0.15.1", features = ["extension-module", "abi3-py37"], optional = true }

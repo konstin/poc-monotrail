@@ -41,6 +41,8 @@ Python has a module called [site](https://docs.python.org/3/library/site.html) w
 
 ## Benchmarks
 
+Installing a single large wheel (plotly)
+
 ```        
 $ VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
   "target/release/monotrail install wheels/plotly-5.5.0-py2.py3-none-any.whl" \
@@ -57,6 +59,55 @@ Benchmark #2: .venv-benchmark/bin/pip install --no-deps wheels/plotly-5.5.0-py2.
 Summary
   'target/release/monotrail install wheels/plotly-5.5.0-py2.py3-none-any.whl' ran
     1.32 ± 0.02 times faster than '.venv-benchmark/bin/pip install --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl'
+```
+
+A sample datascience stack (numpy, pandas, matplotlib)
+
+```
+test-data/poetry/data-science -E tqdm_feature
+pip 22.0.4 from /home/konsti/monotrail/.venv-b/lib/python3.8/site-packages/pip (python 3.8)
+Poetry version 1.1.13
+Benchmark 1: .venv/bin/pip install -q -r requirements-benchmark.txt
+  Time (mean ± σ):     11.745 s ±  1.159 s    [User: 9.637 s, System: 1.339 s]
+  Range (min … max):   10.830 s … 13.048 s    3 runs
+ 
+Benchmark 2: poetry install -q --no-root -E tqdm_feature
+  Time (mean ± σ):     15.039 s ±  0.153 s    [User: 41.032 s, System: 5.934 s]
+  Range (min … max):   14.894 s … 15.199 s    3 runs
+ 
+Benchmark 3: monotrail poetry-install -E tqdm_feature
+  Time (mean ± σ):      5.232 s ±  0.135 s    [User: 12.850 s, System: 2.334 s]
+  Range (min … max):    5.089 s …  5.357 s    3 runs
+ 
+Summary
+  'monotrail poetry-install -E tqdm_feature' ran
+    2.24 ± 0.23 times faster than '.venv/bin/pip install -q -r requirements-benchmark.txt'
+    2.87 ± 0.08 times faster than 'poetry install -q --no-root -E tqdm_feature'
+```
+
+A mid-sized django project 
+
+```
+test-data/poetry/mst -E import-json
+pip 22.0.4 from /home/konsti/monotrail/.venv-b/lib/python3.8/site-packages/pip (python 3.8)
+Poetry version 1.1.13
+Benchmark 1: .venv/bin/pip install -q -r requirements-benchmark.txt
+  Time (mean ± σ):     29.481 s ±  0.186 s    [User: 21.001 s, System: 3.313 s]
+  Range (min … max):   29.331 s … 29.690 s    3 runs
+ 
+Benchmark 2: poetry install -q --no-root -E import-json
+  Time (mean ± σ):     70.291 s ±  1.366 s    [User: 355.966 s, System: 46.958 s]
+  Range (min … max):   69.020 s … 71.735 s    3 runs
+ 
+Benchmark 3: monotrail poetry-install -E import-json
+  Time (mean ± σ):     10.714 s ±  1.423 s    [User: 43.583 s, System: 10.551 s]
+  Range (min … max):    9.504 s … 12.282 s    3 runs
+ 
+Summary
+  'monotrail poetry-install -E import-json' ran
+    2.75 ± 0.37 times faster than '.venv/bin/pip install -q -r requirements-benchmark.txt'
+    6.56 ± 0.88 times faster than 'poetry install -q --no-root -E import-json'
+
 ```
 
 # Dev setup
