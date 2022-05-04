@@ -21,7 +21,9 @@ def interactive(**kwargs):
     from .monotrail_path_finder import MonotrailPathFinder
     import json
 
-    sprawl_root, sprawl_packages, _lockfile = monotrail_from_requested(json.dumps(kwargs), _lockfile)
+    sprawl_root, sprawl_packages, _lockfile = monotrail_from_requested(
+        json.dumps(kwargs), _lockfile
+    )
     MonotrailPathFinder.get_singleton().update_and_activate(
         sprawl_root, sprawl_packages
     )

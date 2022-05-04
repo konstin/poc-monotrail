@@ -1,8 +1,7 @@
 use crate::install_location::{InstallLocation, LockedDir};
-use crate::wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
-use crate::WheelInstallerError;
+use crate::wheel_tags::{compatible_tags, WheelFilename};
+use crate::{Arch, Os, WheelInstallerError};
 use configparser::ini::Ini;
-
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use regex::Regex;
@@ -941,8 +940,8 @@ pub fn install_wheel(
 #[cfg(test)]
 mod test {
     use super::parse_wheel_version;
-    use crate::venv_parser::get_pyvenv_cfg_python_version;
-    use crate::wheel::{parse_key_value_file, read_record_file};
+    use crate::parse_key_value_file;
+    use crate::wheel::read_record_file;
     use indoc::{formatdoc, indoc};
 
     #[test]
@@ -973,22 +972,6 @@ mod test {
         }
         parse_wheel_version(&wheel_with_version("1.0")).unwrap();
         parse_wheel_version(&wheel_with_version("2.0")).unwrap_err();
-    }
-
-    #[test]
-    fn test_parse_pyenv_cfg() {
-        let pyvenv_cfg = indoc! {"
-            home = /usr
-            implementation = CPython
-            version_info = 3.8.10.final.0
-            virtualenv = 20.11.2
-            include-system-site-packages = false
-            base-prefix = /usr
-            base-exec-prefix = /usr
-            base-executable = /usr/bin/python3
-            ",
-        };
-        assert_eq!(get_pyvenv_cfg_python_version(pyvenv_cfg).unwrap(), (3, 8));
     }
 
     #[test]

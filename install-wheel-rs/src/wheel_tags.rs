@@ -1,9 +1,6 @@
 //! Parses the wheel filename, the current host os/arch and checks wheels for compatibility
 
-use crate::venv_parser::get_venv_python_version;
 use crate::WheelInstallerError;
-use anyhow::Context;
-use anyhow::{anyhow, Result};
 use fs_err as fs;
 use goblin::elf::Elf;
 use platform_info::{PlatformInfo, Uname};
@@ -74,16 +71,6 @@ impl WheelFilename {
             self.platform_tag.join(".")
         )
     }
-}
-
-pub fn current_compatible_tags(
-    venv: &Path,
-) -> Result<Vec<(String, String, String)>, WheelInstallerError> {
-    compatible_tags(
-        get_venv_python_version(venv)?,
-        &Os::current()?,
-        &Arch::current()?,
-    )
 }
 
 /// Returns the compatible tags in a (python_tag, abi_tag, platform_tag) format
@@ -170,35 +157,40 @@ pub enum Os {
 }
 
 impl Os {
-    fn detect_linux_libc() -> anyhow::Result<Self> {
+    fn detect_linux_libc() -> Result<Self, WheelInstallerError> {
         let libc = find_libc()?;
         if let Ok(Some((major, minor))) = get_musl_version(&libc) {
             Ok(Os::Musllinux { major, minor })
         } else if let Ok(glibc_ld) = fs::read_link(&libc) {
             let filename = glibc_ld
                 .file_name()
-                .context("Expected the glibc ld to be a file")?
+                .ok_or_else(|| {
+                    WheelInstallerError::OsVersionDetectionError(
+                        "Expected the glibc ld to be a file".to_string(),
+                    )
+                })?
                 .to_string_lossy();
             let expr = Regex::new(r"ld-(\d{1,3})\.(\d{1,3})\.so").unwrap();
 
-            let capture = expr
-                .captures(&filename)
-                .with_context(|| format!("Invalid glibc ld filename: {}", filename))?;
+            let capture = expr.captures(&filename).ok_or_else(|| {
+                WheelInstallerError::OsVersionDetectionError(format!(
+                    "Invalid glibc ld filename: {}",
+                    filename
+                ))
+            })?;
             let major = capture.get(1).unwrap().as_str().parse::<u16>().unwrap();
             let minor = capture.get(2).unwrap().as_str().parse::<u16>().unwrap();
             Ok(Os::Manylinux { major, minor })
         } else {
-            Err(anyhow!("Couldn't detect neither glibc version nor musl libc version, at least one of which is required"))
+            Err(WheelInstallerError::OsVersionDetectionError("Couldn't detect neither glibc version nor musl libc version, at least one of which is required".to_string()))
         }
     }
 
-    pub fn current() -> std::result::Result<Self, WheelInstallerError> {
+    pub fn current() -> Result<Self, WheelInstallerError> {
         let target_triple = target_lexicon::HOST;
 
         let os = match target_triple.operating_system {
-            target_lexicon::OperatingSystem::Linux => {
-                Self::detect_linux_libc().map_err(WheelInstallerError::OsVersionDetectionError)?
-            }
+            target_lexicon::OperatingSystem::Linux => Self::detect_linux_libc()?,
             target_lexicon::OperatingSystem::Windows => Os::Windows,
             target_lexicon::OperatingSystem::MacOSX { major, minor, .. } => {
                 Os::Macos { major, minor }
@@ -230,7 +222,7 @@ impl Os {
                 release: PlatformInfo::new()?.release().to_string(),
             },
             unsupported => {
-                return Err(WheelInstallerError::OsVersionDetectionError(anyhow!(
+                return Err(WheelInstallerError::OsVersionDetectionError(format!(
                     "The operating system {:?} is not supported",
                     unsupported
                 )))
@@ -295,7 +287,7 @@ impl Arch {
             target_lexicon::Architecture::Powerpc64le => Arch::Powerpc64Le,
             target_lexicon::Architecture::S390x => Arch::S390X,
             unsupported => {
-                return Err(WheelInstallerError::OsVersionDetectionError(anyhow!(
+                return Err(WheelInstallerError::OsVersionDetectionError(format!(
                     "The architecture {} is not supported",
                     unsupported
                 )));
@@ -325,10 +317,10 @@ fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
     }
     let system_version: SystemVersion =
         plist::from_file("/System/Library/CoreServices/SystemVersion.plist")
-            .map_err(|err| WheelInstallerError::OsVersionDetectionError(err.into()))?;
+            .map_err(|err| WheelInstallerError::OsVersionDetectionError(err.to_string()))?;
 
     let invalid_mac_os_version = || {
-        WheelInstallerError::OsVersionDetectionError(anyhow!(
+        WheelInstallerError::OsVersionDetectionError(format!(
             "Invalid mac os version {}",
             system_version.product_version
         ))
@@ -349,12 +341,19 @@ fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
 }
 
 /// Find musl libc path from executable's ELF header
-pub fn find_libc() -> anyhow::Result<PathBuf> {
-    let buffer =
-        fs::read("/bin/ls").context("Couldn't read /bin/ls for detecting the ld version")?;
-    let parse_error = "Couldn't parse /bin/ls for detecting the ld version";
-    let elf = Elf::parse(&buffer).context(parse_error)?;
-    elf.interpreter.map(PathBuf::from).context(parse_error)
+pub fn find_libc() -> Result<PathBuf, WheelInstallerError> {
+    let buffer = fs::read("/bin/ls")?;
+    let error_str = "Couldn't parse /bin/ls for detecting the ld version";
+    let elf = Elf::parse(&buffer).map_err(|err| {
+        WheelInstallerError::OsVersionDetectionError(format!("{}: {}", error_str, err))
+    })?;
+    if let Some(elf_interpreter) = elf.interpreter {
+        Ok(PathBuf::from(elf_interpreter))
+    } else {
+        Err(WheelInstallerError::OsVersionDetectionError(
+            error_str.to_string(),
+        ))
+    }
 }
 
 /// Read the musl version from libc library's output. Taken from maturin
@@ -385,10 +384,7 @@ pub fn get_musl_version(ld_path: impl AsRef<Path>) -> std::io::Result<Option<(u1
 /// and "any".
 ///
 /// Bit of a mess, needs to be cleaned up
-pub(crate) fn compatible_platform_tags(
-    os: &Os,
-    arch: &Arch,
-) -> Result<Vec<String>, WheelInstallerError> {
+pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, WheelInstallerError> {
     let platform_tags = match (os.clone(), *arch) {
         (Os::Manylinux { major, minor }, _) => {
             let mut platform_tags = vec![format!("linux_{}", arch)];
@@ -441,7 +437,7 @@ pub(crate) fn compatible_platform_tags(
                     );
                 }
                 _ => {
-                    return Err(WheelInstallerError::OsVersionDetectionError(anyhow!(
+                    return Err(WheelInstallerError::OsVersionDetectionError(format!(
                         "Unsupported mac os version: {}",
                         major,
                     )));
@@ -493,10 +489,12 @@ pub(crate) fn compatible_platform_tags(
             let mut os = os.to_string().to_lowercase();
             // See https://github.com/python/cpython/blob/46c8d915715aa2bd4d697482aa051fe974d440e1/Lib/sysconfig.py#L722-L730
             if let Some((major, other)) = release.split_once('_') {
-                let major_ver: u64 = major
-                    .parse()
-                    .context("illumos major version is not a number")
-                    .map_err(WheelInstallerError::OsVersionDetectionError)?;
+                let major_ver: u64 = major.parse().map_err(|err| {
+                    WheelInstallerError::OsVersionDetectionError(format!(
+                        "illumos major version is not a number: {}",
+                        err
+                    ))
+                })?;
                 if major_ver >= 5 {
                     // SunOS 5 == Solaris 2
                     os = "solaris".to_string();
@@ -507,10 +505,9 @@ pub(crate) fn compatible_platform_tags(
             vec![format!("{}_{}_{}", os, release, arch)]
         }
         _ => {
-            return Err(WheelInstallerError::OsVersionDetectionError(anyhow!(
+            return Err(WheelInstallerError::OsVersionDetectionError(format!(
                 "Unsupported operating system and architecture combination: {} {}",
-                os,
-                arch
+                os, arch
             )));
         }
     };
@@ -519,8 +516,8 @@ pub(crate) fn compatible_platform_tags(
 
 #[cfg(test)]
 mod test {
-    use crate::wheel_tags::{compatible_platform_tags, compatible_tags, Arch, Os, WheelFilename};
-    use crate::WheelInstallerError;
+    use super::{compatible_platform_tags, compatible_tags, WheelFilename};
+    use crate::{Arch, Os, WheelInstallerError};
     use fs_err::File;
     use std::str::FromStr;
 
@@ -557,7 +554,7 @@ mod test {
 
     /// Test that we correctly identify compatible pairs
     #[test]
-    fn test_compatibility() -> anyhow::Result<()> {
+    fn test_compatibility() -> Result<(), WheelInstallerError> {
         let filenames = [
             (
                 "numpy-1.22.2-cp38-cp38-win_amd64.whl",
@@ -638,7 +635,7 @@ mod test {
 
     /// Test that incompatible pairs don't pass is_compatible
     #[test]
-    fn test_compatibility_filter() -> anyhow::Result<()> {
+    fn test_compatibility_filter() -> Result<(), WheelInstallerError> {
         let compatible_tags = compatible_tags(
             (3, 8),
             &Os::Manylinux {
@@ -667,16 +664,15 @@ mod test {
         Ok(())
     }
 
-    fn get_ubuntu_20_04_tags() -> anyhow::Result<Vec<String>> {
-        Ok(serde_json::from_reader(File::open(
-            "test-data/tags/cp38-ubuntu-20-04.json",
-        )?)?)
+    fn get_ubuntu_20_04_tags() -> Vec<String> {
+        serde_json::from_reader(File::open("../test-data/tags/cp38-ubuntu-20-04.json").unwrap())
+            .unwrap()
     }
 
     /// Check against the tags that packaging.tags reports as compatible
     #[test]
-    fn ubuntu_20_04_compatible() -> anyhow::Result<()> {
-        let tags = get_ubuntu_20_04_tags()?;
+    fn ubuntu_20_04_compatible() -> Result<(), WheelInstallerError> {
+        let tags = get_ubuntu_20_04_tags();
         for tag in tags {
             let compatible_tags = compatible_tags(
                 (3, 8),
@@ -699,8 +695,8 @@ mod test {
 
     /// Check against the tags that packaging.tags reports as compatible
     #[test]
-    fn ubuntu_20_04_list() -> anyhow::Result<()> {
-        let expected_tags = get_ubuntu_20_04_tags()?;
+    fn ubuntu_20_04_list() -> Result<(), WheelInstallerError> {
+        let expected_tags = get_ubuntu_20_04_tags();
         let actual_tags: Vec<String> = compatible_tags(
             (3, 8),
             &Os::Manylinux {
@@ -720,7 +716,7 @@ mod test {
 
     /// Basic does-it-work test
     #[test]
-    fn host_arch() -> anyhow::Result<()> {
+    fn host_arch() -> Result<(), WheelInstallerError> {
         let os = Os::current()?;
         let arch = Arch::current()?;
         compatible_platform_tags(&os, &arch)?;

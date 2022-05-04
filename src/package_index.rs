@@ -1,10 +1,9 @@
 //! Basic downloading from pypi
 
 use crate::spec::DistributionType;
-use crate::wheel_tags::WheelFilename;
-use crate::WheelInstallerError;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
+use install_wheel_rs::{WheelFilename, WheelInstallerError};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

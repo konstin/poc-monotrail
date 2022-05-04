@@ -1,6 +1,5 @@
 use crate::package_index::search_release;
-use crate::wheel_tags::WheelFilename;
-use crate::WheelInstallerError;
+use install_wheel_rs::{WheelFilename, WheelInstallerError};
 use regex::Regex;
 use std::path::PathBuf;
 use std::str::FromStr;

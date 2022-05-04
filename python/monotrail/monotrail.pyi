@@ -1,6 +1,5 @@
 from typing import Tuple, List, Optional
 
-
 class InstalledPackage:
     name: str
     python_version: str

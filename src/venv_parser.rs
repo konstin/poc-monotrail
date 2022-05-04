@@ -1,5 +1,5 @@
-use crate::WheelInstallerError;
 use fs_err as fs;
+use install_wheel_rs::WheelInstallerError;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -53,4 +53,26 @@ pub fn get_pyvenv_cfg_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), Wheel
         }
     };
     Ok(python_version)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::venv_parser::get_pyvenv_cfg_python_version;
+    use indoc::indoc;
+
+    #[test]
+    fn test_parse_pyenv_cfg() {
+        let pyvenv_cfg = indoc! {"
+            home = /usr
+            implementation = CPython
+            version_info = 3.8.10.final.0
+            virtualenv = 20.11.2
+            include-system-site-packages = false
+            base-prefix = /usr
+            base-exec-prefix = /usr
+            base-executable = /usr/bin/python3
+            ",
+        };
+        assert_eq!(get_pyvenv_cfg_python_version(pyvenv_cfg).unwrap(), (3, 8));
+    }
 }

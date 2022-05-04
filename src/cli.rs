@@ -1,16 +1,15 @@
-use crate::install::InstalledPackage;
-use crate::install_location::InstallLocation;
+use crate::install::{filter_installed, InstalledPackage};
 use crate::markers::Pep508Environment;
 use crate::monotrail::monotrail_root;
 use crate::package_index::download_distribution;
 use crate::poetry::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
-use crate::wheel_tags::current_compatible_tags;
-use crate::{install_specs, package_index, WheelInstallerError};
+use crate::{install_specs, package_index};
 use anyhow::{bail, format_err, Context};
 use clap::Parser;
 use fs_err::File;
+use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
 use nix::unistd;
 use std::env;
 use std::ffi::CString;
@@ -83,7 +82,11 @@ fn install_location_specs(
     venv_canon: &Path,
     options: &PoetryOptions,
 ) -> anyhow::Result<(InstallLocation<PathBuf>, Vec<InstalledPackage>)> {
-    let compatible_tags = current_compatible_tags(venv)?;
+    let compatible_tags = compatible_tags(
+        get_venv_python_version(venv)?,
+        &Os::current()?,
+        &Arch::current()?,
+    )?;
     // TODO: don't parse this from a subprocess but do it like maturin
     let pep508_env = Pep508Environment::from_python();
     let (poetry_toml, poetry_lock) = read_toml_files(&env::current_dir()?)?;
@@ -111,7 +114,7 @@ fn install_location_specs(
     };
 
     let (to_install, mut installed_done) = if options.skip_existing || options.monotrail {
-        location.filter_installed(&specs)?
+        filter_installed(&location, &specs)?
     } else {
         (specs, Vec::new())
     };
@@ -135,7 +138,11 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             targets,
             no_compile,
         } => {
-            let compatible_tags = current_compatible_tags(venv)?;
+            let compatible_tags = compatible_tags(
+                get_venv_python_version(venv)?,
+                &Os::current()?,
+                &Arch::current()?,
+            )?;
             let specs = targets
                 .iter()
                 .map(|target| RequestedSpec::from_requested(target, &[]))

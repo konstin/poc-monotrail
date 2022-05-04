@@ -37,7 +37,8 @@ def test_tqdm():
         env=env,
     )
     check_call(
-        [f"{venv}/bin/python", get_root().joinpath("test_binary/test_tqdm_impl.py")], env=env
+        [f"{venv}/bin/python", get_root().joinpath("test_binary/test_tqdm_impl.py")],
+        env=env,
     )
     check_call([f"{venv}/bin/tqdm", "--version"], env=env)
     shutil.rmtree(venv)

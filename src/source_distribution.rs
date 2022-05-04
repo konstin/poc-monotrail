@@ -1,7 +1,7 @@
-use crate::wheel_tags::WheelFilename;
-use crate::{package_index, WheelInstallerError};
+use crate::package_index;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
+use install_wheel_rs::{WheelFilename, WheelInstallerError};
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
