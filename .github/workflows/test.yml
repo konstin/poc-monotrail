@@ -148,6 +148,6 @@ jobs:
       - name: make paper
         run: bash make_paper.sh
       - name: pip install pytest
-        run: pip install pytest
+        run: .venv/bin/pip install pytest
       - name: pytest test_python
         run: .venv/bin/pytest test_python
