@@ -65,8 +65,8 @@ jobs:
           command: test
           args: --workspace --release
 
-      - name: pytest
-        run: pytest
+      - name: pytest test_binary
+        run: pytest test_binary
 
       - name: Install hyperfine (linux)
         if: matrix.os == 'ubuntu-latest-skip-for-slowness'
@@ -147,7 +147,7 @@ jobs:
       # The whole venv management is overly complex
       - name: make paper
         run: bash make_paper.sh
-      - name: pip install monotrail
-        run: pip install target-maturin/wheels/monotrail-*.whl
-      - name: test notebook integration
-        run: jupyter nbconvert --inplace --execute test_python/jupyter_integration.ipynb
+      - name: pip install pytest
+        run: pip install pytest
+      - name: pytest test_python
+        run: .venv/bin/pytest test_python

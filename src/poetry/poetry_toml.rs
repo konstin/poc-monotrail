@@ -92,5 +92,5 @@ pub struct PoetrySection {
     pub authors: Vec<String>,
     pub dependencies: HashMap<String, Dependency>,
     pub dev_dependencies: HashMap<String, Dependency>,
-    pub extras: HashMap<String, Vec<String>>,
+    pub extras: Option<HashMap<String, Vec<String>>>,
 }

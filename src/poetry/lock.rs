@@ -1,18 +1,24 @@
 //! calls to poetry to resolve a set of requirements
 
+use crate::package_index::cache_dir;
 use crate::poetry::{poetry_lock, poetry_toml};
 use anyhow::{bail, Context};
+use fs_err as fs;
 use std::collections::HashMap;
 use std::default::Default;
+use std::io;
+use std::path::Path;
 use std::process::Command;
-use std::{fs, io};
+use std::time::Instant;
 use tempfile::tempdir;
+use tracing::debug;
 
 /// Calls poetry to resolve the user specified dependencies into a set of locked consistent
 /// dependencies. Produces a poetry.lock in the process
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn resolve(
     mut dependencies: HashMap<String, poetry_toml::Dependency>,
+    sys_executable: &Path,
     python_version: (u8, u8),
     lockfile: Option<&str>,
 ) -> anyhow::Result<(
@@ -42,7 +48,7 @@ pub fn resolve(
                 authors: vec!["konstin <konstin@mailbox.org>".to_string()],
                 dependencies,
                 dev_dependencies: HashMap::new(),
-                extras: HashMap::new(),
+                extras: Some(HashMap::new()),
             },
         },
         build_system: Default::default()
@@ -59,11 +65,38 @@ pub fn resolve(
     if let Some(lockfile) = lockfile {
         fs::write(&poetry_lock_path, &lockfile)?;
     }
-    // Call poetry to resolve dependencies. This will generate `poetry.lock` in the same directory
-    let result = Command::new("poetry")
-        .args(&["lock", "--no-update"])
+
+    // Setup a directory with the dependencies of poetry itself, so we can run poetry in a
+    // recursive call to monotrail through the python interface.
+    // Poetry internally is normally installed through get-poetry.py which creates a new virtualenv
+    // and then just call pip with the pypi version, so we can install and use through our own
+    // mechanism.
+    // Maybe it would more elegant to do this through pyo3, not sure.
+    let poetry_boostrap_lock = cache_dir()?.join("poetry_boostrap_lock");
+    fs::create_dir_all(&poetry_boostrap_lock)?;
+    fs::write(
+        poetry_boostrap_lock.join("poetry.lock"),
+        include_str!("poetry_boostrap_lock/poetry.lock"),
+    )?;
+    fs::write(
+        poetry_boostrap_lock.join("pyproject.toml"),
+        include_str!("poetry_boostrap_lock/pyproject.toml"),
+    )?;
+
+    let start = Instant::now();
+    let result = Command::new(sys_executable)
+        .args(["-m", "monotrail.run", "poetry", "lock", "--no-update"])
+        // This will make poetry lock the right deps
         .current_dir(&resolve_dir)
+        // This will make the monotrail python part find the poetry lock for poetry itself
+        .env("MONOTRAIL", "1")
+        .env("MONOTRAIL_CWD", &poetry_boostrap_lock)
         .status();
+    debug!(
+        "poetry lock took {:.2}s",
+        (Instant::now() - start).as_secs_f32()
+    );
+
     match result {
         Ok(status) if status.success() => {
             // we're good

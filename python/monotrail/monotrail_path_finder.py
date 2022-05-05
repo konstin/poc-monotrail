@@ -1,12 +1,17 @@
 import logging
+import site
 import sys
 from importlib.abc import MetaPathFinder
 from importlib.machinery import PathFinder
-from importlib.metadata import DistributionFinder, PathDistribution
+from importlib.util import spec_from_file_location
 from pathlib import Path
-from typing import Union, List, Dict, Optional
+from typing import Union, List, Dict, Optional, Tuple
 
-from .monotrail import InstalledPackage
+# setuptools is adamant on haying _normalized_name on PathDistributions but as of 3.8 that only exists in
+# importlib_metadata (or setuptools vendored copy of it) and not in importlib.metadata
+from importlib_metadata import DistributionFinder, PathDistribution
+
+from .monotrail import InstalledPackage, monotrail_spec_paths
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +22,8 @@ _path_finder_singleton: Optional["MonotrailPathFinder"] = None
 class MonotrailPathFinder(PathFinder, MetaPathFinder):
     sprawl_root: Path
     sprawl_packages: Dict[str, InstalledPackage]
+    # given a module name, where's the corresponding module file and what are the submodule_search_locations?
+    spec_paths: Dict[str, Tuple[str, List[str]]]
 
     def __init__(self):
         """dummy, actual initializer is update_and_activate"""
@@ -41,6 +48,12 @@ class MonotrailPathFinder(PathFinder, MetaPathFinder):
         self.sprawl_root = Path(sprawl_root)
         self.warn_on_conflicts(self.sprawl_packages, sprawl_packages)
         self.sprawl_packages = {package.name: package for package in sprawl_packages}
+        self.spec_paths, pth_files = monotrail_spec_paths(sprawl_root, sprawl_packages)
+        # hackery hack hack
+        # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
+        for pth in pth_files:
+            pth = Path(pth)
+            site.addpackage(pth.parent, pth.name, None)
 
     @classmethod
     def warn_on_conflicts(
@@ -67,36 +80,34 @@ class MonotrailPathFinder(PathFinder, MetaPathFinder):
                     f"Please restart your jupyter kernel or python interpreter",
                 )
 
-    def _site_package_dir(self, package: InstalledPackage) -> Path:
-        return (
-            self.sprawl_root.joinpath(package.name)
-            .joinpath(package.unique_version)
-            .joinpath(package.tag)
-            .joinpath("lib")
-            .joinpath(f"python{sys.version_info.major}.{sys.version_info.minor}")
-            .joinpath("site-packages")
-        )
-
     def find_spec(self, fullname, path=None, target=None):
         # We need to pass all packages because package names are lies, packages may contain whatever and nobody uses
         # https://packaging.python.org/en/latest/specifications/core-metadata/#provides-dist-multiple-use
         # e.g. "python-dateutil" actually ships a module "dateutil" but there's no indication about that
-        site_packages = []
-        for package in self.sprawl_packages.values():
-            site_packages_dir = self._site_package_dir(package)
-            assert (
-                site_packages_dir.is_dir()
-            ), f"missing expected directory: {site_packages_dir}"
-            site_packages.append(str(site_packages_dir))
-        return super().find_spec(fullname, site_packages, target)
+
+        if fullname in self.spec_paths:
+            location, submodule_search_locations = self.spec_paths[fullname]
+        else:
+            return None
+
+        spec = spec_from_file_location(
+            fullname,
+            location,
+            submodule_search_locations=submodule_search_locations,
+        )
+
+        return spec
 
     def _single_distribution(self, package: InstalledPackage) -> PathDistribution:
         # TODO: Don't glob, but somehow handle that package can use the non-canonical name here
-        [dist_info_dir] = self._site_package_dir(package).glob(
-            f"*-{package.python_version}.dist-info"
-        )
+        [dist_info_dir] = Path(
+            package.monotrail_site_packages(
+                self.sprawl_root, (sys.version_info.major, sys.version_info.minor)
+            )
+        ).glob(f"*-{package.python_version}.dist-info")
         assert dist_info_dir.is_dir(), dist_info_dir
-        return PathDistribution(dist_info_dir)
+        distribution = PathDistribution(dist_info_dir)
+        return distribution
 
     def find_distributions(
         self, context: DistributionFinder.Context = DistributionFinder.Context()

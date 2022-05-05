@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+rm -f target-maturin/wheels/monotrail-*.whl
 CARGO_TARGET_DIR=target-maturin maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
 # VIRTUAL_ENV=/home/konsti/monotrail/.venv maturin develop --release --strip --cargo-extra-args="--features=python_bindings"
 zip -ur target-maturin/wheels/monotrail-*.whl load_monotrail.pth

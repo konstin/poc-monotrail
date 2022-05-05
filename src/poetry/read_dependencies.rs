@@ -170,11 +170,12 @@ fn get_root_info(
             .collect()
     };
 
-    let mut root_extra_deps: HashSet<_> = HashSet::new();
+    let mut root_extra_deps: HashSet<String> = HashSet::new();
     for extra_name in extras {
         let packages = poetry_section
             .extras
-            .get(extra_name)
+            .as_ref()
+            .and_then(|extras| extras.get(extra_name).cloned())
             .with_context(|| format!("No such extra {}", extra_name))?;
         root_extra_deps.extend(packages);
     }
@@ -187,7 +188,7 @@ fn get_root_info(
                 return false;
             }
             // Use only those optional deps which are activated by a selected extra
-            if dep_spec.is_optional() && !root_extra_deps.contains(&dep_name) {
+            if dep_spec.is_optional() && !root_extra_deps.contains(dep_name) {
                 return false;
             }
             true

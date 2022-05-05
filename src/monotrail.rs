@@ -9,10 +9,11 @@ use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::DirEntry;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os};
-use std::env;
+use std::collections::HashMap;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
-use tracing::debug;
+use std::{env, io};
+use tracing::{debug, warn};
 
 pub fn monotrail_root() -> anyhow::Result<PathBuf> {
     if let Some(env_root) = env::var_os("MONOTRAIL_ROOT") {
@@ -177,6 +178,113 @@ pub fn install_requested(
         .to_string();
     debug!("python extension has {} packages", installed.len());
     Ok((monotrail_location_string, installed))
+}
+
+/// When python installs packages, it just unpacks zips into the venv. If multiples packages
+/// contain the same directory, they are simply silently merged, and files are overwritten.
+/// This means that packages can ship modules of a different nam, e.g. pillow containing PIL,
+/// and one package silently extending another package. The latter is the case for poetry: The
+/// "poetry" package depends on "poetry-core". "poetry-core" contains the `poetry/core/` submodule
+/// and nothing else, while the "poetry" package contains all other submodules, such as
+/// `poetry/io/` and `poetry/config/`. Both contain the same `poetry/__init__.py`. We install each
+/// package in a different directory so that suddenly there's two dirs in our path finder that
+/// contain `poetry/__init__.py` with separate parts of poetry. Luckily `ModuleSpec`, the thing
+/// we're from our `PathFinder`, has a `submodule_search_locations` where we can find both
+/// locations. This functions finds those locations be scanning all installed packages for which
+/// modules they contain.
+///
+/// https://docs.python.org/3/library/importlib.html#importlib.machinery.ModuleSpec
+///
+/// Returns the name, the main file to import for the spec and the submodule_search_locations
+/// as well as a list of .pth files that need to be executed
+#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+pub fn spec_paths(
+    sprawl_root: &Path,
+    sprawl_packages: &[InstalledPackage],
+    python_version: (u8, u8),
+) -> anyhow::Result<(HashMap<String, (PathBuf, Vec<PathBuf>)>, Vec<PathBuf>)> {
+    let mut dir_modules: HashMap<String, Vec<InstalledPackage>> = HashMap::new();
+    let mut file_modules: HashMap<String, (InstalledPackage, PathBuf)> = HashMap::new();
+    let mut pth_files: Vec<PathBuf> = Vec::new();
+    // https://peps.python.org/pep-0420/#specification
+    for sprawl_package in sprawl_packages {
+        let package_dir =
+            sprawl_package.monotrail_site_packages(sprawl_root.to_path_buf(), python_version);
+        let dir_contents =
+            fs::read_dir(&package_dir)?.collect::<Result<Vec<DirEntry>, io::Error>>()?;
+        // "If <directory>/foo/__init__.py is found, a regular package is imported and returned."
+        for entry in dir_contents {
+            let filename = if let Some(filename) = entry.file_name().to_str() {
+                filename.to_string()
+            } else {
+                warn!("non-utf8 filename encountered in {}", package_dir.display());
+                continue;
+            };
+            if entry.file_type()?.is_dir() && entry.path().join("__init__.py").is_file() {
+                dir_modules
+                    .entry(filename.to_string())
+                    .or_default()
+                    .push(sprawl_package.clone())
+            }
+
+            // "If not, but <directory>/foo.{py,pyc,so,pyd} is found, a module is imported and returned."
+            // Can also be foo.<tag>.so
+            if entry.file_type()?.is_file() {
+                let parts: Vec<&str> = filename.split('.').collect();
+                match *parts.as_slice() {
+                    [stem, "py" | "pyc" | "so" | "pyd"] => {
+                        file_modules
+                            .insert(stem.to_string(), (sprawl_package.clone(), entry.path()));
+                    }
+                    [stem, _tag, "so"] => {
+                        // TODO: Check compatibility of so tag
+                        file_modules
+                            .insert(stem.to_string(), (sprawl_package.clone(), entry.path()));
+                    }
+                    [.., "pth"] => pth_files.push(entry.path()),
+                    _ => continue,
+                }
+            }
+        }
+    }
+
+    // Make import order deterministic
+    for value in dir_modules.values_mut() {
+        value.sort_by_key(|package| package.name.clone());
+    }
+
+    let mut spec_bases: HashMap<String, (PathBuf, Vec<PathBuf>)> = HashMap::new();
+
+    // Merge single file modules in while performing conflict detection
+    for (name, (_single_file_packages, filename)) in file_modules {
+        if dir_modules.contains_key(&name) {
+            // This is the case e.g. for inflection 0.5.1
+            continue;
+        }
+
+        spec_bases.insert(name, (filename, Vec::new()));
+    }
+
+    for (name, packages) in dir_modules {
+        let submodule_search_locations = packages
+            .iter()
+            .map(|package| {
+                package
+                    .monotrail_site_packages(sprawl_root.to_path_buf(), python_version)
+                    .join(&name)
+            })
+            .collect();
+        // This is effectively a random pick, if someone is relying on different __init__.py
+        // contents all is already cursed anyway.
+        // TODO: Should we check __init__.py contents that they're all equal?
+        let first_init_py = packages[0]
+            .monotrail_site_packages(sprawl_root.to_path_buf(), python_version)
+            .join(&name)
+            .join("__init__.py");
+        spec_bases.insert(name, (first_init_py, submodule_search_locations));
+    }
+
+    Ok((spec_bases, pth_files))
 }
 
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]

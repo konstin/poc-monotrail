@@ -44,6 +44,27 @@ pub struct InstalledPackage {
     pub tag: String,
 }
 
+#[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
+impl InstalledPackage {
+    pub fn monotrail_location(&self, sprawl_root: PathBuf) -> PathBuf {
+        sprawl_root
+            .join(&self.name)
+            .join(&self.unique_version)
+            .join(&self.tag)
+    }
+
+    pub fn monotrail_site_packages(
+        &self,
+        sprawl_root: PathBuf,
+        python_version: (u8, u8),
+    ) -> PathBuf {
+        self.monotrail_location(sprawl_root)
+            .join("lib")
+            .join(format!("python{}.{}", python_version.0, python_version.1))
+            .join("site-packages")
+    }
+}
+
 /// Reads the installed packages through .dist-info/WHEEL files, returns the set that is installed
 /// and the one that still needs to be installed
 pub fn filter_installed_venv(

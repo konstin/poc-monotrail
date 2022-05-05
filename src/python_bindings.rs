@@ -1,12 +1,13 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
-use crate::monotrail::{get_requested_specs, install_requested};
+use crate::monotrail::{get_requested_specs, install_requested, spec_paths};
 use crate::poetry::lock::resolve;
 use crate::read_poetry_specs;
 use anyhow::{bail, Context};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
+use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 use tracing::debug;
@@ -119,10 +120,14 @@ pub fn monotrail_from_requested(
     let python_version = (py.version_info().major, py.version_info().minor);
     debug!("python: {:?} {}", python_version, sys_executable);
 
-    let (poetry_toml, poetry_lock, lockfile) =
-        resolve(requested, python_version, lockfile.as_deref())
-            .context("Failed to resolve requested dependencies through poetry")
-            .map_err(format_monotrail_error)?;
+    let (poetry_toml, poetry_lock, lockfile) = resolve(
+        requested,
+        Path::new(&sys_executable),
+        python_version,
+        lockfile.as_deref(),
+    )
+    .context("Failed to resolve requested dependencies through poetry")
+    .map_err(format_monotrail_error)?;
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
     let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
@@ -131,6 +136,38 @@ pub fn monotrail_from_requested(
         install_requested(&specs, Path::new(&sys_executable), python_version)
             .map_err(format_monotrail_error)?;
     Ok((sprawl_root, sprawl_packages, lockfile))
+}
+
+/// Explicitly pass what you want, currently only used for testing
+#[pyfunction]
+pub fn monotrail_from_dir(
+    py: Python,
+    dir: PathBuf,
+    extras: Vec<String>,
+) -> PyResult<(String, Vec<InstalledPackage>)> {
+    debug!("script: {:?}", dir);
+    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
+    let python_version = (py.version_info().major, py.version_info().minor);
+    debug!("python: {:?} {}", python_version, sys_executable);
+    debug!("extras: {:?}", extras);
+    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
+
+    let specs =
+        get_requested_specs(Some(&dir), &extras, &pep508_env).map_err(format_monotrail_error)?;
+    install_requested(&specs, Path::new(&sys_executable), python_version)
+        .map_err(format_monotrail_error)
+}
+
+/// The installed packages are all lies and rumors, we can only find the actually importable
+/// packages by walking the site-packages, so here we map installed packages to importable modules
+#[pyfunction]
+pub fn monotrail_spec_paths(
+    py: Python,
+    sprawl_root: PathBuf,
+    sprawl_packages: Vec<InstalledPackage>,
+) -> PyResult<(HashMap<String, (PathBuf, Vec<PathBuf>)>, Vec<PathBuf>)> {
+    let python_version = (py.version_info().major, py.version_info().minor);
+    spec_paths(&sprawl_root, &sprawl_packages, python_version).map_err(format_monotrail_error)
 }
 
 fn parse_extras() -> anyhow::Result<Vec<String>> {
@@ -174,6 +211,8 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
     }
     m.add_function(wrap_pyfunction!(monotrail_from_env, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_from_requested, m)?)?;
+    m.add_function(wrap_pyfunction!(monotrail_from_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(monotrail_spec_paths, m)?)?;
     m.add_class::<InstalledPackage>()?;
     Ok(())
 }
