@@ -1,0 +1,30 @@
+// deactivated because it requires internet.
+// TODO: Mock the pypi json api and reactivate
+use install_wheel_rs::{compatible_tags, Arch, Os};
+use monotrail::{get_requested_specs, Pep508Environment};
+
+#[test]
+fn test_manylinux() {
+    let os = Os::Manylinux {
+        major: 2,
+        minor: 27,
+    };
+    let arch = Arch::X86_64;
+    let python_version = (3, 7);
+    let compatible_tags = compatible_tags(python_version, &os, &arch).unwrap();
+    let pep508_env = Pep508Environment::from_json_str(
+        r##"{"implementation_name": "cpython", "implementation_version": "3.7.13", "os_name": "posix", "platform_machine": "x86_64", "platform_python_implementation": "CPython", "platform_release": "5.4.188+", "platform_system": "Linux", "platform_version": "#1 SMP Sun Apr 24 10:03:06 PDT 2022", "python_full_version": "3.7.13", "python_version": "3.7", "sys_platform": "linux"}"##,
+    );
+    let specs = get_requested_specs(
+        Some("/home/konsti/monotrail/src/poetry_integration/poetry_boostrap_lock".as_ref()),
+        &[],
+        &pep508_env,
+    )
+    .unwrap();
+    dbg!(specs
+        .iter()
+        .find(|spec| spec.name == "cffi".to_string())
+        .unwrap()
+        .resolve(&compatible_tags)
+        .unwrap());
+}

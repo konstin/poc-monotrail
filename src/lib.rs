@@ -1,4 +1,6 @@
 use crate::install::install_specs;
+pub use crate::markers::Pep508Environment;
+pub use crate::monotrail::get_requested_specs;
 pub use cli::{run, Cli};
 use poetry_integration::read_dependencies::read_poetry_specs;
 

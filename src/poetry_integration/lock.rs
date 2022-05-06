@@ -96,7 +96,8 @@ pub fn resolve(
     // The new process we spawn would also do this, but this way we get better debuggability
     let bootstrapping_span = span!(Level::DEBUG, "bootstrapping_poetry");
     let specs = get_requested_specs(Some(&poetry_boostrap_lock), &[], pep508_env)?;
-    install_requested(&specs, Path::new(&sys_executable), python_version)?;
+    install_requested(&specs, Path::new(&sys_executable), python_version)
+        .context("Failed to bootstrap poetry")?;
     drop(bootstrapping_span);
 
     debug!("resolving with poetry");

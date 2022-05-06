@@ -86,7 +86,13 @@ pub fn compatible_tags(
     for platform_tag in &platform_tags {
         tags.push((
             format!("cp{}{}", python_version.0, python_version.1),
-            format!("cp{}{}", python_version.0, python_version.1),
+            format!(
+                "cp{}{}{}",
+                python_version.0,
+                python_version.1,
+                // hacky but that's legacy anyways
+                if python_version.1 <= 7 { "m" } else { "" }
+            ),
             platform_tag.clone(),
         ));
         tags.push((
