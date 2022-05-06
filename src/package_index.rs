@@ -43,7 +43,6 @@ pub enum PackageType {
 }
 
 fn matching_package_for_version(
-    _name: &str,
     compatible_tags: &[(String, String, String)],
     version: &str,
     pypi_releases: &[PypiRelease],
@@ -100,7 +99,7 @@ pub fn search_release(
             .get(&version)
             .with_context(|| format!("{} {} not found on pypi", name, version))?;
 
-        matching_package_for_version(name, compatible_tags, &version, pypi_releases)?
+        matching_package_for_version(compatible_tags, &version, pypi_releases)?
             .with_context(|| format!("Couldn't find compatible release for {} {}", name, version))
     } else {
         let mut releases = pypi_project.releases.iter().collect::<Vec<_>>();
@@ -109,7 +108,7 @@ pub fn search_release(
         releases.reverse();
         for (version, release) in releases {
             if let Some(matching_package) =
-                matching_package_for_version(name, compatible_tags, version, release)?
+                matching_package_for_version(compatible_tags, version, release)?
             {
                 return Ok(matching_package);
             }

@@ -4,6 +4,7 @@ use crate::monotrail::{get_requested_specs, install_requested, spec_paths};
 use crate::poetry_integration::lock::resolve;
 use crate::read_poetry_specs;
 use anyhow::{bail, Context};
+use install_wheel_rs::{Arch, Os};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
@@ -11,7 +12,6 @@ use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 use tracing::debug;
-
 static PEP508_QUERY_MODULE: &str = include_str!("get_pep508_env_function.py");
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own
@@ -50,9 +50,9 @@ fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<String>, 
     }
 }
 
-fn format_monotrail_error(err: anyhow::Error) -> PyErr {
+fn format_monotrail_error(err: impl Into<anyhow::Error>) -> PyErr {
     let mut accumulator = format!("{} failed to load.", env!("CARGO_PKG_NAME"));
-    for cause in err.chain().collect::<Vec<_>>().iter() {
+    for cause in err.into().chain().collect::<Vec<_>>().iter() {
         accumulator.push_str(&format!("\n  Caused by: {}", cause));
     }
     PyRuntimeError::new_err(accumulator)
@@ -71,6 +71,18 @@ fn get_pep508_env(py: Python) -> PyResult<String> {
     // call object without empty arguments
     let json_string: String = fun.call0(py)?.extract(py)?;
     Ok(json_string)
+}
+
+fn get_python_platform(py: Python) -> PyResult<(String, (u8, u8), Os, Arch)> {
+    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
+    let python_version = (py.version_info().major, py.version_info().minor);
+    let os = Os::current().map_err(format_monotrail_error)?;
+    let arch = Arch::current().map_err(format_monotrail_error)?;
+    debug!(
+        "python: {:?} {:?} {} {}",
+        python_version, os, arch, sys_executable
+    );
+    Ok((sys_executable, python_version, os, arch))
 }
 
 /// Installs all required packages and returns package information to python
@@ -93,9 +105,7 @@ pub fn monotrail_from_env(
         script.map(PathBuf::from)
     };
     debug!("monotrail_from_env script: {:?}", script);
-    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
-    let python_version = (py.version_info().major, py.version_info().minor);
-    debug!("python: {:?} {}", python_version, sys_executable);
+    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
     let extras = parse_extras().map_err(format_monotrail_error)?;
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
@@ -116,13 +126,8 @@ pub fn monotrail_from_requested(
     let requested = serde_json::from_str(&requested)
         .map_err(|serde_err| PyRuntimeError::new_err(format!("Invalid dependency format: {}.\n See https://python-poetry.org/docs/dependency-specification/", serde_err)))?;
 
-    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
-    let python_version = (py.version_info().major, py.version_info().minor);
+    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
-    debug!(
-        "monotrail_from_requested python: {:?} {}",
-        python_version, sys_executable
-    );
 
     let (poetry_toml, poetry_lock, lockfile) = resolve(
         requested,
@@ -150,9 +155,7 @@ pub fn monotrail_from_dir(
     extras: Vec<String>,
 ) -> PyResult<(String, Vec<InstalledPackage>)> {
     debug!("monotrail_from_dir script: {:?}", dir);
-    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
-    let python_version = (py.version_info().major, py.version_info().minor);
-    debug!("python: {:?} {}", python_version, sys_executable);
+    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
