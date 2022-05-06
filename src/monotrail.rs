@@ -1,7 +1,7 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::package_index::cache_dir;
-use crate::poetry::read_dependencies::read_toml_files;
+use crate::poetry_integration::read_dependencies::read_toml_files;
 use crate::requirements_txt::requirements_txt_to_specs;
 use crate::spec::RequestedSpec;
 use crate::{install_specs, read_poetry_specs};

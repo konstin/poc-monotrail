@@ -22,6 +22,8 @@ git2 = "0.14.2"
 indicatif = "0.16.2"
 indoc = "1.0.3"
 install-wheel-rs = { version = "0.0.3", path = "install-wheel-rs" }
+# To enable zlib-ng-compat for the zig build
+libssh2-sys = { version = "0.2.23", optional = true }
 nix = { version = "0.24.0", features = ["process"] }
 pep440 = "0.2.0"
 pyo3 = { version = "0.15.1", features = ["extension-module", "abi3-py37"], optional = true }
@@ -40,6 +42,7 @@ ureq = { version = "2.3.1", features = ["json"] }
 [features]
 #default = ["python_bindings"]
 python_bindings = ["pyo3"]
+vendored = ["git2/vendored-libgit2", "git2/vendored-openssl", "libssh2-sys/zlib-ng-compat"]
 
 # Otherwise we get pkg-config complaints
 [target.'cfg(target_env = "musl")'.dependencies.git2]

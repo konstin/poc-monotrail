@@ -1,7 +1,9 @@
 //! calls to poetry to resolve a set of requirements
 
+use crate::markers::Pep508Environment;
+use crate::monotrail::{get_requested_specs, install_requested};
 use crate::package_index::cache_dir;
-use crate::poetry::{poetry_lock, poetry_toml};
+use crate::poetry_integration::{poetry_lock, poetry_toml};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use std::collections::HashMap;
@@ -11,21 +13,13 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Instant;
 use tempfile::tempdir;
-use tracing::debug;
+use tracing::{debug, span, Level};
 
-/// Calls poetry to resolve the user specified dependencies into a set of locked consistent
-/// dependencies. Produces a poetry.lock in the process
-#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn resolve(
+/// Minimal dummy pyproject.toml with the user requested deps for poetry to resolve
+fn dummy_poetry_pyproject_toml(
     mut dependencies: HashMap<String, poetry_toml::Dependency>,
-    sys_executable: &Path,
     python_version: (u8, u8),
-    lockfile: Option<&str>,
-) -> anyhow::Result<(
-    poetry_toml::PoetryPyprojectToml,
-    poetry_lock::PoetryLock,
-    String,
-)> {
+) -> poetry_toml::PoetryPyprojectToml {
     // Add python entry with current version; resolving will otherwise fail with complaints
     dependencies.insert(
         "python".to_string(),
@@ -38,8 +32,7 @@ pub fn resolve(
             python_version.1 + 1
         )),
     );
-    // build dummy poetry pyproject.toml
-    let pyproject_toml_content = poetry_toml::PoetryPyprojectToml {
+    poetry_toml::PoetryPyprojectToml {
         tool: poetry_toml::ToolSection {
             poetry: poetry_toml::PoetrySection {
                 name: "monotrail_dummy_project_for_locking".to_string(),
@@ -52,9 +45,26 @@ pub fn resolve(
             },
         },
         build_system: Default::default()
-    };
-    // Write complete dummy poetry pyproject.toml
+    }
+}
+
+/// Calls poetry to resolve the user specified dependencies into a set of locked consistent
+/// dependencies. Produces a poetry.lock in the process
+#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+pub fn resolve(
+    dependencies: HashMap<String, poetry_toml::Dependency>,
+    sys_executable: &Path,
+    python_version: (u8, u8),
+    lockfile: Option<&str>,
+    pep508_env: &Pep508Environment,
+) -> anyhow::Result<(
+    poetry_toml::PoetryPyprojectToml,
+    poetry_lock::PoetryLock,
+    String,
+)> {
+    // Write a dummy poetry pyproject.toml with the requested dependencies
     let resolve_dir = tempdir()?;
+    let pyproject_toml_content = dummy_poetry_pyproject_toml(dependencies, python_version);
     let pyproject_toml_path = resolve_dir.path().join("pyproject.toml");
     fs::write(&pyproject_toml_path, toml::to_vec(&pyproject_toml_content)?)?;
     // If we have a previous lockfile, we want to reuse it for two reasons:
@@ -83,15 +93,27 @@ pub fn resolve(
         include_str!("poetry_boostrap_lock/pyproject.toml"),
     )?;
 
+    // The new process we spawn would also do this, but this way we get better debuggability
+    let bootstrapping_span = span!(Level::DEBUG, "bootstrapping_poetry");
+    let specs = get_requested_specs(Some(&poetry_boostrap_lock), &[], pep508_env)?;
+    install_requested(&specs, Path::new(&sys_executable), python_version)?;
+    drop(bootstrapping_span);
+
+    debug!("resolving with poetry");
+    let resolve_span = span!(Level::DEBUG, "resolving_with_poetry");
     let start = Instant::now();
     let result = Command::new(sys_executable)
         .args(["-m", "monotrail.run", "poetry", "lock", "--no-update"])
         // This will make poetry lock the right deps
         .current_dir(&resolve_dir)
         // This will make the monotrail python part find the poetry lock for poetry itself
-        .env("MONOTRAIL", "1")
-        .env("MONOTRAIL_CWD", &poetry_boostrap_lock)
+        .env(env!("CARGO_PKG_NAME").to_uppercase(), "1")
+        .env(
+            format!("{}_CWD", env!("CARGO_PKG_NAME")).to_uppercase(),
+            &poetry_boostrap_lock,
+        )
         .status();
+    drop(resolve_span);
     debug!(
         "poetry lock took {:.2}s",
         (Instant::now() - start).as_secs_f32()
@@ -117,7 +139,7 @@ pub fn resolve(
     // read back the pyproject.toml and compare, just to be sure
     let pyproject_toml_reread = toml::from_str(&fs::read_to_string(pyproject_toml_path)?)?;
     if pyproject_toml_content != pyproject_toml_reread {
-        bail!("Consistency check failed: pyproject.toml we read is no the one we wrote");
+        bail!("Consistency check failed: the pyproject.toml we read is not the one we wrote");
     }
     let lockfile = fs::read_to_string(poetry_lock_path)?;
     // read poetry lock with the dependencies resolved by poetry

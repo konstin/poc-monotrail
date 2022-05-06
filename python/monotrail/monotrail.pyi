@@ -1,8 +1,6 @@
 from pathlib import Path
 from typing import Tuple, List, Optional, Dict, Union
 
-NAME = "MONOTRAIL"
-
 class InstalledPackage:
     name: str
     python_version: str

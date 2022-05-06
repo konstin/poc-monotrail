@@ -1,7 +1,7 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{get_requested_specs, install_requested, spec_paths};
-use crate::poetry::lock::resolve;
+use crate::poetry_integration::lock::resolve;
 use crate::read_poetry_specs;
 use anyhow::{bail, Context};
 use pyo3::exceptions::PyRuntimeError;
@@ -92,7 +92,7 @@ pub fn monotrail_from_env(
     } else {
         script.map(PathBuf::from)
     };
-    debug!("script: {:?}", script);
+    debug!("monotrail_from_env script: {:?}", script);
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
     let python_version = (py.version_info().major, py.version_info().minor);
     debug!("python: {:?} {}", python_version, sys_executable);
@@ -118,17 +118,21 @@ pub fn monotrail_from_requested(
 
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
     let python_version = (py.version_info().major, py.version_info().minor);
-    debug!("python: {:?} {}", python_version, sys_executable);
+    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
+    debug!(
+        "monotrail_from_requested python: {:?} {}",
+        python_version, sys_executable
+    );
 
     let (poetry_toml, poetry_lock, lockfile) = resolve(
         requested,
         Path::new(&sys_executable),
         python_version,
         lockfile.as_deref(),
+        &pep508_env,
     )
     .context("Failed to resolve requested dependencies through poetry")
     .map_err(format_monotrail_error)?;
-    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
     let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
@@ -145,7 +149,7 @@ pub fn monotrail_from_dir(
     dir: PathBuf,
     extras: Vec<String>,
 ) -> PyResult<(String, Vec<InstalledPackage>)> {
-    debug!("script: {:?}", dir);
+    debug!("monotrail_from_dir script: {:?}", dir);
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
     let python_version = (py.version_info().major, py.version_info().minor);
     debug!("python: {:?} {}", python_version, sys_executable);

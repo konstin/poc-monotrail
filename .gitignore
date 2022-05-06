@@ -13,5 +13,6 @@ popular-wheels
 requirements-benchmark.txt
 target
 target-maturin
+target-maturin-zig
 test-venvs
 venv

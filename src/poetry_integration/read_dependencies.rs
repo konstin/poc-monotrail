@@ -1,9 +1,9 @@
 //! Parsing of pyproject.toml and poetry.lock
 
 use crate::markers::Pep508Environment;
-use crate::poetry::poetry_lock::PoetryLock;
-use crate::poetry::poetry_toml::PoetryPyprojectToml;
-use crate::poetry::{poetry_lock, poetry_toml};
+use crate::poetry_integration::poetry_lock::PoetryLock;
+use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
+use crate::poetry_integration::{poetry_lock, poetry_toml};
 use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use anyhow::{bail, Context};
 use fs_err as fs;
@@ -304,7 +304,7 @@ pub fn read_poetry_specs(
 #[cfg(test)]
 mod test {
     use crate::markers::Pep508Environment;
-    use crate::poetry::read_dependencies::{parse_dep_extra, read_toml_files};
+    use crate::poetry_integration::read_dependencies::{parse_dep_extra, read_toml_files};
     use crate::read_poetry_specs;
     use std::collections::HashSet;
     use std::path::Path;

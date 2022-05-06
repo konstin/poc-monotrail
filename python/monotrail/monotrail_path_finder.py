@@ -20,7 +20,9 @@ _path_finder_singleton: Optional["MonotrailPathFinder"] = None
 
 
 class MonotrailPathFinder(PathFinder, MetaPathFinder):
+    # The location where all packages are installed
     sprawl_root: Path
+    # All resolved and installed packages indexed by name
     sprawl_packages: Dict[str, InstalledPackage]
     # given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]

@@ -2,7 +2,7 @@ use crate::install::{filter_installed, InstalledPackage};
 use crate::markers::Pep508Environment;
 use crate::monotrail::monotrail_root;
 use crate::package_index::download_distribution;
-use crate::poetry::read_dependencies::{read_poetry_specs, read_toml_files};
+use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
 use crate::{install_specs, package_index};

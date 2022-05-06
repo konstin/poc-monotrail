@@ -1,13 +1,13 @@
 use crate::install::install_specs;
 pub use cli::{run, Cli};
-use poetry::read_dependencies::read_poetry_specs;
+use poetry_integration::read_dependencies::read_poetry_specs;
 
 mod cli;
 mod install;
 mod markers;
 mod monotrail;
 mod package_index;
-mod poetry;
+mod poetry_integration;
 #[cfg(feature = "python_bindings")]
 mod python_bindings;
 mod requirements_txt;

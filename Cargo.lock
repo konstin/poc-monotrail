@@ -213,6 +213,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.48"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8ad8cef104ac57b68b89df3208164d228503abbdce70f6880ffa3d970e7443a"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "configparser"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -703,6 +712,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92e7e15d7610cce1d9752e137625f14e61a28cd45929b6e12e47b50fe154ee2e"
 dependencies = [
  "cc",
+ "cmake",
  "libc",
  "pkg-config",
  "vcpkg",
@@ -789,6 +799,7 @@ dependencies = [
  "indicatif",
  "indoc 1.0.4",
  "install-wheel-rs",
+ "libssh2-sys",
  "nix",
  "pep440",
  "pyo3",

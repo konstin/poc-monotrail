@@ -1,12 +1,9 @@
-from pathlib import Path
-
-
-def test_spec_paths():
+def test_spec_paths(pytestconfig):
     # noinspection PyUnresolvedReferences
     from monotrail.monotrail import monotrail_spec_paths, monotrail_from_dir
 
-    poetry_self_toml_dir = Path(__file__).parent.parent.joinpath(
-        "src/poetry/poetry_boostrap_lock"
+    poetry_self_toml_dir = pytestconfig.rootpath.joinpath(
+        "src/poetry_integration/poetry_boostrap_lock"
     )
     sprawl_root, sprawl_packages = monotrail_from_dir(poetry_self_toml_dir, [])
     spec_paths, _pths = monotrail_spec_paths(sprawl_root, sprawl_packages)

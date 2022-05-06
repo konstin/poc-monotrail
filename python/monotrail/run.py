@@ -10,6 +10,7 @@ if len(sys.argv) == 1:
     sys.exit(1)
 
 script_name = sys.argv[1]
+# No monotrail? seems sketchy, but just launch the script as usual
 if not os.environ.get("MONOTRAIL"):
     os.execv(script_name, sys.argv[1:])
 
@@ -19,10 +20,7 @@ sprawl_root, sprawl_packages = monotrail_from_env([])
 # Find the actual location of the entrypoint
 for package in sprawl_packages:
     script_path = (
-        Path(sprawl_root)
-        .joinpath(package.name)
-        .joinpath(package.unique_version)
-        .joinpath(package.tag)
+        Path(package.monotrail_location(sprawl_root))
         .joinpath("bin")
         .joinpath(script_name)
     )
@@ -49,7 +47,8 @@ sys.argv = [str(script_path.absolute())] + sys.argv[2:]
 if shebang == placeholder_python:
     # Case 1: it's a python script
     with open(script_path) as file:
-        python_script = file.read()
+        # We use compile to attach the filename for debuggability
+        python_script = compile(file.read(), script_path, 'exec')
     # Exec keeps the `__name__ == "__main__"` part and keeps the cli args
     exec(python_script)
 else:
