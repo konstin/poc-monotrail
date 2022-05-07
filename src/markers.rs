@@ -7,14 +7,13 @@
 //! https://peps.python.org/pep-0508/#grammar
 //! https://github.com/pypa/pip/blob/b4d2b0f63f4955c7d6eee2653c6e1fa6fa507c31/src/pip/_vendor/distlib/markers.py
 
+use crate::PEP508_QUERY_ENV;
 use pep440::Version as Pep440Version;
 use serde::Deserialize;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::process::{Command, Stdio};
 use std::str::FromStr;
-
-static PEP508_QUERY_SCRIPT: &str = include_str!("get_pep508_env_direct.py");
 
 /// The version and platform information required to evaluate marker expressions according to PEP 508
 #[derive(Debug, Eq, PartialEq, Deserialize)]
@@ -70,11 +69,14 @@ impl Pep508Environment {
             .spawn()
             .and_then(|mut child| {
                 use std::io::Write;
+                // We only have the module definition in that file (because we also want to load
+                // it as a module in the python bindings), so we need to append the actual call
+                let pep508_query_script = format!("{}\nprint(get_pep508_env())", PEP508_QUERY_ENV);
                 child
                     .stdin
                     .as_mut()
                     .expect("piped stdin")
-                    .write_all(PEP508_QUERY_SCRIPT.as_bytes())?;
+                    .write_all(pep508_query_script.as_bytes())?;
                 child.wait_with_output()
             });
 

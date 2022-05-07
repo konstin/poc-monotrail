@@ -1,8 +1,10 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::package_index::cache_dir;
+use crate::poetry_integration::lock::poetry_resolve;
+use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::read_dependencies::read_toml_files;
-use crate::requirements_txt::requirements_txt_to_specs;
+use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
 use crate::{install_specs, read_poetry_specs};
 use anyhow::{bail, Context};
@@ -34,11 +36,8 @@ fn find_lockfile(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
         if dir.join("pyproject.toml").exists() {
             return Some((dir.join("pyproject.toml"), LockfileType::PyprojectToml));
         }
-        if dir.join("requirements-frozen.txt").exists() {
-            return Some((
-                dir.join("requirements-frozen.txt"),
-                LockfileType::RequirementsTxt,
-            ));
+        if dir.join("requirements.txt").exists() {
+            return Some((dir.join("requirements.txt"), LockfileType::RequirementsTxt));
         }
         parent = dir.parent().map(|path| path.to_path_buf());
     }
@@ -287,10 +286,16 @@ pub fn spec_paths(
     Ok((spec_bases, pth_files))
 }
 
+/// Goes up the script path until a pyproject.toml/poetry.lock or a requirements.txt is
+/// found, for requirements.txt calls poetry to resolve the dependencies, reads the resolved
+/// set and returns it. `script` can be a file or a directory or will default to the current
+/// working directory
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn get_requested_specs(
+pub fn get_specs(
     script: Option<&Path>,
     extras: &[String],
+    sys_executable: &Path,
+    python_version: (u8, u8),
     pep508_env: &Pep508Environment,
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     let dir_running = match script {
@@ -328,12 +333,36 @@ pub fn get_requested_specs(
         }
         LockfileType::RequirementsTxt => {
             let requirements_txt = fs::read_to_string(&lockfile)?;
-            requirements_txt_to_specs(&requirements_txt).with_context(|| {
-                format!(
+
+            let requirements = parse_requirements_txt(&requirements_txt).map_err(|err| {
+                anyhow::Error::msg(err).context(format!(
                     "requirements specification is invalid: {}",
                     lockfile.display()
-                )
-            })?
+                ))
+            })?;
+            let requirements = requirements
+                .into_iter()
+                .map(|(name, version)| {
+                    (
+                        name,
+                        poetry_toml::Dependency::Compact(
+                            // If no version is given, we'll let poetry pick one with `*`
+                            version.as_deref().unwrap_or("*").to_string(),
+                        ),
+                    )
+                })
+                .collect();
+            // We don't know whether the requirements.txt is from `pip freeze` or just a list of
+            // version, so we let it go through poetry resolve either way. For a frozen file
+            // there will just be no change
+            let (poetry_toml, poetry_lock, _) = poetry_resolve(
+                requirements,
+                sys_executable,
+                python_version,
+                None,
+                pep508_env,
+            )?;
+            read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?
         }
     };
     Ok(specs)

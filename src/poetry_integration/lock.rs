@@ -1,7 +1,7 @@
 //! calls to poetry to resolve a set of requirements
 
 use crate::markers::Pep508Environment;
-use crate::monotrail::{get_requested_specs, install_requested};
+use crate::monotrail::{get_specs, install_requested};
 use crate::package_index::cache_dir;
 use crate::poetry_integration::{poetry_lock, poetry_toml};
 use anyhow::{bail, Context};
@@ -51,7 +51,7 @@ fn dummy_poetry_pyproject_toml(
 /// Calls poetry to resolve the user specified dependencies into a set of locked consistent
 /// dependencies. Produces a poetry.lock in the process
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn resolve(
+pub fn poetry_resolve(
     dependencies: HashMap<String, poetry_toml::Dependency>,
     sys_executable: &Path,
     python_version: (u8, u8),
@@ -95,7 +95,13 @@ pub fn resolve(
 
     // The new process we spawn would also do this, but this way we get better debuggability
     let bootstrapping_span = span!(Level::DEBUG, "bootstrapping_poetry");
-    let specs = get_requested_specs(Some(&poetry_boostrap_lock), &[], pep508_env)?;
+    let specs = get_specs(
+        Some(&poetry_boostrap_lock),
+        &[],
+        sys_executable,
+        python_version,
+        pep508_env,
+    )?;
     install_requested(&specs, Path::new(&sys_executable), python_version)
         .context("Failed to bootstrap poetry")?;
     drop(bootstrapping_span);

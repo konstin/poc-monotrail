@@ -2,11 +2,13 @@
 set -e
 
 rm -f target-maturin/wheels/monotrail-*.whl
-CARGO_TARGET_DIR=target-maturin maturin build --release --strip -i python --cargo-extra-args="--features=python_bindings"
-# VIRTUAL_ENV=/home/konsti/monotrail/.venv maturin develop --release --strip --cargo-extra-args="--features=python_bindings"
-zip -ur target-maturin/wheels/monotrail-*.whl load_monotrail.pth
+CARGO_TARGET_DIR=target-maturin maturin build --release --strip --no-sdist -i python --cargo-extra-args="--features=python_bindings"
+virtualenv -q .venv
+rm -f .venv/lib/python3.*/site-packages/load_monotrail.pth
 .venv/bin/pip uninstall -y -q monotrail
 .venv/bin/pip install -q target-maturin/wheels/monotrail-*.whl
+cp load_monotrail.pth .venv/lib/python3.*/site-packages/
+
 # Run pytest, entrypoint
 (cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONOTRAIL=1 MONOTRAIL_EXTRAS="import-json" ../monotrail/.venv/bin/python -m monotrail.run pytest)
 # Run pytest, module

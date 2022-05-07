@@ -114,7 +114,7 @@ jobs:
           python-version: "3.8"
       - name: Install virtualenv, maturin pytest
         run: |
-          pip install -U pip virtualenv maturin pytest jupyter nbconvert
+          pip install -U pip virtualenv maturin[zig]
           virtualenv --upgrade-embed-wheels
       - name: Install stable rust
         uses: actions-rs/toolchain@v1
@@ -148,6 +148,6 @@ jobs:
       - name: make paper
         run: bash make_paper.sh
       - name: pip install pytest
-        run: .venv/bin/pip install pytest
+        run: .venv/bin/pip install pytest jupyter nbconvert
       - name: pytest test_python
         run: .venv/bin/pytest test_python

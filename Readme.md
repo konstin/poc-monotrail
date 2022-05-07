@@ -1,12 +1,10 @@
 # Proof Of Concept: Monotrail
 
-This proof of concept shows two things:
+This proof of concept shows how to do python package management without virtualenvs.
 
-a) how to install packages faster than pip/poetry - see benchmarks below
+Every dependency is installed only once globally and hooked to your project from your lockfile. No more venv directory.
 
-b) venv-less python packages: every dependency is installed only once globally and hooked to your project from your lockfile. No more venv directory.
-
-While a) is a nice gimmick (and could be integrated into pip/poetry), b) is where the real magic happens, so the reminder of the readme is going to focus on this. This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux and macos are supported, you need a lockfile created by another tool, installation is awkward, error messages are suboptimal, non-pypi version tracking is broken, etc. 
+This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux and macos are supported, installation is awkward, error messages are suboptimal, only pypi is supported, only the most basic requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, etc. 
 
 monotrail means to show you can effectively just clone a repo with a lockfile and run a single command that install all required packages, makes them available to `import` and then runs your script, skipping explicit package management, `.venv` directories and installing the same dependency for each project again.
 
@@ -14,19 +12,43 @@ monotrail means to show you can effectively just clone a repo with a lockfile an
 MONOTRAIL=1 python path/to/your/script.py
 ```
 
-In the background, monotrail uses a `.pth` hook which runs on python startup before your code to set everything up and 
+In the background, monotrail uses a `.pth` hook which runs on python startup before your code to set everything up.
+
+It also features an interactive mode, where you can add packages at runtime, get an isolated package set per notebook and don't get any version conflicts.
+
+```jupyterpython
+import monotrail
+
+monotrail.interactive(
+    numpy="^1.21",
+    pandas="^1"
+)
+```
 
 ## Usage
+
+With a python script:
 
 ```
 pip install -U pip virtualenv maturin
 virtualenv .venv
-# TODO: .venv/bin/pip install monotrail
-git clone https://github.com/PyO3/konstin-poc-monotrail 
-maturin build --release --strip -i python  --cargo-extra-args="--features=python_bindings"
-zip -ur target/wheels/monotrail-*.whl load_monotrail.pth
-.venv/bin/pip install -q target/wheels/monotrail-*.whl
-.venv/bin/python path/to/your/script.py
+#.venv/bin/pip install monotrail
+MONOTRAIL=1 .venv/bin/python path/to/your/script.py
+```
+
+With jupyter notebooks
+
+```jupyterpython
+!pip install monotrail
+```
+
+```jupyterpython
+import monotrail
+
+monotrail.interactive(
+    numpy="^1.21",
+    pandas="^1"
+)
 ```
 
 _wait, you said venv-less!_ We need to install a `.pth` hook and I don't want to pollute your user-global environment, so we isolate it in a venv you can just `rm -rf`. You can use the resulting .venv for all of your projects while still having isolation (it would of course be a lot cooler to have `monotrail +3.8 run path/to/your/script.py` but I don't know how to dynamically load, import-hook and launch a user-specified python version. If you do, please tell me!)
@@ -37,9 +59,15 @@ To install extras, use `MONOTRAIL_EXTRAS="extra1,extra2"`. With `MONOTRAIL_ROOT`
 
 ## Background
 
-Python has a module called [site](https://docs.python.org/3/library/site.html) which runs automatically and if you're using a virtualenv environment, it makes the packages in there available. You can also use it to run arbitrary code by placing a `.pth` file in `site-packages`, so we install a `load_monotrail.pth`. This import our `monotrail` module, and `if os.environ.get("MONOTRAIL")`, it loads our actual machinery. First, we call into rust. There we search for a lockfile (`poetry.lock` or `requirements-frozen.txt`), install all packages still missing and return all the location of all installed dependencies. Back in python, we build a custom [PathFinder](https://docs.python.org/3/library/importlib.html#importlib.machinery.PathFinder) with all packages and add it to `sys.meta_path`. When python searches where `import` something from, it goes through all the `PathFinder` until one returns a location. Ours returns the location in of the locked packages in the global package installation location in your cache dir (`.cache` on linux).
+Python has a module called [site](https://docs.python.org/3/library/site.html) which runs automatically and if you're using a virtualenv environment, it makes the packages in there available. You can also use it to run arbitrary code by placing a `.pth` file in `site-packages`, so we install a `load_monotrail.pth`. This import our `monotrail` module, and `if os.environ.get("MONOTRAIL")`, it loads the actual machinery. It's a small shim that calls into rust. There we search for a dependencies listing (`poetry.lock` or `requirements.txt`), install all packages if not installed and return their location of all installed dependencies. Back in python, we build a custom [PathFinder](https://docs.python.org/3/library/importlib.html#importlib.machinery.PathFinder) with everything and add it to `sys.meta_path`. When python searches where `import` something from, it goes through all the `Finder`s in `sys.meta_path` until one returns a location. Ours returns the location of the locked packages in the global package installation location in your cache dir (`.cache` on linux).
+
+Interactive mode is very similar, except we only create the `PathFinder` on the first call to `monotrail.interactive()`.
 
 ## Benchmarks
+
+One neat thing about venv-less installation is that we install every package version only once, so no more 3 different installations of pytorch. This takes a lot less disk space (even though clearing the cache is an unsolved problem) but most importantly it means that if you have used all required package versions once before "installation" is instantaneous. It also removes the need to recreate broken venvs.
+
+By reimplementing wheel installation in rust, it also became a good bit faster. 
 
 Installing a single large wheel (plotly)
 
@@ -107,9 +135,17 @@ Summary
   'monotrail poetry-install -E import-json' ran
     2.75 ± 0.37 times faster than '.venv/bin/pip install -q -r requirements-benchmark.txt'
     6.56 ± 0.88 times faster than 'poetry install -q --no-root -E import-json'
-
 ```
 
 # Dev setup
 
-I use two venvs, the one I have activated is called `.venv-b` and contains `virtualenv .venv-b && pip install -U maturin black pip pytest ipython`. The one where I install monotrail is called `.venv`
+I use two venvs, the one I have activated is called `.venv-b` and another `.venv` where I install monotrail. Setup is
+
+```bash
+virtualenv .venv-b
+. .venv-b/bin/activate
+pip install -U maturin[zig] black pip pytest ipython
+virtualenv .venv
+# pytest runs the tests, jupyter nbconvert is for testing the notebook
+.venv/bin/pip install pytest jupyter nbconvert
+```

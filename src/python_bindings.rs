@@ -1,8 +1,8 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
-use crate::monotrail::{get_requested_specs, install_requested, spec_paths};
-use crate::poetry_integration::lock::resolve;
-use crate::read_poetry_specs;
+use crate::monotrail::{get_specs, install_requested, spec_paths};
+use crate::poetry_integration::lock::poetry_resolve;
+use crate::{read_poetry_specs, PEP508_QUERY_ENV};
 use anyhow::{bail, Context};
 use install_wheel_rs::{Arch, Os};
 use pyo3::exceptions::PyRuntimeError;
@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 use tracing::debug;
-static PEP508_QUERY_MODULE: &str = include_str!("get_pep508_env_function.py");
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own
 ///
@@ -59,14 +58,10 @@ fn format_monotrail_error(err: impl Into<anyhow::Error>) -> PyErr {
 }
 
 fn get_pep508_env(py: Python) -> PyResult<String> {
-    let fun: Py<PyAny> = PyModule::from_code(
-        py,
-        PEP508_QUERY_MODULE,
-        "get_pep508_env_direct.py",
-        "get_pep508_env_direct",
-    )?
-    .getattr("get_pep508_env")?
-    .into();
+    let fun: Py<PyAny> =
+        PyModule::from_code(py, PEP508_QUERY_ENV, "get_pep508_env.py", "get_pep508_env")?
+            .getattr("get_pep508_env")?
+            .into();
 
     // call object without empty arguments
     let json_string: String = fun.call0(py)?.extract(py)?;
@@ -110,8 +105,14 @@ pub fn monotrail_from_env(
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let specs = get_requested_specs(script.as_deref(), &extras, &pep508_env)
-        .map_err(format_monotrail_error)?;
+    let specs = get_specs(
+        script.as_deref(),
+        &extras,
+        Path::new(&sys_executable),
+        python_version,
+        &pep508_env,
+    )
+    .map_err(format_monotrail_error)?;
     install_requested(&specs, Path::new(&sys_executable), python_version)
         .map_err(format_monotrail_error)
 }
@@ -129,7 +130,7 @@ pub fn monotrail_from_requested(
     let (sys_executable, python_version, _, _) = get_python_platform(py)?;
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let (poetry_toml, poetry_lock, lockfile) = resolve(
+    let (poetry_toml, poetry_lock, lockfile) = poetry_resolve(
         requested,
         Path::new(&sys_executable),
         python_version,
@@ -159,8 +160,14 @@ pub fn monotrail_from_dir(
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let specs =
-        get_requested_specs(Some(&dir), &extras, &pep508_env).map_err(format_monotrail_error)?;
+    let specs = get_specs(
+        Some(&dir),
+        &extras,
+        Path::new(&sys_executable),
+        python_version,
+        &pep508_env,
+    )
+    .map_err(format_monotrail_error)?;
     install_requested(&specs, Path::new(&sys_executable), python_version)
         .map_err(format_monotrail_error)
 }

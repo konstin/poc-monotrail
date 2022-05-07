@@ -1,10 +1,10 @@
-use crate::spec::RequestedSpec;
-use anyhow::bail;
 use regex::Regex;
 
 /// Reads a simple requirements.txt format (only name and optionally version),
 /// returns a spec with name and optionally version
-pub fn requirements_txt_to_specs(requirements_txt: &str) -> anyhow::Result<Vec<RequestedSpec>> {
+pub fn parse_requirements_txt(
+    requirements_txt: &str,
+) -> Result<Vec<(String, Option<String>)>, String> {
     let re = Regex::new(r"^(?P<name>[\w\d_\-]+)(\s*==\s*(?P<version>[\d\w.\-]+))?$").unwrap();
     requirements_txt
         .lines()
@@ -14,31 +14,26 @@ pub fn requirements_txt_to_specs(requirements_txt: &str) -> anyhow::Result<Vec<R
         .map(|(pos, line)| match re.captures(line) {
             None => {
                 // +1 to correct for zero indexing
-                bail!(
+                return Err(format!(
                     "invalid version specification in line {}: '{}'",
                     pos + 1,
                     line
-                )
+                ));
             }
-            Some(captures) => Ok(RequestedSpec {
-                requested: line.to_string(),
-                name: captures.name("name").unwrap().as_str().to_string(),
-                python_version: captures
+            Some(captures) => Ok((
+                captures.name("name").unwrap().as_str().to_string(),
+                captures
                     .name("version")
                     .map(|version| version.as_str().to_string()),
-                source: None,
-                extras: vec![],
-                file_path: None,
-                url: None,
-            }),
+            )),
         })
         .collect()
 }
 
 #[cfg(test)]
 mod test {
-    use crate::requirements_txt::requirements_txt_to_specs;
-    use crate::spec::RequestedSpec;
+    use crate::requirements_txt::parse_requirements_txt;
+    
     use indoc::indoc;
 
     #[test]
@@ -52,36 +47,12 @@ mod test {
         "};
 
         let expected = vec![
-            RequestedSpec {
-                requested: "inflection==0.5.1".to_string(),
-                name: "inflection".to_string(),
-                python_version: Some("0.5.1".to_string()),
-                source: None,
-                extras: vec![],
-                file_path: None,
-                url: None,
-            },
-            RequestedSpec {
-                requested: "upsidedown==0.4".to_string(),
-                name: "upsidedown".to_string(),
-                python_version: Some("0.4".to_string()),
-                source: None,
-                extras: vec![],
-                file_path: None,
-                url: None,
-            },
-            RequestedSpec {
-                requested: "numpy".to_string(),
-                name: "numpy".to_string(),
-                python_version: None,
-                source: None,
-                extras: vec![],
-                file_path: None,
-                url: None,
-            },
+            ("inflection".to_string(), Some("0.5.1".to_string())),
+            ("upsidedown".to_string(), Some("0.4".to_string())),
+            ("numpy".to_string(), None),
         ];
 
-        assert_eq!(requirements_txt_to_specs(valid).unwrap(), expected);
+        assert_eq!(parse_requirements_txt(valid).unwrap(), expected);
     }
 
     #[test]
@@ -94,7 +65,7 @@ mod test {
         "};
 
         assert_eq!(
-            requirements_txt_to_specs(invalid).unwrap_err().to_string(),
+            parse_requirements_txt(invalid).unwrap_err(),
             "invalid version specification in line 3: 'upsidedown=0.4'"
         );
     }

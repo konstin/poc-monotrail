@@ -3,7 +3,7 @@ Taken from https://peps.python.org/pep-0508/#complete-grammar
 
 passes the values back to rust as json
 
-This is the version that we call through pyo3
+This is the version that we call with `python -c`
 """
 import json
 import os
