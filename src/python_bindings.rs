@@ -174,6 +174,7 @@ pub fn monotrail_from_dir(
 
 /// The installed packages are all lies and rumors, we can only find the actually importable
 /// packages by walking the site-packages, so here we map installed packages to importable modules
+/// and a list of .pth we need to run
 #[pyfunction]
 pub fn monotrail_spec_paths(
     py: Python,

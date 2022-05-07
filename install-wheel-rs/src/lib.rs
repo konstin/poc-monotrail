@@ -6,6 +6,8 @@ pub use wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
 use zip::result::ZipError;
 
 mod install_location;
+#[cfg(feature = "python_bindings")]
+mod python_bindings;
 mod wheel;
 mod wheel_tags;
 
