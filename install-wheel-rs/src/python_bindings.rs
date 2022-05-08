@@ -1,7 +1,7 @@
-use crate::{install_wheel, InstallLocation, WheelInstallerError};
+use crate::{install_wheel, InstallLocation, LockedDir, WheelInstallerError};
 use pyo3::create_exception;
 use pyo3::types::PyModule;
-use pyo3::{pyfunction, pymodule, wrap_pyfunction, PyErr, PyResult, Python};
+use pyo3::{pyclass, pymethods, pymodule, PyErr, PyResult, Python};
 use std::env;
 use std::error::Error;
 use std::path::PathBuf;
@@ -25,27 +25,33 @@ impl From<WheelInstallerError> for PyErr {
     }
 }
 
-#[pyfunction]
-pub fn install_wheels_venv(py: Python, wheels: Vec<PathBuf>, venv: PathBuf) -> PyResult<()> {
-    let python_version = (py.version_info().major, py.version_info().minor);
+#[pyclass]
+struct LockedVenv {
+    location: InstallLocation<LockedDir>,
+}
 
-    // TODO: parallelize, and if so, how do we handle conflict?
-    let location = InstallLocation::Venv {
-        venv_base: venv,
-        python_version,
+#[pymethods]
+impl LockedVenv {
+    #[new]
+    pub fn new(py: Python, venv: PathBuf) -> PyResult<Self> {
+        Ok(Self {
+            location: InstallLocation::Venv {
+                venv_base: LockedDir::acquire(&venv)?,
+                python_version: (py.version_info().major, py.version_info().minor),
+            },
+        })
     }
-    .acquire_lock()
-    .map_err(WheelInstallerError::from)?;
-    for wheel in wheels {
+
+    pub fn install_wheel(&self, py: Python, wheel: PathBuf) -> PyResult<()> {
         // TODO: Pass those options on to the user
         // unique_version can be anything since it's only used to monotrail
-        py.allow_threads(|| install_wheel(&location, &wheel, true, &[], ""))?;
+        py.allow_threads(|| install_wheel(&self.location, &wheel, true, &[], ""))?;
+        Ok(())
     }
-    Ok(())
 }
 
 #[pymodule]
-pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
+pub fn install_wheel_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     // Good enough for now
     if env::var_os("RUST_LOG").is_some() {
         tracing_subscriber::fmt::init();
@@ -57,6 +63,6 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
             .compact();
         tracing_subscriber::fmt().event_format(format).init();
     }
-    m.add_function(wrap_pyfunction!(install_wheels_venv, m)?)?;
+    m.add_class::<LockedVenv>()?;
     Ok(())
 }
