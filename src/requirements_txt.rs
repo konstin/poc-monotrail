@@ -33,7 +33,7 @@ pub fn parse_requirements_txt(
 #[cfg(test)]
 mod test {
     use crate::requirements_txt::parse_requirements_txt;
-    
+
     use indoc::indoc;
 
     #[test]

@@ -48,7 +48,7 @@ if shebang == placeholder_python:
     # Case 1: it's a python script
     with open(script_path) as file:
         # We use compile to attach the filename for debuggability
-        python_script = compile(file.read(), script_path, 'exec')
+        python_script = compile(file.read(), script_path, "exec")
     # Exec keeps the `__name__ == "__main__"` part and keeps the cli args
     exec(python_script)
 else:

@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::str::FromStr;
 use std::{env, io};
 use tempfile::TempDir;
@@ -78,12 +78,12 @@ fn read_scripts_from_section(
     section_name: &str,
     extras: &[String],
 ) -> Result<Vec<Script>, WheelInstallerError> {
+    let script_regex = Regex::new(r"^(?P<module>[\w\d_\-.]+):(?P<function>[\w\d_\-.]+)(?:\s+\[(?P<extras>(?:[^,]+,?\s*)+)\])?$").unwrap();
     let mut scripts = Vec::new();
     for (script_name, python_location) in scripts_section.iter() {
         match python_location {
             Some(value) => {
-                let re = Regex::new(r"^(?P<module>[\w\d_\-.]+):(?P<function>[\w\d_\-.]+)(?:\s+\[(?P<extras>(?:[^,]+,?\s*)+)\])?$").unwrap();
-                let captures = re.captures(value).ok_or_else(|| {
+                let captures = script_regex.captures(value).ok_or_else(|| {
                     WheelInstallerError::InvalidWheel(format!(
                         "invalid console script: '{}'",
                         value
@@ -366,6 +366,8 @@ fn bytecode_compile(
     site_packages: &Path,
     unpacked_paths: Vec<PathBuf>,
     python_version: (u8, u8),
+    // Only for logging
+    name: &str,
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
     // https://github.com/pypa/pip/blob/b5457dfee47dd9e9f6ec45159d9d410ba44e5ea1/src/pip/_internal/operations/install/wheel.py#L592-L603
@@ -376,44 +378,29 @@ fn bytecode_compile(
         })
         .collect();
 
-    // > Read the file list and add each line that it contains to the list of files and directories
-    // > to compile. If list is -, read lines from stdin.
-    let args = ["-m", "compileall", "-l", "-i", "-"];
-    let mut bytecode_compiler = Command::new("python")
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(WheelInstallerError::PythonSubcommandError)?;
-
-    // https://stackoverflow.com/questions/49218599/write-to-child-process-stdin-in-rust/49597789#comment120223107_49597789
-    let mut child_stdin = bytecode_compiler
-        .stdin
-        .take()
-        .expect("Child must have stdin");
-
-    // Pass paths newline terminated to compileall
-    for path in &py_source_paths {
-        trace!("bytecode compiling {}", path.display());
-        // There is no OsStr -> Bytes conversion on windows :o
-        // https://stackoverflow.com/questions/43083544/how-can-i-convert-osstr-to-u8-vecu8-on-windows
-        writeln!(&mut child_stdin, "{}", site_packages.join(path).display())
-            .map_err(WheelInstallerError::PythonSubcommandError)?;
-    }
-    // Close stdin to finish and avoid indefinite blocking
-    drop(child_stdin);
-
-    let output = bytecode_compiler
-        .wait_with_output()
-        .map_err(WheelInstallerError::PythonSubcommandError)?;
+    // bytecode compiling crashes non-deterministically with various errors, from syntax errors
+    // to cpython segmentation faults, so we add a simple retry loop
+    let mut retries = 3;
+    let output = loop {
+        let output = bytecode_compile_inner(site_packages, &py_source_paths)?;
+        retries -= 1;
+        if output.status.success() {
+            break output;
+        } else if retries == 0 {
+            break output;
+        } else {
+            warn!(
+                "Failed to compile {} with python compileall, retrying",
+                name,
+            );
+        }
+    };
     if !output.status.success() {
         // lossy because we want the error reporting to survive c̴̞̏ü̸̜̹̈́ŕ̴͉̈ś̷̤ė̵̤͋d̷͙̄ filenames in the zip
         return Err(WheelInstallerError::PythonSubcommandError(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "Failed to run `python {}`: {}\n---stdout:\n{}---stderr:\n{}",
-                args.join(" "),
+                "Failed to run python compileall: {}\n---stdout:\n{}---stderr:\n{}",
                 output.status,
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
@@ -421,8 +408,21 @@ fn bytecode_compile(
         )));
     }
 
+    // pip simply ignores all that failed to compile
+    let successful_paths = String::from_utf8(output.stdout).map_err(|err| {
+        WheelInstallerError::PythonSubcommandError(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Invalid utf-8 returned by python compileall: {}", err),
+        ))
+    })?;
+
     // Add to RECORD
-    for py_path in &py_source_paths {
+    for py_path in successful_paths.lines() {
+        let py_path = py_path.trim();
+        if py_path.is_empty() {
+            continue;
+        }
+        let py_path = Path::new(py_path);
         let pyc_path = py_path
             .parent()
             .unwrap_or_else(|| Path::new(""))
@@ -457,6 +457,43 @@ fn bytecode_compile(
     }
 
     Ok(())
+}
+
+/// The actual command part which we repeat if it fails
+fn bytecode_compile_inner(
+    site_packages: &Path,
+    py_source_paths: &[PathBuf],
+) -> Result<Output, WheelInstallerError> {
+    // We input the paths through stdin and get the successful paths returned through stdout
+    let mut bytecode_compiler = Command::new("python")
+        .args(["-c", include_str!("pip_compileall.py")])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(WheelInstallerError::PythonSubcommandError)?;
+
+    // https://stackoverflow.com/questions/49218599/write-to-child-process-stdin-in-rust/49597789#comment120223107_49597789
+    let mut child_stdin = bytecode_compiler
+        .stdin
+        .take()
+        .expect("Child must have stdin");
+
+    // Pass paths newline terminated to compileall
+    for path in py_source_paths {
+        trace!("bytecode compiling {}", path.display());
+        // There is no OsStr -> Bytes conversion on windows :o
+        // https://stackoverflow.com/questions/43083544/how-can-i-convert-osstr-to-u8-vecu8-on-windows
+        writeln!(&mut child_stdin, "{}", site_packages.join(path).display())
+            .map_err(WheelInstallerError::PythonSubcommandError)?;
+    }
+    // Close stdin to finish and avoid indefinite blocking
+    drop(child_stdin);
+
+    let output = bytecode_compiler
+        .wait_with_output()
+        .map_err(WheelInstallerError::PythonSubcommandError)?;
+    Ok(output)
 }
 
 /// Moves the files and folders in src to dest, updating the RECORD in the process
@@ -905,6 +942,7 @@ pub fn install_wheel(
             &site_packages,
             unpacked_paths,
             location.get_python_version(),
+            name.as_str(),
             &mut record,
         )?;
     }
