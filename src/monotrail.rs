@@ -30,11 +30,13 @@ enum LockfileType {
     RequirementsTxt,
 }
 
-fn find_lockfile(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
+/// Walks the directory tree up to find a pyproject.toml or a requirements.txt and returns
+/// the dir (poetry) or the file (requirements.txt)
+fn find_dep_file(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
     let mut parent = Some(dir_running.to_path_buf());
     while let Some(dir) = parent {
         if dir.join("pyproject.toml").exists() {
-            return Some((dir.join("pyproject.toml"), LockfileType::PyprojectToml));
+            return Some((dir, LockfileType::PyprojectToml));
         }
         if dir.join("requirements.txt").exists() {
             return Some((dir.join("requirements.txt"), LockfileType::RequirementsTxt));
@@ -317,7 +319,7 @@ pub fn get_specs(
     };
     debug!("python project dir: {}", dir_running.display());
 
-    let (lockfile, lockfile_type) = find_lockfile(&dir_running).with_context(|| {
+    let (dep_file_location, lockfile_type) = find_dep_file(&dir_running).with_context(|| {
         format!(
             "pyproject.toml not found next to {} nor in any parent directory",
             script.map_or_else(
@@ -328,16 +330,16 @@ pub fn get_specs(
     })?;
     let specs = match lockfile_type {
         LockfileType::PyprojectToml => {
-            let (poetry_toml, poetry_lock) = read_toml_files(&dir_running)?;
+            let (poetry_toml, poetry_lock) = read_toml_files(&dep_file_location)?;
             read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?
         }
         LockfileType::RequirementsTxt => {
-            let requirements_txt = fs::read_to_string(&lockfile)?;
+            let requirements_txt = fs::read_to_string(&dep_file_location)?;
 
             let requirements = parse_requirements_txt(&requirements_txt).map_err(|err| {
                 anyhow::Error::msg(err).context(format!(
                     "requirements specification is invalid: {}",
-                    lockfile.display()
+                    dep_file_location.display()
                 ))
             })?;
             let requirements = requirements

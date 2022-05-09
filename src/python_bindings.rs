@@ -11,7 +11,7 @@ use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Py
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
-use tracing::debug;
+use tracing::{debug, trace};
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own
 ///
@@ -182,7 +182,13 @@ pub fn monotrail_spec_paths(
     sprawl_packages: Vec<InstalledPackage>,
 ) -> PyResult<(HashMap<String, (PathBuf, Vec<PathBuf>)>, Vec<PathBuf>)> {
     let python_version = (py.version_info().major, py.version_info().minor);
-    spec_paths(&sprawl_root, &sprawl_packages, python_version).map_err(format_monotrail_error)
+    let (modules, pth_files) = spec_paths(&sprawl_root, &sprawl_packages, python_version)
+        .map_err(format_monotrail_error)?;
+    trace!(
+        "Available modules: {}",
+        modules.keys().map(|s| &**s).collect::<Vec<_>>().join(" ")
+    );
+    Ok((modules, pth_files))
 }
 
 fn parse_extras() -> anyhow::Result<Vec<String>> {
