@@ -291,7 +291,10 @@ pub fn spec_paths(
 /// Goes up the script path until a pyproject.toml/poetry.lock or a requirements.txt is
 /// found, for requirements.txt calls poetry to resolve the dependencies, reads the resolved
 /// set and returns it. `script` can be a file or a directory or will default to the current
-/// working directory
+/// working directory.
+///
+/// Returns the specs and the entrypoints of the root package (if poetry, empty for
+/// requirements.txt)
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn get_specs(
     script: Option<&Path>,
@@ -299,7 +302,7 @@ pub fn get_specs(
     sys_executable: &Path,
     python_version: (u8, u8),
     pep508_env: &Pep508Environment,
-) -> anyhow::Result<Vec<RequestedSpec>> {
+) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>)> {
     let dir_running = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(file) if file.is_file() => {
@@ -328,10 +331,12 @@ pub fn get_specs(
             )
         )
     })?;
-    let specs = match lockfile_type {
+    match lockfile_type {
         LockfileType::PyprojectToml => {
             let (poetry_toml, poetry_lock) = read_toml_files(&dep_file_location)?;
-            read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?
+            let scripts = poetry_toml.tool.poetry.scripts.clone().unwrap_or_default();
+            let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
+            Ok((specs, scripts))
         }
         LockfileType::RequirementsTxt => {
             let requirements_txt = fs::read_to_string(&dep_file_location)?;
@@ -364,8 +369,8 @@ pub fn get_specs(
                 None,
                 pep508_env,
             )?;
-            read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?
+            let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
+            Ok((specs, HashMap::new()))
         }
-    };
-    Ok(specs)
+    }
 }

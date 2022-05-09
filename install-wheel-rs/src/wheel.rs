@@ -384,9 +384,7 @@ fn bytecode_compile(
     let output = loop {
         let output = bytecode_compile_inner(site_packages, &py_source_paths)?;
         retries -= 1;
-        if output.status.success() {
-            break output;
-        } else if retries == 0 {
+        if output.status.success() || retries == 0 {
             break output;
         } else {
             warn!(

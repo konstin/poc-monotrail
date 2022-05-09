@@ -19,5 +19,6 @@ cp load_monotrail.pth .venv/lib/python3.*/site-packages/
 echo "Installed"
 MONOTRAIL=1 .venv/bin/python data_science_project/import_pandas.py
 MONOTRAIL=1 .venv/bin/python data_science_project/make_paper.py
+MONOTRAIL_CWD="data_science_project" .venv/bin/monotrail_run numpy_identity_3
 # MONOTRAIL=1 .venv/bin/python flipstring/flip.py "hello world!"
 # .venv/bin/pytest test_python

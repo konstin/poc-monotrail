@@ -2,6 +2,9 @@
 name = "monotrail"
 dependencies = ["importlib_metadata"] # version: well we have to match setuptools' vendored version, so we've lost already anyway
 
+[project.scripts]
+monotrail_run = "monotrail.run:main"
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "--tb=short"

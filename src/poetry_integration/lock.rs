@@ -42,6 +42,7 @@ fn dummy_poetry_pyproject_toml(
                 dependencies,
                 dev_dependencies: HashMap::new(),
                 extras: Some(HashMap::new()),
+                scripts: None,
             },
         },
         build_system: Default::default()
@@ -95,7 +96,7 @@ pub fn poetry_resolve(
 
     // The new process we spawn would also do this, but this way we get better debuggability
     let bootstrapping_span = span!(Level::DEBUG, "bootstrapping_poetry");
-    let specs = get_specs(
+    let (specs, _scripts) = get_specs(
         Some(&poetry_boostrap_lock),
         &[],
         sys_executable,

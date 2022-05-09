@@ -18,7 +18,7 @@ def load_monotrail():
         args = sys.argv
     try:
         # Install all required packages and get their location (in rust)
-        sprawl_root, sprawl_packages = monotrail_from_env(args)
+        sprawl_root, sprawl_packages, script = monotrail_from_env(args)
     except Exception as e:
         print("MONOTRAIL ERROR: PACKAGES WILL NOT BE AVAILABLE", e)
         return

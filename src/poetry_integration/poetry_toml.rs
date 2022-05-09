@@ -93,4 +93,5 @@ pub struct PoetrySection {
     pub dependencies: HashMap<String, Dependency>,
     pub dev_dependencies: HashMap<String, Dependency>,
     pub extras: Option<HashMap<String, Vec<String>>>,
+    pub scripts: Option<HashMap<String, String>>,
 }

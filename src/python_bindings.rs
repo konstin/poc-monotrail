@@ -82,13 +82,14 @@ fn get_python_platform(py: Python) -> PyResult<(String, (u8, u8), Os, Arch)> {
 
 /// Installs all required packages and returns package information to python
 ///
-/// Parses the environment variables and returns the monotrail root and a list of
-/// monotrail modules
+/// Parses the environment variables and returns the monotrail root, a list of
+/// monotrail modules and the entrypoints of the root package (for poetry, empty for
+/// requirements.txt)
 #[pyfunction]
 pub fn monotrail_from_env(
     py: Python,
     args: Vec<String>,
-) -> PyResult<(String, Vec<InstalledPackage>)> {
+) -> PyResult<(String, Vec<InstalledPackage>, HashMap<String, String>)> {
     // We parse the python args even if we take MONOTRAIL_CWD as a validation
     // step
     let script = naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
@@ -105,7 +106,7 @@ pub fn monotrail_from_env(
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let specs = get_specs(
+    let (specs, scripts) = get_specs(
         script.as_deref(),
         &extras,
         Path::new(&sys_executable),
@@ -113,8 +114,10 @@ pub fn monotrail_from_env(
         &pep508_env,
     )
     .map_err(format_monotrail_error)?;
-    install_requested(&specs, Path::new(&sys_executable), python_version)
-        .map_err(format_monotrail_error)
+    let (sprawl_root, sprawl_packages) =
+        install_requested(&specs, Path::new(&sys_executable), python_version)
+            .map_err(format_monotrail_error)?;
+    Ok((sprawl_root, sprawl_packages, scripts))
 }
 
 /// User gives a `[tool.poetry.dependencies]`
@@ -148,19 +151,20 @@ pub fn monotrail_from_requested(
     Ok((sprawl_root, sprawl_packages, lockfile))
 }
 
-/// Explicitly pass what you want, currently only used for testing
+/// Like monotrail_from_env, except you explicitly pass what you want, currently only used for
+/// testing
 #[pyfunction]
 pub fn monotrail_from_dir(
     py: Python,
     dir: PathBuf,
     extras: Vec<String>,
-) -> PyResult<(String, Vec<InstalledPackage>)> {
+) -> PyResult<(String, Vec<InstalledPackage>, HashMap<String, String>)> {
     debug!("monotrail_from_dir script: {:?}", dir);
     let (sys_executable, python_version, _, _) = get_python_platform(py)?;
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let specs = get_specs(
+    let (specs, scripts) = get_specs(
         Some(&dir),
         &extras,
         Path::new(&sys_executable),
@@ -168,8 +172,11 @@ pub fn monotrail_from_dir(
         &pep508_env,
     )
     .map_err(format_monotrail_error)?;
-    install_requested(&specs, Path::new(&sys_executable), python_version)
-        .map_err(format_monotrail_error)
+
+    let (sprawl_root, sprawl_packages) =
+        install_requested(&specs, Path::new(&sys_executable), python_version)
+            .map_err(format_monotrail_error)?;
+    Ok((sprawl_root, sprawl_packages, scripts))
 }
 
 /// The installed packages are all lies and rumors, we can only find the actually importable
