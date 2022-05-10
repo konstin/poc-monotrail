@@ -151,6 +151,26 @@ pub fn monotrail_from_requested(
     Ok((sprawl_root, sprawl_packages, lockfile))
 }
 
+/// TODO
+#[pyfunction]
+pub fn monotrail_from_git(
+    py: Python,
+    git_url: String,
+    revision: String,
+    extras: Option<Vec<String>>,
+) -> PyResult<(String, Vec<InstalledPackage>, HashMap<String, String>)> {
+    debug!("monotrail_from_git: {} {}", git_url, revision);
+    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
+    debug!("extras: {:?}", extras);
+    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
+
+    // checkout repository
+    // load toml files
+    // specs boilerplate
+
+    todo!()
+}
+
 /// Like monotrail_from_env, except you explicitly pass what you want, currently only used for
 /// testing
 #[pyfunction]
@@ -240,7 +260,9 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(monotrail_from_env, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_from_requested, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_from_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(monotrail_from_git, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_spec_paths, m)?)?;
+    m.add("project_name", env!("CARGO_PKG_NAME"))?;
     m.add_class::<InstalledPackage>()?;
     Ok(())
 }

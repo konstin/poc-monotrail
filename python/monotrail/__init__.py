@@ -1,11 +1,13 @@
 """
 Loading this module will run monotrail, installing all required packages and making them loadable
 """
-
 import os
-from typing import Optional
+import sys
+from typing import Optional, List
 
-if os.environ.get("MONOTRAIL"):
+# checks for MONOTRAIL=1, but we can't use project_name here because we don't want to load the rust part if
+# it's not requested
+if os.environ.get(sys.modules[__name__].__name__.upper()):
     from .load_monotrail import load_monotrail
 
     load_monotrail()
@@ -27,3 +29,9 @@ def interactive(**kwargs):
     MonotrailPathFinder.get_singleton().update_and_activate(
         sprawl_root, sprawl_packages
     )
+
+
+def from_git(repo_url: str, revision: str, extras: Optional[List[str]] = None):
+    from .monotrail import monotrail_from_git
+
+    monotrail_from_git(repo_url, revision, extras)

@@ -1,7 +1,7 @@
 import os
 import sys
 
-from .monotrail import monotrail_from_env
+from .monotrail import monotrail_from_env, project_name
 from .monotrail_path_finder import MonotrailPathFinder
 
 
@@ -20,10 +20,16 @@ def load_monotrail():
         # Install all required packages and get their location (in rust)
         sprawl_root, sprawl_packages, script = monotrail_from_env(args)
     except Exception as e:
-        print("MONOTRAIL ERROR: PACKAGES WILL NOT BE AVAILABLE", e)
+        print(
+            f"{project_name.upper()} ERROR: PACKAGES WILL NOT BE AVAILABLE: {e}",
+            file=sys.stderr,
+        )
         return
     except BaseException as e:  # Rust panic
-        print("MONOTRAIL CRASH (RUST PANIC): PACKAGES WILL NOT BE AVAILABLE", e)
+        print(
+            f"{project_name.upper()} CRASH (RUST PANIC): PACKAGES WILL NOT BE AVAILABLE: {e}",
+            file=sys.stderr,
+        )
         return
 
     MonotrailPathFinder.get_singleton().update_and_activate(

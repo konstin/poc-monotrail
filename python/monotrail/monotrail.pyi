@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Tuple, List, Optional, Dict, Union
 
+project_name: str
+
 class InstalledPackage:
     name: str
     python_version: str
@@ -21,3 +23,6 @@ def monotrail_from_requested(
 def monotrail_spec_paths(
     sprawl_root: str, sprawl_packages: List[InstalledPackage]
 ) -> Tuple[Dict[str, Tuple[str, List[str]]], List[str]]: ...
+def monotrail_from_git(
+    repo_url: str, revision: str, extras: Optional[List[str]] = None
+) -> Tuple[str, List[InstalledPackage], str]: ...

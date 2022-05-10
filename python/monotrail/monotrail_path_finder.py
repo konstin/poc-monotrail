@@ -7,11 +7,18 @@ from importlib.util import spec_from_file_location
 from pathlib import Path
 from typing import Union, List, Dict, Optional, Tuple
 
+import importlib_metadata
+
 # setuptools is adamant on haying _normalized_name on PathDistributions but as of 3.8 that only exists in
 # importlib_metadata (or setuptools vendored copy of it) and not in importlib.metadata
-from importlib_metadata import DistributionFinder, PathDistribution
+# noinspection PyProtectedMember
+from importlib_metadata import (
+    DistributionFinder,
+    PathDistribution,
+    PackageNotFoundError,
+)
 
-from .monotrail import InstalledPackage, monotrail_spec_paths
+from .monotrail import InstalledPackage, monotrail_spec_paths, project_name
 
 logger = logging.getLogger(__name__)
 
@@ -67,20 +74,37 @@ class MonotrailPathFinder(PathFinder, MetaPathFinder):
         and the only solution is really to restart python. We could remove it from sys.modules, but anything
         already imported from the module will stay loaded and cause strange undebuggable conflicts
         """
+        imported_versions = {}
+        # copy the dict size will otherwise change during iteration
+        for module in list(sys.modules.keys()):
+            if "." in module:
+                continue
+            try:
+                imported_versions[module] = importlib_metadata.version(module)
+            except PackageNotFoundError:
+                # e.g. builtin modules such as sys and os, but also broken stuff
+                imported_versions[module] = "missing_metadata"
+
         for new in new_packages:
             # not yet loaded, not a problem
-            if new.name not in sys.modules:
+            if new.name not in imported_versions:
                 continue
+            imported_version = imported_versions[new.name]
             existing = existing_packages.get(new.name)
-            # no version, no comparison
-            if not existing:
-                continue
-            if new.unique_version != existing.unique_version:
-                logger.warning(
-                    f"Version conflict: {existing.name} {existing.unique_version} is loaded, "
-                    f"but {new.unique_version} is now required. "
-                    f"Please restart your jupyter kernel or python interpreter",
-                )
+            if existing:
+                if new.unique_version != existing.unique_version:
+                    logger.warning(
+                        f"Version conflict: {existing.name} {existing.unique_version} is loaded, "
+                        f"but {new.unique_version} is now required. "
+                        f"Please restart your jupyter kernel or python interpreter",
+                    )
+            else:
+                if imported_version != new.unique_version:
+                    logger.warning(
+                        f"Version conflict: {new.name} {imported_version} was already imported, "
+                        f"even though {new.unique_version} is now required. "
+                        f"Is there any other loading mechanism with higher precedence than {project_name}?",
+                    )
 
     def find_spec(self, fullname, path=None, target=None):
         # We need to pass all packages because package names are lies, packages may contain whatever and nobody uses

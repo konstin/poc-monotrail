@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-from .monotrail import monotrail_from_env
+from .monotrail import monotrail_from_env, project_name
 from .monotrail_path_finder import MonotrailPathFinder
 
 
@@ -15,9 +15,10 @@ def main():
 
     script_name = sys.argv[1]
     # If you triggered the pth autoload beforehand, it'll have already done the wrong thing by this step
-    if os.environ.get("MONOTRAIL"):
+    if os.environ.get(project_name.upper()):
         print(
-            "warning: you're using monotrail.run with MONOTRAIL=1 being set, this will cause problems",
+            f"Warning: You're using {sys.modules[__name__].__name__} with {project_name.upper()}=1 being set, "
+            f"this will cause problems",
             file=sys.stderr,
         )
 
@@ -26,8 +27,8 @@ def main():
 
     if script_name in scripts:
         # Otherwise imports from the current projects won't work
-        if "MONOTRAIL_CWD" in os.environ:
-            sys.path.append(os.environ["MONOTRAIL_CWD"])
+        if f"{project_name.upper()}_CWD" in os.environ:
+            sys.path.append(os.environ[f"{project_name.upper()}_CWD"])
         else:
             sys.path.append(os.getcwd())
         # prepare execution environment
