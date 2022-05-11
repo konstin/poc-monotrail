@@ -31,8 +31,10 @@ class MonotrailPathFinder(PathFinder, MetaPathFinder):
     sprawl_root: Path
     # All resolved and installed packages indexed by name
     sprawl_packages: Dict[str, InstalledPackage]
-    # given a module name, where's the corresponding module file and what are the submodule_search_locations?
+    # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]
+    # For from git, where we check our a repository and make it available for import
+    repo_dir: Optional[str]
 
     def __init__(self):
         """dummy, actual initializer is update_and_activate"""
@@ -52,11 +54,13 @@ class MonotrailPathFinder(PathFinder, MetaPathFinder):
         self,
         sprawl_root: Union[str, Path],
         sprawl_packages: List[InstalledPackage],
+        repo_dir: Optional[str] = None
     ):
         """Update the set of installed/available packages on the fly"""
         self.sprawl_root = Path(sprawl_root)
         self.warn_on_conflicts(self.sprawl_packages, sprawl_packages)
         self.sprawl_packages = {package.name: package for package in sprawl_packages}
+        self.repo_dir=repo_dir
         self.spec_paths, pth_files = monotrail_spec_paths(sprawl_root, sprawl_packages)
         # hackery hack hack
         # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
@@ -113,6 +117,11 @@ class MonotrailPathFinder(PathFinder, MetaPathFinder):
 
         if fullname in self.spec_paths:
             location, submodule_search_locations = self.spec_paths[fullname]
+        elif self.repo_dir:
+            # Maybe we can find it in the repository we checked out
+            # It would make more sense to only add the poetry known modules, but this behaviour is most likely what
+            # users expect
+            return super().find_spec(fullname, [self.repo_dir])
         else:
             return None
 

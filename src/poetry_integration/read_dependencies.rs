@@ -1,6 +1,9 @@
 //! Parsing of pyproject.toml and poetry.lock
 
+use crate::install::repo_at_revision;
 use crate::markers::Pep508Environment;
+use crate::monotrail::specs_from_requirements_txt_resolved;
+use crate::package_index::cache_dir;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::poetry_integration::{poetry_lock, poetry_toml};
@@ -10,8 +13,10 @@ use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
 use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
+
+
 
 /// Resolves a single package's filename and url inside a poetry lockfile
 ///
@@ -299,6 +304,39 @@ pub fn read_poetry_specs(
 
     let specs = resolution_to_specs(packages, deps_with_extras)?;
     Ok(specs)
+}
+
+/// Checkouts the specified revision to the cache dir, if not present
+pub fn specs_from_git(
+    url: String,
+    revision: String,
+    extras: &[String],
+    sys_executable: &Path,
+    python_version: (u8, u8),
+    pep508_env: &Pep508Environment,
+) -> anyhow::Result<(Vec<RequestedSpec>, PathBuf, String)> {
+    let repo_dir = cache_dir()?
+        .join("checkouts")
+        .join(format!("{}-{}", url, revision));
+    repo_at_revision(&url, &revision, &repo_dir).context("Failed to checkout repository")?;
+
+    let (specs, lockfile) = if repo_dir.join("poetry.lock").is_file() {
+        let (poetry_toml, poetry_lock) = read_toml_files(&repo_dir)
+            .context("Failed to read pyproject.toml/poetry.lock from repository root")?;
+        let specs = read_poetry_specs(poetry_toml, poetry_lock, true, extras, pep508_env)?;
+        (specs, fs::read_to_string(repo_dir.join("poetry.lock"))?)
+    } else if repo_dir.join("requirements.txt").is_file() {
+        specs_from_requirements_txt_resolved(
+            &repo_dir.join("requirements.txt"),
+            extras,
+            sys_executable,
+            python_version,
+            pep508_env,
+        )?
+    } else {
+        bail!("Neither poetry.lock nor requirements.txt found");
+    };
+    Ok((specs, repo_dir, lockfile))
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@ use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{get_specs, install_requested, spec_paths};
 use crate::poetry_integration::lock::poetry_resolve;
+use crate::poetry_integration::read_dependencies::specs_from_git;
 use crate::{read_poetry_specs, PEP508_QUERY_ENV};
 use anyhow::{bail, Context};
 use install_wheel_rs::{Arch, Os};
@@ -151,24 +152,35 @@ pub fn monotrail_from_requested(
     Ok((sprawl_root, sprawl_packages, lockfile))
 }
 
-/// TODO
+/// Checkouts the repository at the given revision, storing it in the user cache dir.
+///
+/// Returns the sprawl_root, the sprawl_packages, the lock and the location of the repository
 #[pyfunction]
 pub fn monotrail_from_git(
     py: Python,
     git_url: String,
     revision: String,
     extras: Option<Vec<String>>,
-) -> PyResult<(String, Vec<InstalledPackage>, HashMap<String, String>)> {
+) -> PyResult<(String, Vec<InstalledPackage>, String, PathBuf)> {
     debug!("monotrail_from_git: {} {}", git_url, revision);
     let (sys_executable, python_version, _, _) = get_python_platform(py)?;
     debug!("extras: {:?}", extras);
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    // checkout repository
-    // load toml files
-    // specs boilerplate
+    let (specs, repo_dir, lockfile) = specs_from_git(
+        git_url,
+        revision,
+        extras.as_deref().unwrap_or_default(),
+        sys_executable.as_ref(),
+        python_version,
+        &pep508_env,
+    )
+    .map_err(format_monotrail_error)?;
+    let (sprawl_root, sprawl_packages) =
+        install_requested(&specs, sys_executable.as_ref(), python_version)
+            .map_err(format_monotrail_error)?;
 
-    todo!()
+    Ok((sprawl_root, sprawl_packages, lockfile, repo_dir))
 }
 
 /// Like monotrail_from_env, except you explicitly pass what you want, currently only used for

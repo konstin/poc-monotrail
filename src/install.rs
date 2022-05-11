@@ -5,7 +5,7 @@ use crate::spec::{DistributionType, FileOrUrl, RequestedSpec};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
-use git2::Repository;
+use git2::{Direction, Repository};
 use indicatif::{ProgressBar, ProgressStyle};
 use install_wheel_rs::{install_wheel, parse_key_value_file};
 use install_wheel_rs::{InstallLocation, LockedDir};
@@ -15,7 +15,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, warn};
 
 /// what we communicate back to python
 #[cfg(not(feature = "python_bindings"))]
@@ -233,6 +233,65 @@ pub fn install_specs(
     }
 }
 
+/// https://stackoverflow.com/a/67240436/3549270
+fn checkout_revision(revision: &str, repo: Repository) -> Result<(), git2::Error> {
+    let (object, reference) = repo.revparse_ext(revision)?;
+
+    repo.checkout_tree(&object, None)?;
+
+    match reference {
+        // gref is an actual reference like branches or tags
+        Some(gref) => repo.set_head(gref.name().unwrap()),
+        // this is a commit, not a reference
+        None => repo.set_head_detached(object.id()),
+    }?;
+    Ok(())
+}
+
+/// If the folder does not yet exist, it clones the repo and checks out the revision, otherwise
+/// it fetches and checks out
+pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::Result<()> {
+    let repo = if repo_dir.is_dir() {
+        match Repository::open(repo_dir) {
+            Ok(repo) => Some(repo),
+            Err(err) => {
+                warn!("Repository directory {} exists, but can't be opened as a git repository, recreating: {}", repo_dir.display(), err);
+                fs::remove_dir_all(&repo_dir)?;
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let repo = if let Some(repo) = repo {
+        let mut origin = repo
+            .find_remote("origin")
+            .context("No remote origin in repository")?;
+        // required for default_branch
+        origin
+            .connect(Direction::Fetch)
+            .context("Couldn't connect to remote")?;
+        let default_branch = origin
+            .default_branch()
+            .context("Missing default branch")?
+            .as_str()
+            .context("Can't get default branch name")?
+            .to_string();
+        origin
+            .fetch(&[default_branch], None, None)
+            .context("Failed to fetch repository")?;
+        drop(origin);
+        repo
+    } else {
+        // We need to first clone the entire thing and then checkout the revision we want
+        // https://stackoverflow.com/q/3489173/3549270
+        Repository::clone(url, &repo_dir).with_context(|| format!("Failed to clone {}", url))?
+    };
+    checkout_revision(revision, repo)
+        .with_context(|| format!("failed to checkout revision {} for {}", revision, url))?;
+    Ok(())
+}
+
 /// Returns the python version, unique version
 fn download_and_install(
     requested_spec: &RequestedSpec,
@@ -271,12 +330,7 @@ fn download_and_install(
         FileOrUrl::Git { url, revision } => {
             let temp_dir = TempDir::new()?;
             let repo_dir = temp_dir.path().join(&spec.name);
-            // We need to first clone the entire thing and then checkout the revision we want
-            // https://stackoverflow.com/q/3489173/3549270
-            let repo = Repository::clone(&url, &repo_dir)
-                .with_context(|| format!("Failed to clone {}", url))?;
-            checkout_revision(&revision, repo)
-                .with_context(|| format!("failed to checkout revision {} for {}", revision, url))?;
+            repo_at_revision(&url, &revision, &repo_dir)?;
 
             // If we got an sdist until now, build it into a wheel
             debug!(
@@ -331,19 +385,4 @@ fn download_and_install(
     )
     .with_context(|| format!("Failed to install {}", spec.requested))?;
     Ok((spec.python_version, spec.unique_version, tag))
-}
-
-/// https://stackoverflow.com/a/67240436/3549270
-fn checkout_revision(revision: &str, repo: Repository) -> Result<(), git2::Error> {
-    let (object, reference) = repo.revparse_ext(revision)?;
-
-    repo.checkout_tree(&object, None)?;
-
-    match reference {
-        // gref is an actual reference like branches or tags
-        Some(gref) => repo.set_head(gref.name().unwrap()),
-        // this is a commit, not a reference
-        None => repo.set_head_detached(object.id()),
-    }?;
-    Ok(())
 }

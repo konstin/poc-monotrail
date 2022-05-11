@@ -339,38 +339,57 @@ pub fn get_specs(
             Ok((specs, scripts))
         }
         LockfileType::RequirementsTxt => {
-            let requirements_txt = fs::read_to_string(&dep_file_location)?;
-
-            let requirements = parse_requirements_txt(&requirements_txt).map_err(|err| {
-                anyhow::Error::msg(err).context(format!(
-                    "requirements specification is invalid: {}",
-                    dep_file_location.display()
-                ))
-            })?;
-            let requirements = requirements
-                .into_iter()
-                .map(|(name, version)| {
-                    (
-                        name,
-                        poetry_toml::Dependency::Compact(
-                            // If no version is given, we'll let poetry pick one with `*`
-                            version.as_deref().unwrap_or("*").to_string(),
-                        ),
-                    )
-                })
-                .collect();
-            // We don't know whether the requirements.txt is from `pip freeze` or just a list of
-            // version, so we let it go through poetry resolve either way. For a frozen file
-            // there will just be no change
-            let (poetry_toml, poetry_lock, _) = poetry_resolve(
-                requirements,
+            let (specs, _lockfile) = specs_from_requirements_txt_resolved(
+                &dep_file_location,
+                extras,
                 sys_executable,
                 python_version,
-                None,
                 pep508_env,
             )?;
-            let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
             Ok((specs, HashMap::new()))
         }
     }
+}
+
+/// Reads the requirements.txt, calls poetry to resolve them and returns the resolved specs and the
+/// lockfile
+pub fn specs_from_requirements_txt_resolved(
+    requirements_txt: &Path,
+    extras: &[String],
+    sys_executable: &Path,
+    python_version: (u8, u8),
+    pep508_env: &Pep508Environment,
+) -> anyhow::Result<(Vec<RequestedSpec>, String)> {
+    let requirements = fs::read_to_string(&requirements_txt)?;
+
+    let requirements = parse_requirements_txt(&requirements).map_err(|err| {
+        anyhow::Error::msg(err).context(format!(
+            "requirements specification is invalid: {}",
+            requirements_txt.display()
+        ))
+    })?;
+    let requirements = requirements
+        .into_iter()
+        .map(|(name, version)| {
+            (
+                name,
+                poetry_toml::Dependency::Compact(
+                    // If no version is given, we'll let poetry pick one with `*`
+                    version.as_deref().unwrap_or("*").to_string(),
+                ),
+            )
+        })
+        .collect();
+    // We don't know whether the requirements.txt is from `pip freeze` or just a list of
+    // version, so we let it go through poetry resolve either way. For a frozen file
+    // there will just be no change
+    let (poetry_toml, poetry_lock, lockfile) = poetry_resolve(
+        requirements,
+        sys_executable,
+        python_version,
+        None,
+        pep508_env,
+    )?;
+    let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
+    Ok((specs, lockfile))
 }
