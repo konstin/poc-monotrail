@@ -16,8 +16,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-
-
 /// Resolves a single package's filename and url inside a poetry lockfile
 ///
 /// doesn't work because the pypi api wants a different python version than the one in the wheel
@@ -216,13 +214,13 @@ fn get_packages_from_lockfile(
     Ok(packages)
 }
 
-/// Reads pyproject.toml and poetry.lock
-pub fn read_toml_files(dir: &Path) -> anyhow::Result<(PoetryPyprojectToml, PoetryLock)> {
+/// Reads pyproject.toml and poetry.lock, also returns poetry.lock as string
+pub fn read_toml_files(dir: &Path) -> anyhow::Result<(PoetryPyprojectToml, PoetryLock, String)> {
     let poetry_toml = toml::from_str(&fs::read_to_string(dir.join("pyproject.toml"))?)
         .context("Invalid pyproject.toml")?;
-    let poetry_lock = toml::from_str(&fs::read_to_string(dir.join("poetry.lock"))?)
-        .context("Invalid pyproject.toml")?;
-    Ok((poetry_toml, poetry_lock))
+    let lockfile = fs::read_to_string(dir.join("poetry.lock"))?;
+    let poetry_lock = toml::from_str(&lockfile).context("Invalid pyproject.toml")?;
+    Ok((poetry_toml, poetry_lock, lockfile))
 }
 
 /// Parses pyproject.toml and poetry.lock and returns a list of packages to install
@@ -307,10 +305,12 @@ pub fn read_poetry_specs(
 }
 
 /// Checkouts the specified revision to the cache dir, if not present
+#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn specs_from_git(
     url: String,
     revision: String,
     extras: &[String],
+    lockfile: Option<&str>,
     sys_executable: &Path,
     python_version: (u8, u8),
     pep508_env: &Pep508Environment,
@@ -321,14 +321,15 @@ pub fn specs_from_git(
     repo_at_revision(&url, &revision, &repo_dir).context("Failed to checkout repository")?;
 
     let (specs, lockfile) = if repo_dir.join("poetry.lock").is_file() {
-        let (poetry_toml, poetry_lock) = read_toml_files(&repo_dir)
+        let (poetry_toml, poetry_lock, lockfile) = read_toml_files(&repo_dir)
             .context("Failed to read pyproject.toml/poetry.lock from repository root")?;
         let specs = read_poetry_specs(poetry_toml, poetry_lock, true, extras, pep508_env)?;
-        (specs, fs::read_to_string(repo_dir.join("poetry.lock"))?)
+        (specs, lockfile)
     } else if repo_dir.join("requirements.txt").is_file() {
         specs_from_requirements_txt_resolved(
             &repo_dir.join("requirements.txt"),
             extras,
+            lockfile,
             sys_executable,
             python_version,
             pep508_env,
@@ -404,7 +405,7 @@ mod test {
         ];
 
         for (toml_dir, no_dev, extras, specs_count) in expected {
-            let (poetry_toml, poetry_lock) = read_toml_files(toml_dir).unwrap();
+            let (poetry_toml, poetry_lock, _lockfile) = read_toml_files(toml_dir).unwrap();
             let specs =
                 read_poetry_specs(poetry_toml, poetry_lock, no_dev, &extras, &pep508_env).unwrap();
             assert_eq!(specs.len(), specs_count);

@@ -12,36 +12,25 @@ if os.environ.get(sys.modules[__name__].__name__.upper()):
 
     load_monotrail()
 
-_lockfile: Optional[str] = None
-
 
 def interactive(**kwargs):
     """For use in e.g. jupyter notebook: Use the first cell to define what you need and add stuff as you go."""
-    global _lockfile
     from .monotrail import monotrail_from_requested
-    from .monotrail_path_finder import MonotrailPathFinder
+    from .monotrail_finder import MonotrailFinder
     import json
 
     # enums with fields (or even untagged enums) are unsupported by pyo3, so json it is
-    sprawl_root, sprawl_packages, _lockfile = monotrail_from_requested(
-        json.dumps(kwargs), _lockfile
-    )
-    MonotrailPathFinder.get_singleton().update_and_activate(
-        sprawl_root, sprawl_packages
-    )
+    finder = MonotrailFinder.get_singleton()
+    finder_data = monotrail_from_requested(json.dumps(kwargs), finder.lockfile)
+    finder.update_and_activate(finder_data)
 
 
 def from_git(repo_url: str, revision: str, extras: Optional[List[str]] = None):
     """For deploying repositories in e.g. jupyter notebook: Use the first cell with the repository and a tag and you'll
     have all deps and repo code available"""
-    global _lockfile
-
     from .monotrail import monotrail_from_git
-    from .monotrail_path_finder import MonotrailPathFinder
+    from .monotrail_finder import MonotrailFinder
 
-    sprawl_root, sprawl_packages, _lockfile, repo_dir = monotrail_from_git(
-        repo_url, revision, extras
-    )
-    MonotrailPathFinder.get_singleton().update_and_activate(
-        sprawl_root, sprawl_packages, repo_dir=repo_dir
-    )
+    finder = MonotrailFinder.get_singleton()
+    finder_data = monotrail_from_git(repo_url, revision, extras, finder.lockfile)
+    finder.update_and_activate(finder_data)

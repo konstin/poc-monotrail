@@ -2,13 +2,13 @@ import os
 import sys
 
 from .monotrail import monotrail_from_env, project_name
-from .monotrail_path_finder import MonotrailPathFinder
+from .monotrail_finder import MonotrailFinder
 
 
 def load_monotrail():
-    """Small wrapper that calls into rust and instantiates the path finder"""
+    """Small wrapper that calls into rust and instantiates the finder"""
     # for some reason the last argument is missing with -m pytest (becomes -m),
-    # and i have no idea how to debug where it went. esp since we sometimes cut the first arguments, but never the last
+    # and I have no idea how to debug where it went. esp since we sometimes cut the first arguments, but never the last
     # https://stackoverflow.com/a/62087608/3549270
     if sys.platform == "linux":
         args = (
@@ -18,7 +18,7 @@ def load_monotrail():
         args = sys.argv
     try:
         # Install all required packages and get their location (in rust)
-        sprawl_root, sprawl_packages, script = monotrail_from_env(args)
+        finder_data = monotrail_from_env(args)
     except Exception as e:
         print(
             f"{project_name.upper()} ERROR: PACKAGES WILL NOT BE AVAILABLE: {e}",
@@ -32,6 +32,4 @@ def load_monotrail():
         )
         return
 
-    MonotrailPathFinder.get_singleton().update_and_activate(
-        sprawl_root, sprawl_packages
-    )
+    MonotrailFinder.get_singleton().update_and_activate(finder_data)

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from .monotrail import monotrail_from_env, project_name
-from .monotrail_path_finder import MonotrailPathFinder
+from .monotrail_finder import MonotrailFinder
 
 
 def main():
@@ -23,19 +23,17 @@ def main():
         )
 
     # Install all required packages and get their location (in rust)
-    sprawl_root, sprawl_packages, scripts = monotrail_from_env([])
+    finder_data = monotrail_from_env([])
 
-    if script_name in scripts:
-        # Otherwise imports from the current projects won't work
+    if script_name in finder_data.scripts:
+        # Otherwise, imports from the current projects won't work
         if f"{project_name.upper()}_CWD" in os.environ:
             sys.path.append(os.environ[f"{project_name.upper()}_CWD"])
         else:
             sys.path.append(os.getcwd())
         # prepare execution environment
-        MonotrailPathFinder.get_singleton().update_and_activate(
-            sprawl_root, sprawl_packages
-        )
-        object_ref = scripts[script_name]
+        MonotrailFinder.get_singleton().update_and_activate(finder_data)
+        object_ref = finder_data.scripts[script_name]
         # code from https://packaging.python.org/en/latest/specifications/entry-points/#data-model
         modname, qualname_separator, qualname = object_ref.partition(":")
         obj = importlib.import_module(modname)
@@ -47,9 +45,9 @@ def main():
         sys.exit(obj())
 
     # Find the actual location of the entrypoint
-    for package in sprawl_packages:
+    for package in finder_data.sprawl_packages:
         script_path = (
-            Path(package.monotrail_location(sprawl_root))
+            Path(package.monotrail_location(finder_data.sprawl_root))
             .joinpath("bin")
             .joinpath(script_name)
         )
@@ -76,9 +74,7 @@ def main():
     if shebang == placeholder_python:
         # Case 1: it's a python script
         # prepare execution environment
-        MonotrailPathFinder.get_singleton().update_and_activate(
-            sprawl_root, sprawl_packages
-        )
+        MonotrailFinder.get_singleton().update_and_activate(finder_data)
         with open(script_path) as file:
             # We use compile to attach the filename for debuggability
             python_script = compile(file.read(), script_path, "exec")

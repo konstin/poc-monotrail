@@ -302,7 +302,7 @@ pub fn get_specs(
     sys_executable: &Path,
     python_version: (u8, u8),
     pep508_env: &Pep508Environment,
-) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>)> {
+) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>, String)> {
     let dir_running = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(file) if file.is_file() => {
@@ -333,20 +333,21 @@ pub fn get_specs(
     })?;
     match lockfile_type {
         LockfileType::PyprojectToml => {
-            let (poetry_toml, poetry_lock) = read_toml_files(&dep_file_location)?;
+            let (poetry_toml, poetry_lock, lockfile) = read_toml_files(&dep_file_location)?;
             let scripts = poetry_toml.tool.poetry.scripts.clone().unwrap_or_default();
             let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
-            Ok((specs, scripts))
+            Ok((specs, scripts, lockfile))
         }
         LockfileType::RequirementsTxt => {
-            let (specs, _lockfile) = specs_from_requirements_txt_resolved(
+            let (specs, lockfile) = specs_from_requirements_txt_resolved(
                 &dep_file_location,
                 extras,
+                None,
                 sys_executable,
                 python_version,
                 pep508_env,
             )?;
-            Ok((specs, HashMap::new()))
+            Ok((specs, HashMap::new(), lockfile))
         }
     }
 }
@@ -356,6 +357,7 @@ pub fn get_specs(
 pub fn specs_from_requirements_txt_resolved(
     requirements_txt: &Path,
     extras: &[String],
+    lockfile: Option<&str>,
     sys_executable: &Path,
     python_version: (u8, u8),
     pep508_env: &Pep508Environment,
@@ -387,7 +389,7 @@ pub fn specs_from_requirements_txt_resolved(
         requirements,
         sys_executable,
         python_version,
-        None,
+        lockfile,
         pep508_env,
     )?;
     let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;

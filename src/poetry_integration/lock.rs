@@ -96,7 +96,7 @@ pub fn poetry_resolve(
 
     // The new process we spawn would also do this, but this way we get better debuggability
     let bootstrapping_span = span!(Level::DEBUG, "bootstrapping_poetry");
-    let (specs, _scripts) = get_specs(
+    let (specs, _scripts, _old_lockfile) = get_specs(
         Some(&poetry_boostrap_lock),
         &[],
         sys_executable,
@@ -115,7 +115,6 @@ pub fn poetry_resolve(
         // This will make poetry lock the right deps
         .current_dir(&resolve_dir)
         // This will make the monotrail python part find the poetry lock for poetry itself
-        .env(env!("CARGO_PKG_NAME").to_uppercase(), "1")
         .env(
             format!("{}_CWD", env!("CARGO_PKG_NAME")).to_uppercase(),
             &poetry_boostrap_lock,

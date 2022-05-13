@@ -5,66 +5,77 @@ from importlib.abc import MetaPathFinder
 from importlib.machinery import PathFinder
 from importlib.util import spec_from_file_location
 from pathlib import Path
-from typing import Union, List, Dict, Optional, Tuple
-
-import importlib_metadata
+from typing import List, Dict, Optional, Tuple
 
 # setuptools is adamant on haying _normalized_name on PathDistributions but as of 3.8 that only exists in
 # importlib_metadata (or setuptools vendored copy of it) and not in importlib.metadata
-# noinspection PyProtectedMember
-from importlib_metadata import (
-    DistributionFinder,
-    PathDistribution,
-    PackageNotFoundError,
-)
+try:
+    import importlib_metadata
 
-from .monotrail import InstalledPackage, monotrail_spec_paths, project_name
+    # noinspection PyProtectedMember
+    from importlib_metadata import (
+        DistributionFinder,
+        PathDistribution,
+        PackageNotFoundError,
+    )
+except (ModuleNotFoundError, ImportError):
+    import importlib.metadata as importlib_metadata
+    from importlib.metadata import (
+        DistributionFinder,
+        PathDistribution,
+        PackageNotFoundError,
+    )
+
+from .monotrail import FinderData, InstalledPackage, project_name
 
 logger = logging.getLogger(__name__)
 
 # exploits that modules are only loaded once
-_path_finder_singleton: Optional["MonotrailPathFinder"] = None
+_path_finder_singleton: Optional["MonotrailFinder"] = None
 
 
-class MonotrailPathFinder(PathFinder, MetaPathFinder):
+class MonotrailFinder(PathFinder, MetaPathFinder):
     # The location where all packages are installed
     sprawl_root: Path
     # All resolved and installed packages indexed by name
     sprawl_packages: Dict[str, InstalledPackage]
     # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]
-    # For from git, where we check our a repository and make it available for import
+    # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
     repo_dir: Optional[str]
+    # The contents of the last poetry.lock, used a basis for the next resolution when requirements
+    # change at runtime, both for faster resolution and in hopes the exact version stay the same
+    # so the user doesn't need to reload python
+    lockfile: Optional[str]
 
     def __init__(self):
         """dummy, actual initializer is update_and_activate"""
         # TODO: This dummy is unsound typing-wise. First init should always also set path and packages
         self.sprawl_packages = {}
+        self.repo_dir = None
+        self.lockfile = None
 
     @staticmethod
-    def get_singleton() -> "MonotrailPathFinder":
-        """We want only one monotrail path finder to be active at any given time"""
+    def get_singleton() -> "MonotrailFinder":
+        """We want only one monotrail finder to be active at any given time"""
         global _path_finder_singleton
         if not _path_finder_singleton:
-            _path_finder_singleton = MonotrailPathFinder()
+            _path_finder_singleton = MonotrailFinder()
             sys.meta_path.append(_path_finder_singleton)
         return _path_finder_singleton
 
-    def update_and_activate(
-        self,
-        sprawl_root: Union[str, Path],
-        sprawl_packages: List[InstalledPackage],
-        repo_dir: Optional[str] = None
-    ):
+    def update_and_activate(self, finder_data: FinderData):
         """Update the set of installed/available packages on the fly"""
-        self.sprawl_root = Path(sprawl_root)
-        self.warn_on_conflicts(self.sprawl_packages, sprawl_packages)
-        self.sprawl_packages = {package.name: package for package in sprawl_packages}
-        self.repo_dir=repo_dir
-        self.spec_paths, pth_files = monotrail_spec_paths(sprawl_root, sprawl_packages)
+        self.sprawl_root = Path(finder_data.sprawl_root)
+        self.warn_on_conflicts(self.sprawl_packages, finder_data.sprawl_packages)
+        self.sprawl_packages = {
+            package.name: package for package in finder_data.sprawl_packages
+        }
+        self.repo_dir = finder_data.repo_dir
+        self.spec_paths = finder_data.spec_paths
         # hackery hack hack
         # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
-        for pth in pth_files:
+        for pth in finder_data.pth_files:
             pth = Path(pth)
             site.addpackage(pth.parent, pth.name, None)
 
