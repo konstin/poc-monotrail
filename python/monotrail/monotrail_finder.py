@@ -1,6 +1,7 @@
 import logging
 import site
 import sys
+import typing
 from importlib.abc import MetaPathFinder
 from importlib.machinery import PathFinder
 from importlib.util import spec_from_file_location
@@ -8,37 +9,44 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 # setuptools is adamant on haying _normalized_name on PathDistributions but as of 3.8 that only exists in
-# importlib_metadata (or setuptools vendored copy of it) and not in importlib.metadata
+# importlib_metadata (or setuptools vendored copy of it) and not in importlib.metadata.
+# If we can't, we have to set `_normalized_name` on our own
 try:
     import importlib_metadata
 
-    # noinspection PyProtectedMember
-    from importlib_metadata import (
-        DistributionFinder,
-        PathDistribution,
-        PackageNotFoundError,
-    )
-except (ModuleNotFoundError, ImportError):
-    import importlib.metadata as importlib_metadata
-    from importlib.metadata import (
-        DistributionFinder,
-        PathDistribution,
-        PackageNotFoundError,
-    )
+    from importlib_metadata import PackageNotFoundError, DistributionFinder
 
-from .monotrail import FinderData, InstalledPackage, project_name
+    # noinspection PyProtectedMember
+    from importlib_metadata import PathDistribution
+
+    set_normalized_name = False
+except (ModuleNotFoundError, ImportError):
+    from importlib.metadata import DistributionFinder, PackageNotFoundError
+    import importlib.metadata as importlib_metadata
+    from importlib.metadata import PathDistribution
+
+    set_normalized_name = True
+
+if typing.TYPE_CHECKING:
+    from .monotrail import FinderData, InstalledPackage
+
+# modularity fallback
+try:
+    from .monotrail import project_name
+except (ModuleNotFoundError, ImportError):
+    project_name = "monotrail"
 
 logger = logging.getLogger(__name__)
 
 # exploits that modules are only loaded once
-_path_finder_singleton: Optional["MonotrailFinder"] = None
+_finder_singleton: Optional["MonotrailFinder"] = None
 
 
 class MonotrailFinder(PathFinder, MetaPathFinder):
     # The location where all packages are installed
     sprawl_root: Path
     # All resolved and installed packages indexed by name
-    sprawl_packages: Dict[str, InstalledPackage]
+    sprawl_packages: Dict[str, "InstalledPackage"]
     # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]
     # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
@@ -52,19 +60,20 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         """dummy, actual initializer is update_and_activate"""
         # TODO: This dummy is unsound typing-wise. First init should always also set path and packages
         self.sprawl_packages = {}
+        self.spec_paths = {}
         self.repo_dir = None
         self.lockfile = None
 
     @staticmethod
     def get_singleton() -> "MonotrailFinder":
         """We want only one monotrail finder to be active at any given time"""
-        global _path_finder_singleton
-        if not _path_finder_singleton:
-            _path_finder_singleton = MonotrailFinder()
-            sys.meta_path.append(_path_finder_singleton)
-        return _path_finder_singleton
+        global _finder_singleton
+        if not _finder_singleton:
+            _finder_singleton = MonotrailFinder()
+            sys.meta_path.append(_finder_singleton)
+        return _finder_singleton
 
-    def update_and_activate(self, finder_data: FinderData):
+    def update_and_activate(self, finder_data: "FinderData"):
         """Update the set of installed/available packages on the fly"""
         self.sprawl_root = Path(finder_data.sprawl_root)
         self.warn_on_conflicts(self.sprawl_packages, finder_data.sprawl_packages)
@@ -82,8 +91,8 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
     @classmethod
     def warn_on_conflicts(
         cls,
-        existing_packages: Dict[str, InstalledPackage],
-        new_packages: List[InstalledPackage],
+        existing_packages: Dict[str, "InstalledPackage"],
+        new_packages: List["InstalledPackage"],
     ):
         """if we already have a different version loaded that version will stay loaded, so we have a conflict,
         and the only solution is really to restart python. We could remove it from sys.modules, but anything
@@ -144,14 +153,30 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
 
         return spec
 
-    def _single_distribution(self, package: InstalledPackage) -> PathDistribution:
+    def _single_distribution(self, package: "InstalledPackage") -> PathDistribution:
         # TODO: Don't glob, but somehow handle that package can use the non-canonical name here
-        [dist_info_dir] = Path(
+        site_packages = Path(
             package.monotrail_site_packages(
                 self.sprawl_root, (sys.version_info.major, sys.version_info.minor)
             )
-        ).glob(f"*-{package.python_version}.dist-info")
-        assert dist_info_dir.is_dir(), dist_info_dir
+        )
+        dist_info_dirs = list(
+            site_packages.glob(f"*-{package.python_version}.dist-info")
+        )
+        if not len(dist_info_dirs) == 1:
+            raise RuntimeError(
+                f"Failed to find {site_packages}/*-{package.python_version}.dist-info"
+            )
+        [dist_info_dir] = dist_info_dirs
+        assert dist_info_dir.is_dir(), f"Not a directory: {dist_info_dir}"
+        # hacky setuptools weirdness fixup: When setuptools calls find_distributions it wants to use functions
+        # only available in its own vendored importlib_metadata and not in importlib.metadata. In that case the
+        # below import will also work and we'll return the thing it wants
+        try:
+            # noinspection PyUnresolvedReferences
+            from setuptools._vendor.importlib_metadata import PathDistribution
+        except ModuleNotFoundError:
+            pass
         distribution = PathDistribution(dist_info_dir)
         return distribution
 

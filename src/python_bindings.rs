@@ -5,86 +5,20 @@
 
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
-use crate::monotrail::{get_specs, install_requested, spec_paths};
+use crate::monotrail::{get_specs, spec_paths, FinderData};
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
-use crate::spec::RequestedSpec;
-use crate::{read_poetry_specs, PEP508_QUERY_ENV};
+use crate::{inject_and_run, monotrail, read_poetry_specs, PEP508_QUERY_ENV};
 use anyhow::{bail, Context};
 use install_wheel_rs::{Arch, Os};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
-use pyo3::{pyclass, pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
+use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
 use std::collections::HashMap;
 use std::env;
 use std::option::Option::None;
 use std::path::{Path, PathBuf};
 use tracing::{debug, trace};
-
-/// The packaging and import data that is resolved by the rust part and deployed by the finder
-#[pyclass]
-pub struct FinderData {
-    /// The location where all packages are installed
-    #[pyo3(get)]
-    sprawl_root: String,
-    /// All resolved and installed packages indexed by name
-    #[pyo3(get)]
-    sprawl_packages: Vec<InstalledPackage>,
-    /// Given a module name, where's the corresponding module file and what are the submodule_search_locations?
-    #[pyo3(get)]
-    spec_paths: HashMap<String, (PathBuf, Vec<PathBuf>)>,
-    /// In from git mode where we check out a repository and make it available for import as if it was added to sys.path
-    #[pyo3(get)]
-    repo_dir: Option<PathBuf>,
-    /// We need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
-    #[pyo3(get)]
-    pth_files: Vec<PathBuf>,
-    /// The contents of the last poetry.lock, used a basis for the next resolution when requirements
-    /// change at runtime, both for faster resolution and in hopes the exact version stay the same
-    /// so the user doesn't need to reload python
-    #[pyo3(get)]
-    lockfile: String,
-    /// The installed scripts indexed by name. They are in the bin folder of each project, coming
-    /// from entry_points.txt or data folder scripts
-    #[pyo3(get)]
-    scripts: HashMap<String, String>,
-}
-
-/// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own
-///
-/// `usage: python [option] ... [-c cmd | -m mod | file | -] [arg] ...`
-fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<String>, String> {
-    let bool_opts = [
-        "-b", "-B", "-d", "-E", "-h", "-i", "-I", "-O", "-OO", "-q", "-s", "-S", "-u", "-v", "-V",
-        "-x",
-    ];
-    let arg_opts = ["--check-hash-based-pycs", "-W", "-X"];
-    let mut arg_iter = args.iter();
-    loop {
-        if let Some(arg) = arg_iter.next() {
-            if bool_opts.contains(&arg.as_ref()) {
-                continue;
-            } else if arg_opts.contains(&arg.as_ref()) {
-                let value = arg_iter.next();
-                if value.is_none() {
-                    return Err(format!("Missing argument for {}", arg.as_ref()));
-                }
-                continue;
-            } else if arg.as_ref() == "-c" || arg.as_ref() == "-m" {
-                let value = arg_iter.next();
-                if value.is_none() {
-                    return Err(format!("Missing argument for {}", arg.as_ref()));
-                }
-                return Ok(None);
-            } else {
-                return Ok(Some(arg.as_ref().to_string()));
-            }
-        } else {
-            // interactive python shell
-            return Ok(None);
-        }
-    }
-}
 
 fn format_monotrail_error(err: impl Into<anyhow::Error>) -> PyErr {
     let mut accumulator = format!("{} failed to load.", env!("CARGO_PKG_NAME"));
@@ -106,32 +40,6 @@ fn get_pep508_env(py: Python) -> PyResult<String> {
     Ok(json_string)
 }
 
-fn install_specs_to_finder(
-    specs: &[RequestedSpec],
-    sys_executable: String,
-    python_version: (u8, u8),
-    scripts: HashMap<String, String>,
-    lockfile: String,
-    repo_dir: Option<PathBuf>,
-) -> PyResult<FinderData> {
-    let (sprawl_root, sprawl_packages) =
-        install_requested(&specs, sys_executable.as_ref(), python_version)
-            .map_err(format_monotrail_error)?;
-    let (spec_paths, pth_files) =
-        spec_paths(sprawl_root.as_ref(), &sprawl_packages, python_version)
-            .map_err(format_monotrail_error)?;
-
-    Ok(FinderData {
-        sprawl_root,
-        sprawl_packages,
-        spec_paths,
-        repo_dir,
-        pth_files,
-        lockfile,
-        scripts,
-    })
-}
-
 fn get_python_platform(py: Python) -> PyResult<(String, (u8, u8), Os, Arch)> {
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
     let python_version = (py.version_info().major, py.version_info().minor);
@@ -150,7 +58,7 @@ fn get_python_platform(py: Python) -> PyResult<(String, (u8, u8), Os, Arch)> {
 pub fn monotrail_from_env(py: Python, args: Vec<String>) -> PyResult<FinderData> {
     // We parse the python args even if we take MONOTRAIL_CWD as a validation
     // step
-    let script = naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
+    let script = inject_and_run::naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
     let script = if let Some(script) =
         env::var_os(&format!("{}_CWD", env!("CARGO_PKG_NAME").to_uppercase()))
     {
@@ -170,10 +78,11 @@ pub fn monotrail_from_env(py: Python, args: Vec<String>) -> PyResult<FinderData>
         Path::new(&sys_executable),
         python_version,
         &pep508_env,
+        None,
     )
     .map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(
+    monotrail::install_specs_to_finder(
         &specs,
         sys_executable,
         python_version,
@@ -181,6 +90,7 @@ pub fn monotrail_from_env(py: Python, args: Vec<String>) -> PyResult<FinderData>
         lockfile,
         None,
     )
+    .map_err(format_monotrail_error)
 }
 
 /// User gives a `[tool.poetry.dependencies]`
@@ -202,13 +112,14 @@ pub fn monotrail_from_requested(
         python_version,
         lockfile.as_deref(),
         &pep508_env,
+        None,
     )
     .context("Failed to resolve requested dependencies through poetry")
     .map_err(format_monotrail_error)?;
     let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(
+    monotrail::install_specs_to_finder(
         &specs,
         sys_executable,
         python_version,
@@ -216,6 +127,7 @@ pub fn monotrail_from_requested(
         lockfile,
         None,
     )
+    .map_err(format_monotrail_error)
 }
 
 /// Checkouts the repository at the given revision, storing it in the user cache dir.
@@ -240,10 +152,11 @@ pub fn monotrail_from_git(
         sys_executable.as_ref(),
         python_version,
         &pep508_env,
+        None,
     )
     .map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(
+    monotrail::install_specs_to_finder(
         &specs,
         sys_executable,
         python_version,
@@ -251,6 +164,7 @@ pub fn monotrail_from_git(
         lockfile,
         Some(repo_dir),
     )
+    .map_err(format_monotrail_error)
 }
 
 /// Like monotrail_from_env, except you explicitly pass what you want, currently only used for
@@ -268,10 +182,11 @@ pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyRe
         Path::new(&sys_executable),
         python_version,
         &pep508_env,
+        None,
     )
     .map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(
+    monotrail::install_specs_to_finder(
         &specs,
         sys_executable,
         python_version,
@@ -279,6 +194,7 @@ pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyRe
         lockfile,
         None,
     )
+    .map_err(format_monotrail_error)
 }
 
 /// The installed packages are all lies and rumors, we can only find the actually importable
@@ -348,29 +264,4 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<InstalledPackage>()?;
     m.add_class::<FinderData>()?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::naive_python_arg_parser;
-
-    #[test]
-    fn test_naive_python_arg_parser() {
-        let cases: &[(&[&str], _)] = &[
-            (
-                &["-v", "-m", "mymod", "--first_arg", "second_arg"],
-                Ok(None),
-            ),
-            (
-                &["-v", "my_script.py", "--first_arg", "second_arg"],
-                Ok(Some("my_script.py".to_string())),
-            ),
-            (&["-v"], Ok(None)),
-            (&[], Ok(None)),
-            (&["-m"], Err("Missing argument for -m".to_string())),
-        ];
-        for (args, parsing) in cases {
-            assert_eq!(&naive_python_arg_parser(args), parsing);
-        }
-    }
 }

@@ -12,6 +12,7 @@ use pep440::Version as Pep440Version;
 use serde::Deserialize;
 use std::fmt::{Display, Formatter};
 use std::io;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::str::FromStr;
 
@@ -59,8 +60,8 @@ impl Pep508Environment {
     ///
     /// To be eventually replaced by something like the maturin solution where we construct this
     /// is in rust
-    pub fn from_python() -> Self {
-        let out = Command::new("python")
+    pub fn from_python(python: &Path) -> Self {
+        let out = Command::new(python)
             .args(["-S"])
             .env("PYTHONIOENCODING", "utf-8")
             .stdin(Stdio::piped())
@@ -86,12 +87,13 @@ impl Pep508Environment {
                     panic!(
                         "Could not find any interpreter at {}, \
                         are you sure you have Python installed on your PATH?",
-                        "python"
+                        python.display()
                     )
                 } else {
                     panic!(
                         "Failed to run the Python interpreter at {}: {}",
-                        "python", err
+                        python.display(),
+                        err
                     )
                 }
             }
@@ -445,12 +447,13 @@ fn parse_expression(chars: &[char], start_name: usize) -> Result<(Expression, us
 #[cfg(test)]
 mod test {
     use crate::markers::{parse_markers, Pep508Environment};
+    use std::path::Path;
 
     /// The output depends on where we run this, just check it works at all
     /// (which depends on python being in PATH which `cargo test` needs anyway)
     #[test]
     fn get_python() {
-        Pep508Environment::from_python();
+        Pep508Environment::from_python(Path::new("python"));
     }
 
     #[test]

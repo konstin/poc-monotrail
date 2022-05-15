@@ -314,6 +314,7 @@ pub fn specs_from_git(
     sys_executable: &Path,
     python_version: (u8, u8),
     pep508_env: &Pep508Environment,
+    python_root: Option<PathBuf>,
 ) -> anyhow::Result<(Vec<RequestedSpec>, PathBuf, String)> {
     let repo_dir = cache_dir()?
         .join("checkouts")
@@ -333,6 +334,7 @@ pub fn specs_from_git(
             sys_executable,
             python_version,
             pep508_env,
+            python_root,
         )?
     } else {
         bail!("Neither poetry.lock nor requirements.txt found");
@@ -411,4 +413,16 @@ mod test {
             assert_eq!(specs.len(), specs_count);
         }
     }
+}
+
+/// Reads `poetry.toml` and `poetry.lock` from `dep_file_location`
+pub fn poetry_spec_from_dir(
+    dep_file_location: &Path,
+    extras: &[String],
+    pep508_env: &Pep508Environment,
+) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>, String)> {
+    let (poetry_toml, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
+    let scripts = poetry_toml.tool.poetry.scripts.clone().unwrap_or_default();
+    let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
+    Ok((specs, scripts, lockfile))
 }

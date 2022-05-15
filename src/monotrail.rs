@@ -3,7 +3,7 @@ use crate::markers::Pep508Environment;
 use crate::package_index::cache_dir;
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::poetry_toml;
-use crate::poetry_integration::read_dependencies::read_toml_files;
+use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
 use crate::{install_specs, read_poetry_specs};
@@ -11,11 +11,72 @@ use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::DirEntry;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
 use std::{env, io};
 use tracing::{debug, warn};
+
+enum LockfileType {
+    PyprojectToml,
+    RequirementsTxt,
+}
+
+/// The packaging and import data that is resolved by the rust part and deployed by the finder
+#[cfg(not(feature = "python_bindings"))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct FinderData {
+    /// The location where all packages are installed
+    pub sprawl_root: String,
+    /// All resolved and installed packages indexed by name
+    pub sprawl_packages: Vec<InstalledPackage>,
+    /// Given a module name, where's the corresponding module file and what are the submodule_search_locations?
+    pub spec_paths: HashMap<String, (PathBuf, Vec<PathBuf>)>,
+    /// In from git mode where we check out a repository and make it available for import as if it was added to sys.path
+    pub repo_dir: Option<PathBuf>,
+    /// We need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
+    pub pth_files: Vec<PathBuf>,
+    /// The contents of the last poetry.lock, used a basis for the next resolution when requirements
+    /// change at runtime, both for faster resolution and in hopes the exact version stay the same
+    /// so the user doesn't need to reload python
+    pub lockfile: String,
+    /// The installed scripts indexed by name. They are in the bin folder of each project, coming
+    /// from entry_points.txt or data folder scripts
+    pub scripts: HashMap<String, String>,
+}
+
+/// The packaging and import data that is resolved by the rust part and deployed by the finder
+///
+/// TODO: write a pyo3 bug report to parse through cfg attr
+#[cfg(feature = "python_bindings")]
+#[pyo3::pyclass(dict)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct FinderData {
+    #[pyo3(get)]
+    pub sprawl_root: String,
+    #[pyo3(get)]
+    pub sprawl_packages: Vec<InstalledPackage>,
+    #[pyo3(get)]
+    pub spec_paths: HashMap<String, (PathBuf, Vec<PathBuf>)>,
+    #[pyo3(get)]
+    pub repo_dir: Option<PathBuf>,
+    #[pyo3(get)]
+    pub pth_files: Vec<PathBuf>,
+    #[pyo3(get)]
+    pub lockfile: String,
+    #[pyo3(get)]
+    pub scripts: HashMap<String, String>,
+}
+
+#[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
+impl FinderData {
+    /// For debugging
+    #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+    fn to_json(&self) -> String {
+        serde_json::to_string(&self).expect("Couldn't convert to json")
+    }
+}
 
 pub fn monotrail_root() -> anyhow::Result<PathBuf> {
     if let Some(env_root) = env::var_os("MONOTRAIL_ROOT") {
@@ -23,11 +84,6 @@ pub fn monotrail_root() -> anyhow::Result<PathBuf> {
     } else {
         Ok(cache_dir()?.join("monotrail"))
     }
-}
-
-enum LockfileType {
-    PyprojectToml,
-    RequirementsTxt,
 }
 
 /// Walks the directory tree up to find a pyproject.toml or a requirements.txt and returns
@@ -302,6 +358,7 @@ pub fn get_specs(
     sys_executable: &Path,
     python_version: (u8, u8),
     pep508_env: &Pep508Environment,
+    python_root: Option<PathBuf>,
 ) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>, String)> {
     let dir_running = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
@@ -332,12 +389,7 @@ pub fn get_specs(
         )
     })?;
     match lockfile_type {
-        LockfileType::PyprojectToml => {
-            let (poetry_toml, poetry_lock, lockfile) = read_toml_files(&dep_file_location)?;
-            let scripts = poetry_toml.tool.poetry.scripts.clone().unwrap_or_default();
-            let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
-            Ok((specs, scripts, lockfile))
-        }
+        LockfileType::PyprojectToml => poetry_spec_from_dir(&dep_file_location, extras, pep508_env),
         LockfileType::RequirementsTxt => {
             let (specs, lockfile) = specs_from_requirements_txt_resolved(
                 &dep_file_location,
@@ -346,6 +398,7 @@ pub fn get_specs(
                 sys_executable,
                 python_version,
                 pep508_env,
+                python_root,
             )?;
             Ok((specs, HashMap::new(), lockfile))
         }
@@ -361,6 +414,7 @@ pub fn specs_from_requirements_txt_resolved(
     sys_executable: &Path,
     python_version: (u8, u8),
     pep508_env: &Pep508Environment,
+    python_root: Option<PathBuf>,
 ) -> anyhow::Result<(Vec<RequestedSpec>, String)> {
     let requirements = fs::read_to_string(&requirements_txt)?;
 
@@ -391,7 +445,33 @@ pub fn specs_from_requirements_txt_resolved(
         python_version,
         lockfile,
         pep508_env,
-    )?;
+        python_root,
+    )
+    .context("Failed to resolve dependencies with poetry")?;
     let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
     Ok((specs, lockfile))
+}
+
+pub fn install_specs_to_finder(
+    specs: &[RequestedSpec],
+    sys_executable: String,
+    python_version: (u8, u8),
+    scripts: HashMap<String, String>,
+    lockfile: String,
+    repo_dir: Option<PathBuf>,
+) -> anyhow::Result<FinderData> {
+    let (sprawl_root, sprawl_packages) =
+        install_requested(specs, sys_executable.as_ref(), python_version)?;
+    let (spec_paths, pth_files) =
+        spec_paths(sprawl_root.as_ref(), &sprawl_packages, python_version)?;
+
+    Ok(FinderData {
+        sprawl_root,
+        sprawl_packages,
+        spec_paths,
+        repo_dir,
+        pth_files,
+        lockfile,
+        scripts,
+    })
 }

@@ -1,7 +1,9 @@
+use crate::inject_and_run::run_from_python_args;
 use crate::install::{filter_installed, InstalledPackage};
 use crate::markers::Pep508Environment;
 use crate::monotrail::monotrail_root;
 use crate::package_index::download_distribution;
+use crate::poetry_integration::lock;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
@@ -39,6 +41,9 @@ pub enum Cli {
         #[clap(long)]
         no_compile: bool,
     },
+    RunPython {
+        python_args: Vec<String>,
+    },
     PoetryInstall {
         #[clap(flatten)]
         options: PoetryOptions,
@@ -49,6 +54,12 @@ pub enum Cli {
         command: String,
         #[clap(last = true)]
         command_args: Vec<String>,
+    },
+    #[doc(hidden)]
+    PoetryResolve {
+        major: u8,
+        minor: u8,
+        python_location: PathBuf,
     },
 }
 
@@ -88,7 +99,7 @@ fn install_location_specs(
         &Arch::current()?,
     )?;
     // TODO: don't parse this from a subprocess but do it like maturin
-    let pep508_env = Pep508Environment::from_python();
+    let pep508_env = Pep508Environment::from_python(Path::new("python"));
     let (poetry_toml, poetry_lock, _lockfile) = read_toml_files(&env::current_dir()?)?;
     let specs = read_poetry_specs(
         poetry_toml,
@@ -129,17 +140,24 @@ fn install_location_specs(
     Ok((location, installed_done))
 }
 
-pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
-    let python_version = get_venv_python_version(venv)?;
-    let venv_canon = venv.canonicalize()?;
-
+pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
     match cli {
         Cli::Install {
             targets,
             no_compile,
         } => {
+            let venv = if let Some(venv) = venv {
+                venv.to_path_buf()
+            } else if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
+                PathBuf::from(virtual_env)
+            } else {
+                bail!("Will only install in a virtualenv");
+            };
+            let python_version = get_venv_python_version(&venv)?;
+            let venv_canon = venv.canonicalize()?;
+
             let compatible_tags = compatible_tags(
-                get_venv_python_version(venv)?,
+                get_venv_python_version(&venv)?,
                 &Os::current()?,
                 &Arch::current()?,
             )?;
@@ -160,16 +178,44 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
                 false,
             )?;
         }
+        Cli::RunPython { python_args } => {
+            run_from_python_args(python_args)?;
+        }
         Cli::PoetryInstall { options } => {
-            install_location_specs(venv, python_version, &venv_canon, &options)?;
+            let venv = if let Some(venv) = venv {
+                venv.to_path_buf()
+            } else if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
+                PathBuf::from(virtual_env)
+            } else {
+                let venv = PathBuf::from(".venv");
+                if venv.join("pyvenv.cfg").is_file() {
+                    venv
+                } else {
+                    bail!("No .venv directory found");
+                }
+            };
+            let python_version = get_venv_python_version(&venv)?;
+            let venv_canon = venv.canonicalize()?;
+
+            install_location_specs(&venv, python_version, &venv_canon, &options)?;
         }
         Cli::PoetryRun {
             options,
             command,
             command_args,
         } => {
+            let venv = if let Some(venv) = venv {
+                venv.to_path_buf()
+            } else if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
+                PathBuf::from(virtual_env)
+            } else {
+                bail!("Will only install in a virtualenv");
+            };
+            let python_version = get_venv_python_version(&venv)?;
+            let venv_canon = venv.canonicalize()?;
+
             let (location, installed) =
-                install_location_specs(venv, python_version, &venv_canon, &options)?;
+                install_location_specs(&venv, python_version, &venv_canon, &options)?;
             let executable = match location {
                 // Using monotrail as launcher is kinda pointless when we're already in a venv ¯\_(ツ)_/¯
                 InstallLocation::Venv { venv_base, .. } => {
@@ -228,6 +274,13 @@ pub fn run(cli: Cli, venv: &Path) -> anyhow::Result<()> {
             // the real thing
             // note the that this may launch a python script, a native binary or anything else
             unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
+        }
+        Cli::PoetryResolve {
+            major,
+            minor,
+            python_location,
+        } => {
+            lock::poetry_resolve_bin(major, minor, &python_location)?;
         }
     };
     Ok(())

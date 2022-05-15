@@ -10,6 +10,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use install_wheel_rs::{install_wheel, parse_key_value_file};
 use install_wheel_rs::{InstallLocation, LockedDir};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use serde::Serialize;
 use std::io;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -19,7 +20,7 @@ use tracing::{debug, info, trace, warn};
 
 /// what we communicate back to python
 #[cfg(not(feature = "python_bindings"))]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct InstalledPackage {
     pub name: String,
     pub python_version: String,
@@ -32,7 +33,7 @@ pub struct InstalledPackage {
 /// TODO: write a pyo3 bug report to parse through cfg attr
 #[cfg(feature = "python_bindings")]
 #[pyo3::pyclass]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct InstalledPackage {
     #[pyo3(get)]
     pub name: String,
