@@ -3,8 +3,8 @@ use crate::install::{filter_installed, InstalledPackage};
 use crate::markers::Pep508Environment;
 use crate::monotrail::monotrail_root;
 use crate::package_index::download_distribution;
-use crate::poetry_integration::lock;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
+use crate::poetry_integration::run::poetry_run;
 use crate::spec::RequestedSpec;
 use crate::venv_parser::get_venv_python_version;
 use crate::{install_specs, package_index};
@@ -55,11 +55,9 @@ pub enum Cli {
         #[clap(last = true)]
         command_args: Vec<String>,
     },
-    #[doc(hidden)]
-    PoetryResolve {
-        major: u8,
-        minor: u8,
-        python_location: PathBuf,
+    #[clap(trailing_var_arg = true)]
+    Poetry {
+        args: Vec<String>,
     },
 }
 
@@ -275,12 +273,8 @@ pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
             // note the that this may launch a python script, a native binary or anything else
             unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
         }
-        Cli::PoetryResolve {
-            major,
-            minor,
-            python_location,
-        } => {
-            lock::poetry_resolve_bin(major, minor, &python_location)?;
+        Cli::Poetry { args } => {
+            poetry_run(args)?;
         }
     };
     Ok(())

@@ -84,7 +84,7 @@ pub fn inject_and_run_python(
             lib.get(b"Py_Initialize")?;
         initialize();
 
-        info!("Injecting monotrail");
+        debug!("Injecting monotrail");
         // Add our finder
         // https://docs.python.org/3/c-api/veryhigh.html#c.PyRun_String
         // int PyRun_SimpleString(const char *command)
@@ -132,7 +132,6 @@ pub fn inject_and_run_python(
             .map(|arg| arg.as_ptr() as *const wchar_t)
             .collect();
         let exit_code = py_main(args_cstring.len() as c_int, args_c_char.as_mut_ptr());
-        info!("Python done: {}", exit_code);
         // > The return value will be 0 if the interpreter exits normally (i.e., without an
         // > exception), 1 if the interpreter exits due to an exception, or 2 if the parameter list
         // > does not represent a valid Python command line.
@@ -145,9 +144,7 @@ pub fn inject_and_run_python(
 }
 
 /// Allows doing `monotrail_python +3.10 -m say.hello`
-pub fn parse_python_args(
-    python_args: Vec<String>,
-) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
+pub fn parse_plus_arg(python_args: Vec<String>) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
     if let Some(first_arg) = python_args.get(0) {
         if first_arg.starts_with('+') {
             if let Some((major, minor)) = first_arg.trim_start_matches('+').split_once('.') {
@@ -167,13 +164,13 @@ pub fn parse_python_args(
 }
 
 pub fn run_from_python_args(python_args: Vec<String>) -> anyhow::Result<()> {
-    let (args, python_version) = parse_python_args(python_args)?;
+    let (args, python_version) = parse_plus_arg(python_args)?;
     let python_version = python_version.unwrap_or((3, 8));
     let script = naive_python_arg_parser(&args)
         .map_err(|err| format_err!("Failed to parse python args: {}", err))?;
     debug!("monotrail_from_env script: {:?}", script);
 
-    let python_root = provision_python(python_version.0, python_version.1).unwrap();
+    let python_root = provision_python(python_version).unwrap();
     let python_binary = python_root.join("install").join("bin").join("python3");
 
     let pep508_env = Pep508Environment::from_python(&python_binary);

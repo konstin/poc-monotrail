@@ -69,14 +69,15 @@ fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()
 
 /// If a downloaded python version exists, return this, otherwise download and unpack a matching one
 /// from indygreg/python-build-standalone
-pub fn provision_python(major: u8, minor: u8) -> anyhow::Result<PathBuf> {
+pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<PathBuf> {
     // TODO: use monotrail mechanism
     let python_parent_dir = dirs::cache_dir()
         .context("Cache dir not found")?
         .join("monotrail")
         .join("python-build-standalone");
     fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
-    let unpack_dir = python_parent_dir.join(format!("cpython-{}.{}", major, minor));
+    let unpack_dir =
+        python_parent_dir.join(format!("cpython-{}.{}", python_version.0, python_version.1));
 
     if unpack_dir.is_dir() {
         if !unpack_dir
@@ -91,7 +92,7 @@ pub fn provision_python(major: u8, minor: u8) -> anyhow::Result<PathBuf> {
         return Ok(unpack_dir.join("python"));
     }
 
-    let url = find_python(major, minor)?;
+    let url = find_python(python_version.0, python_version.1)?;
     // atomic installation by tempdir & rename
     let temp_dir = tempdir_in(&python_parent_dir)
         .context("Failed to create temporary directory for unpacking")?;
