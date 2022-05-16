@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 use std::str::FromStr;
 
 /// The version and platform information required to evaluate marker expressions according to PEP 508
-#[derive(Debug, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Deserialize, Clone)]
 pub struct Pep508Environment {
     pub(crate) implementation_name: String,
     pub(crate) implementation_version: String,

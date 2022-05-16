@@ -2,7 +2,7 @@
 
 use crate::install::repo_at_revision;
 use crate::markers::Pep508Environment;
-use crate::monotrail::specs_from_requirements_txt_resolved;
+use crate::monotrail::{specs_from_requirements_txt_resolved, PythonContext};
 use crate::package_index::cache_dir;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
@@ -311,10 +311,7 @@ pub fn specs_from_git(
     revision: String,
     extras: &[String],
     lockfile: Option<&str>,
-    sys_executable: &Path,
-    python_version: (u8, u8),
-    pep508_env: &Pep508Environment,
-    python_root: Option<PathBuf>,
+    python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, PathBuf, String)> {
     let repo_dir = cache_dir()?
         .join("checkouts")
@@ -324,17 +321,20 @@ pub fn specs_from_git(
     let (specs, lockfile) = if repo_dir.join("poetry.lock").is_file() {
         let (poetry_toml, poetry_lock, lockfile) = read_toml_files(&repo_dir)
             .context("Failed to read pyproject.toml/poetry.lock from repository root")?;
-        let specs = read_poetry_specs(poetry_toml, poetry_lock, true, extras, pep508_env)?;
+        let specs = read_poetry_specs(
+            poetry_toml,
+            poetry_lock,
+            true,
+            extras,
+            &python_context.pep508_env,
+        )?;
         (specs, lockfile)
     } else if repo_dir.join("requirements.txt").is_file() {
         specs_from_requirements_txt_resolved(
             &repo_dir.join("requirements.txt"),
             extras,
             lockfile,
-            sys_executable,
-            python_version,
-            pep508_env,
-            python_root,
+            python_context,
         )?
     } else {
         bail!("Neither poetry.lock nor requirements.txt found");

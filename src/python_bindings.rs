@@ -5,19 +5,19 @@
 
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
-use crate::monotrail::{get_specs, spec_paths, FinderData};
+use crate::monotrail::{
+    get_specs, install_specs_to_finder, spec_paths, FinderData, LaunchType, PythonContext,
+};
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
-use crate::{inject_and_run, monotrail, read_poetry_specs, PEP508_QUERY_ENV};
+use crate::{inject_and_run, read_poetry_specs, PEP508_QUERY_ENV};
 use anyhow::{bail, Context};
-use install_wheel_rs::{Arch, Os};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
 use std::collections::HashMap;
 use std::env;
-use std::option::Option::None;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::{debug, trace};
 
 fn format_monotrail_error(err: impl Into<anyhow::Error>) -> PyErr {
@@ -40,16 +40,16 @@ fn get_pep508_env(py: Python) -> PyResult<String> {
     Ok(json_string)
 }
 
-fn get_python_platform(py: Python) -> PyResult<(String, (u8, u8), Os, Arch)> {
+fn get_python_context(py: Python) -> PyResult<PythonContext> {
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
-    let python_version = (py.version_info().major, py.version_info().minor);
-    let os = Os::current().map_err(format_monotrail_error)?;
-    let arch = Arch::current().map_err(format_monotrail_error)?;
-    debug!(
-        "python: {:?} {:?} {} {}",
-        python_version, os, arch, sys_executable
-    );
-    Ok((sys_executable, python_version, os, arch))
+    let python_context = PythonContext {
+        sys_executable: PathBuf::from(sys_executable),
+        python_version: (py.version_info().major, py.version_info().minor),
+        pep508_env: Pep508Environment::from_json_str(&get_pep508_env(py)?),
+        launch_type: LaunchType::PythonBindings,
+    };
+    debug!("python: {:?}", python_context);
+    Ok(python_context)
 }
 
 /// Installs all required packages and returns package information to python, while parsing
@@ -67,30 +67,15 @@ pub fn monotrail_from_env(py: Python, args: Vec<String>) -> PyResult<FinderData>
         script.map(PathBuf::from)
     };
     debug!("monotrail_from_env script: {:?}", script);
-    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
+    let python_context = get_python_context(py)?;
     let extras = parse_extras().map_err(format_monotrail_error)?;
     debug!("extras: {:?}", extras);
-    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let (specs, scripts, lockfile) = get_specs(
-        script.as_deref(),
-        &extras,
-        Path::new(&sys_executable),
-        python_version,
-        &pep508_env,
-        None,
-    )
-    .map_err(format_monotrail_error)?;
+    let (specs, scripts, lockfile) =
+        get_specs(script.as_deref(), &extras, &python_context).map_err(format_monotrail_error)?;
 
-    monotrail::install_specs_to_finder(
-        &specs,
-        sys_executable,
-        python_version,
-        scripts,
-        lockfile,
-        None,
-    )
-    .map_err(format_monotrail_error)
+    install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)
+        .map_err(format_monotrail_error)
 }
 
 /// User gives a `[tool.poetry.dependencies]`
@@ -103,31 +88,18 @@ pub fn monotrail_from_requested(
     let requested = serde_json::from_str(&requested)
         .map_err(|serde_err| PyRuntimeError::new_err(format!("Invalid dependency format: {}.\n See https://python-poetry.org/docs/dependency-specification/", serde_err)))?;
 
-    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
+    let python_context = get_python_context(py)?;
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let (poetry_toml, poetry_lock, lockfile) = poetry_resolve(
-        requested,
-        Path::new(&sys_executable),
-        python_version,
-        lockfile.as_deref(),
-        &pep508_env,
-        None,
-    )
-    .context("Failed to resolve requested dependencies through poetry")
-    .map_err(format_monotrail_error)?;
+    let (poetry_toml, poetry_lock, lockfile) =
+        poetry_resolve(requested, lockfile.as_deref(), &python_context)
+            .context("Failed to resolve requested dependencies through poetry")
+            .map_err(format_monotrail_error)?;
     let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
-    monotrail::install_specs_to_finder(
-        &specs,
-        sys_executable,
-        python_version,
-        HashMap::new(),
-        lockfile,
-        None,
-    )
-    .map_err(format_monotrail_error)
+    install_specs_to_finder(&specs, HashMap::new(), lockfile, None, &python_context)
+        .map_err(format_monotrail_error)
 }
 
 /// Checkouts the repository at the given revision, storing it in the user cache dir.
@@ -140,29 +112,24 @@ pub fn monotrail_from_git(
     lockfile: Option<String>,
 ) -> PyResult<FinderData> {
     debug!("monotrail_from_git: {} {}", git_url, revision);
-    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
+    let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
-    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
     let (specs, repo_dir, lockfile) = specs_from_git(
         git_url,
         revision,
         extras.as_deref().unwrap_or_default(),
         lockfile.as_deref(),
-        sys_executable.as_ref(),
-        python_version,
-        &pep508_env,
-        None,
+        &python_context,
     )
     .map_err(format_monotrail_error)?;
 
-    monotrail::install_specs_to_finder(
+    install_specs_to_finder(
         &specs,
-        sys_executable,
-        python_version,
         HashMap::new(),
         lockfile,
         Some(repo_dir),
+        &python_context,
     )
     .map_err(format_monotrail_error)
 }
@@ -172,29 +139,14 @@ pub fn monotrail_from_git(
 #[pyfunction]
 pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyResult<FinderData> {
     debug!("monotrail_from_dir script: {:?}", dir);
-    let (sys_executable, python_version, _, _) = get_python_platform(py)?;
+    let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
-    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let (specs, scripts, lockfile) = get_specs(
-        Some(&dir),
-        &extras,
-        Path::new(&sys_executable),
-        python_version,
-        &pep508_env,
-        None,
-    )
-    .map_err(format_monotrail_error)?;
+    let (specs, scripts, lockfile) =
+        get_specs(Some(&dir), &extras, &python_context).map_err(format_monotrail_error)?;
 
-    monotrail::install_specs_to_finder(
-        &specs,
-        sys_executable,
-        python_version,
-        scripts,
-        lockfile,
-        None,
-    )
-    .map_err(format_monotrail_error)
+    install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)
+        .map_err(format_monotrail_error)
 }
 
 /// The installed packages are all lies and rumors, we can only find the actually importable

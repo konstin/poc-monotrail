@@ -1,4 +1,4 @@
-use crate::monotrail::install_specs_to_finder;
+use crate::monotrail::{install_specs_to_finder, LaunchType, PythonContext};
 use crate::standalone_python::provision_python;
 use crate::{get_specs, Pep508Environment};
 use anyhow::{bail, format_err, Context};
@@ -174,26 +174,19 @@ pub fn run_from_python_args(python_args: Vec<String>) -> anyhow::Result<()> {
     let python_binary = python_root.join("install").join("bin").join("python3");
 
     let pep508_env = Pep508Environment::from_python(&python_binary);
-
-    let (specs, scripts, lockfile) = get_specs(
-        script.map(PathBuf::from).as_deref(),
-        &[],
-        &python_binary,
+    let python_context = PythonContext {
+        sys_executable: python_binary,
         python_version,
-        &pep508_env,
-        Some(python_root.clone()),
-    )?;
+        pep508_env,
+        launch_type: LaunchType::Binary,
+    };
 
-    let finder_data = install_specs_to_finder(
-        &specs,
-        python_binary.to_string_lossy().to_string(),
-        python_version,
-        scripts,
-        lockfile,
-        None,
-    )?;
+    let (specs, scripts, lockfile) =
+        get_specs(script.map(PathBuf::from).as_deref(), &[], &python_context)?;
 
-    let args: Vec<_> = [python_binary.to_string_lossy().to_string()]
+    let finder_data = install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)?;
+
+    let args: Vec<_> = [python_context.sys_executable.to_string_lossy().to_string()]
         .into_iter()
         .chain(args)
         .collect();

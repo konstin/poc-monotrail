@@ -23,6 +23,22 @@ enum LockfileType {
     RequirementsTxt,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LaunchType {
+    /// We're coming from python, i.e. we're having pyo3 to run things
+    PythonBindings,
+    /// We're coming from our own binary entrypoint, i.e. we use libpython.so to run things
+    Binary,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct PythonContext {
+    pub sys_executable: PathBuf,
+    pub python_version: (u8, u8),
+    pub pep508_env: Pep508Environment,
+    pub launch_type: LaunchType,
+}
+
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
 #[cfg(not(feature = "python_bindings"))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -355,10 +371,7 @@ pub fn spec_paths(
 pub fn get_specs(
     script: Option<&Path>,
     extras: &[String],
-    sys_executable: &Path,
-    python_version: (u8, u8),
-    pep508_env: &Pep508Environment,
-    python_root: Option<PathBuf>,
+    python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>, String)> {
     let dir_running = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
@@ -389,16 +402,15 @@ pub fn get_specs(
         )
     })?;
     match lockfile_type {
-        LockfileType::PyprojectToml => poetry_spec_from_dir(&dep_file_location, extras, pep508_env),
+        LockfileType::PyprojectToml => {
+            poetry_spec_from_dir(&dep_file_location, extras, &python_context.pep508_env)
+        }
         LockfileType::RequirementsTxt => {
             let (specs, lockfile) = specs_from_requirements_txt_resolved(
                 &dep_file_location,
                 extras,
                 None,
-                sys_executable,
-                python_version,
-                pep508_env,
-                python_root,
+                python_context,
             )?;
             Ok((specs, HashMap::new(), lockfile))
         }
@@ -411,10 +423,7 @@ pub fn specs_from_requirements_txt_resolved(
     requirements_txt: &Path,
     extras: &[String],
     lockfile: Option<&str>,
-    sys_executable: &Path,
-    python_version: (u8, u8),
-    pep508_env: &Pep508Environment,
-    python_root: Option<PathBuf>,
+    python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, String)> {
     let requirements = fs::read_to_string(&requirements_txt)?;
 
@@ -439,31 +448,36 @@ pub fn specs_from_requirements_txt_resolved(
     // We don't know whether the requirements.txt is from `pip freeze` or just a list of
     // version, so we let it go through poetry resolve either way. For a frozen file
     // there will just be no change
-    let (poetry_toml, poetry_lock, lockfile) = poetry_resolve(
-        requirements,
-        sys_executable,
-        python_version,
-        lockfile,
-        pep508_env,
-        python_root,
-    )
-    .context("Failed to resolve dependencies with poetry")?;
-    let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
+    let (poetry_toml, poetry_lock, lockfile) =
+        poetry_resolve(requirements, lockfile, python_context)
+            .context("Failed to resolve dependencies with poetry")?;
+    let specs = read_poetry_specs(
+        poetry_toml,
+        poetry_lock,
+        false,
+        extras,
+        &python_context.pep508_env,
+    )?;
     Ok((specs, lockfile))
 }
 
 pub fn install_specs_to_finder(
     specs: &[RequestedSpec],
-    sys_executable: String,
-    python_version: (u8, u8),
     scripts: HashMap<String, String>,
     lockfile: String,
     repo_dir: Option<PathBuf>,
+    python_context: &PythonContext,
 ) -> anyhow::Result<FinderData> {
-    let (sprawl_root, sprawl_packages) =
-        install_requested(specs, sys_executable.as_ref(), python_version)?;
-    let (spec_paths, pth_files) =
-        spec_paths(sprawl_root.as_ref(), &sprawl_packages, python_version)?;
+    let (sprawl_root, sprawl_packages) = install_requested(
+        specs,
+        &python_context.sys_executable,
+        python_context.python_version,
+    )?;
+    let (spec_paths, pth_files) = spec_paths(
+        sprawl_root.as_ref(),
+        &sprawl_packages,
+        python_context.python_version,
+    )?;
 
     Ok(FinderData {
         sprawl_root,

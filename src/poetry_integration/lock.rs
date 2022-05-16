@@ -1,7 +1,6 @@
 //! calls to poetry to resolve a set of requirements
 
-use crate::markers::Pep508Environment;
-use crate::monotrail::install_requested;
+use crate::monotrail::{install_requested, LaunchType, PythonContext};
 use crate::package_index::cache_dir;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml;
@@ -12,7 +11,6 @@ use anyhow::{bail, Context};
 use fs_err as fs;
 use std::collections::HashMap;
 use std::default::Default;
-use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 use std::{env, io};
@@ -23,7 +21,7 @@ use tracing::{debug, span, Level};
 fn dummy_poetry_pyproject_toml(
     mut dependencies: HashMap<String, poetry_toml::Dependency>,
     python_version: (u8, u8),
-) -> poetry_toml::PoetryPyprojectToml {
+) -> PoetryPyprojectToml {
     // Add python entry with current version; resolving will otherwise fail with complaints
     dependencies.insert(
         "python".to_string(),
@@ -58,18 +56,13 @@ fn dummy_poetry_pyproject_toml(
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn poetry_resolve(
     dependencies: HashMap<String, poetry_toml::Dependency>,
-    sys_executable: &Path,
-    python_version: (u8, u8),
     lockfile: Option<&str>,
-    pep508_env: &Pep508Environment,
-    // whether to use `python -m monotrail.run` or `monotrail poetry-resolve`. The former is used
-    // when running with a standalone python, the latter when running from binary. We pass the root
-    // of the
-    python_root: Option<PathBuf>,
+    python_context: &PythonContext,
 ) -> anyhow::Result<(PoetryPyprojectToml, PoetryLock, String)> {
     // Write a dummy poetry pyproject.toml with the requested dependencies
     let resolve_dir = tempdir()?;
-    let pyproject_toml_content = dummy_poetry_pyproject_toml(dependencies, python_version);
+    let pyproject_toml_content =
+        dummy_poetry_pyproject_toml(dependencies, python_context.python_version);
     let pyproject_toml_path = resolve_dir.path().join("pyproject.toml");
     fs::write(&pyproject_toml_path, toml::to_vec(&pyproject_toml_content)?)?;
     // If we have a previous lockfile, we want to reuse it for two reasons:
@@ -100,32 +93,45 @@ pub fn poetry_resolve(
     )?;
 
     let (poetry_toml, poetry_lock, _lockfile) = read_toml_files(&poetry_boostrap_lock)?;
-    let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], pep508_env)?;
-    install_requested(&specs, Path::new(&sys_executable), python_version)
-        .context("Failed to bootstrap poetry")?;
+    let specs = read_poetry_specs(
+        poetry_toml,
+        poetry_lock,
+        false,
+        &[],
+        &python_context.pep508_env,
+    )?;
+    install_requested(
+        &specs,
+        &python_context.sys_executable,
+        python_context.python_version,
+    )
+    .context("Failed to bootstrap poetry")?;
     drop(bootstrapping_span);
 
     debug!("resolving with poetry");
     let resolve_span = span!(Level::DEBUG, "resolving_with_poetry");
     let start = Instant::now();
-    let result = if let Some(_) = &python_root {
-        // First argument must always be the program itself
-        Command::new(env::current_exe()?)
-            .args(&["poetry", "lock", "--no-update"])
-            // This will make poetry-resolve find the pyproject.toml we want to resolve
-            .current_dir(&resolve_dir)
-            .status()
-    } else {
-        Command::new(sys_executable)
-            .args(["-m", "monotrail.run", "poetry", "lock", "--no-update"])
-            // This will make the monotrail python part find the poetry lock for poetry itself
-            .env(
-                format!("{}_CWD", env!("CARGO_PKG_NAME")).to_uppercase(),
-                &poetry_boostrap_lock,
-            )
-            // This will make poetry lock the right deps
-            .current_dir(&resolve_dir)
-            .status()
+    let result = match python_context.launch_type {
+        LaunchType::Binary => {
+            // First argument must always be the program itself
+            Command::new(env::current_exe()?)
+                .args(&["poetry", "lock", "--no-update"])
+                // This will make poetry-resolve find the pyproject.toml we want to resolve
+                .current_dir(&resolve_dir)
+                .status()
+        }
+        LaunchType::PythonBindings => {
+            Command::new(&python_context.sys_executable)
+                .args(["-m", "monotrail.run", "poetry", "lock", "--no-update"])
+                // This will make the monotrail python part find the poetry lock for poetry itself
+                .env(
+                    format!("{}_CWD", env!("CARGO_PKG_NAME")).to_uppercase(),
+                    &poetry_boostrap_lock,
+                )
+                // This will make poetry lock the right deps
+                .current_dir(&resolve_dir)
+                .status()
+        }
     };
     drop(resolve_span);
     debug!(
@@ -138,16 +144,15 @@ pub fn poetry_resolve(
             // we're good
         }
         Ok(status) => {
-            if python_root.is_some() {
-                bail!("Recursive invocation to resolve dependencies failed: {}. Please check the log above", status);
-            } else {
-                bail!(
+            match python_context.launch_type {
+                LaunchType::Binary => bail!("Recursive invocation to resolve dependencies failed: {}. Please check the log above", status),
+                LaunchType::PythonBindings => bail!(
                     "Poetry's dependency resolution errored: {}. Please check the log above",
                     status
-                );
+                ),
             }
         }
-        Err(err) if err.kind() == io::ErrorKind::NotFound && python_root.is_some() => {
+        Err(err) if err.kind() == io::ErrorKind::NotFound && python_context.launch_type == LaunchType::PythonBindings => {
             bail!("Could not find poetry. Is it installed and in PATH? https://python-poetry.org/docs/#installation")
         }
         Err(err) => {
