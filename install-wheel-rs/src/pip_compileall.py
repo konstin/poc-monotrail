@@ -13,7 +13,9 @@ import warnings
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore")
     # in rust, we give one line per file to compile
-    for path in sys.stdin:
+    # we also have to read it before printing to stdout or we risk pipes running full
+    paths = sys.stdin.readlines()
+    for path in paths:
         # just to be sure
         path = path.strip()
         if not path:

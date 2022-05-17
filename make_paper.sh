@@ -7,7 +7,7 @@ virtualenv -q .venv
 rm -f .venv/lib/python3.*/site-packages/load_monotrail.pth
 .venv/bin/pip uninstall -y -q monotrail
 .venv/bin/pip install -q target-maturin/wheels/monotrail-*.whl
-cp load_monotrail.pth .venv/lib/python3.*/site-packages/
+cp monotrail.data/data/load_monotrail.pth .venv/lib/python3.*/site-packages/
 
 #CARGO_TARGET_DIR=target-maturin maturin build --strip -i python --cargo-extra-args="--features=python_bindings"
 #CARGO_TARGET_DIR=target-maturin VIRTUAL_ENV=$(pwd)/.venv maturin develop --strip --cargo-extra-args="--features=python_bindings"

@@ -98,7 +98,7 @@ pub fn monotrail_root() -> anyhow::Result<PathBuf> {
     if let Some(env_root) = env::var_os("MONOTRAIL_ROOT") {
         Ok(PathBuf::from(env_root))
     } else {
-        Ok(cache_dir()?.join("monotrail"))
+        Ok(cache_dir()?.join("installed"))
     }
 }
 

@@ -1,31 +1,18 @@
+import importlib.metadata as importlib_metadata
 import logging
 import site
 import sys
 import typing
 from importlib.abc import MetaPathFinder
 from importlib.machinery import PathFinder
+from importlib.metadata import (
+    DistributionFinder,
+    PackageNotFoundError,
+    PathDistribution,
+)
 from importlib.util import spec_from_file_location
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-
-# setuptools is adamant on haying _normalized_name on PathDistributions but as of 3.8 that only exists in
-# importlib_metadata (or setuptools vendored copy of it) and not in importlib.metadata.
-# If we can't, we have to set `_normalized_name` on our own
-try:
-    import importlib_metadata
-
-    from importlib_metadata import PackageNotFoundError, DistributionFinder
-
-    # noinspection PyProtectedMember
-    from importlib_metadata import PathDistribution
-
-    set_normalized_name = False
-except (ModuleNotFoundError, ImportError):
-    from importlib.metadata import DistributionFinder, PackageNotFoundError
-    import importlib.metadata as importlib_metadata
-    from importlib.metadata import PathDistribution
-
-    set_normalized_name = True
 
 if typing.TYPE_CHECKING:
     from .monotrail import FinderData, InstalledPackage
@@ -169,11 +156,15 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
             )
         [dist_info_dir] = dist_info_dirs
         assert dist_info_dir.is_dir(), f"Not a directory: {dist_info_dir}"
-        # hacky setuptools weirdness fixup: When setuptools calls find_distributions it wants to use functions
-        # only available in its own vendored importlib_metadata and not in importlib.metadata. In that case the
-        # below import will also work and we'll return the thing it wants
+
+        # https://github.com/pypa/setuptools/issues/3319
+        # setuptools is adamant on haying _normalized_name on PathDistributions but as of 3.8 that only exists in
+        # importlib_metadata. Specifically, it wants to use functions only available in its own vendored
+        # importlib_metadata and not in importlib.metadata.
+        # hacky fixup: If setuptools is the caller, the below import will also work and we'll return the thing it wants.
+        # Other tools are also fine with importlib_metadata so far.
         try:
-            # noinspection PyUnresolvedReferences
+            # noinspection PyUnresolvedReferences,PyProtectedMember
             from setuptools._vendor.importlib_metadata import PathDistribution
         except ModuleNotFoundError:
             pass

@@ -1,6 +1,5 @@
 [project]
 name = "monotrail"
-dependencies = ["importlib_metadata"] # version: well we have to match setuptools' vendored version, so we've lost already anyway
 
 [project.scripts]
 monotrail_run = "monotrail.run:main"
@@ -10,5 +9,5 @@ minversion = "6.0"
 addopts = "--tb=short"
 
 [build-system]
-requires = ["maturin>=0.12,<0.13"]
+requires = ["maturin>=0.12.16,<0.13"]
 build-backend = "maturin"

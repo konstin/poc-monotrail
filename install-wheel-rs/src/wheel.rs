@@ -11,10 +11,10 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::str::FromStr;
 use std::{env, io};
-use tempfile::TempDir;
+use tempfile::{tempdir, TempDir};
 use tracing::{debug, span, trace, warn, Level};
 use walkdir::WalkDir;
 use zip::result::ZipError;
@@ -381,11 +381,11 @@ fn bytecode_compile(
     // bytecode compiling crashes non-deterministically with various errors, from syntax errors
     // to cpython segmentation faults, so we add a simple retry loop
     let mut retries = 3;
-    let output = loop {
-        let output = bytecode_compile_inner(site_packages, &py_source_paths)?;
+    let (status, lines) = loop {
+        let (status, lines) = bytecode_compile_inner(site_packages, &py_source_paths)?;
         retries -= 1;
-        if output.status.success() || retries == 0 {
-            break output;
+        if status.success() || retries == 0 {
+            break (status, lines);
         } else {
             warn!(
                 "Failed to compile {} with python compileall, retrying",
@@ -393,29 +393,17 @@ fn bytecode_compile(
             );
         }
     };
-    if !output.status.success() {
+    if !status.success() {
         // lossy because we want the error reporting to survive c̴̞̏ü̸̜̹̈́ŕ̴͉̈ś̷̤ė̵̤͋d̷͙̄ filenames in the zip
         return Err(WheelInstallerError::PythonSubcommandError(io::Error::new(
             io::ErrorKind::Other,
-            format!(
-                "Failed to run python compileall: {}\n---stdout:\n{}---stderr:\n{}",
-                output.status,
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            ),
+            format!("Failed to run python compileall, log above: {}", status,),
         )));
     }
 
-    // pip simply ignores all that failed to compile
-    let successful_paths = String::from_utf8(output.stdout).map_err(|err| {
-        WheelInstallerError::PythonSubcommandError(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Invalid utf-8 returned by python compileall: {}", err),
-        ))
-    })?;
-
-    // Add to RECORD
-    for py_path in successful_paths.lines() {
+    // like pip, we just ignored all that failed to compile
+    // Add each that succeeded to the RECORD
+    for py_path in lines {
         let py_path = py_path.trim();
         if py_path.is_empty() {
             continue;
@@ -461,13 +449,17 @@ fn bytecode_compile(
 fn bytecode_compile_inner(
     site_packages: &Path,
     py_source_paths: &[PathBuf],
-) -> Result<Output, WheelInstallerError> {
+) -> Result<(ExitStatus, Vec<String>), WheelInstallerError> {
+    let tempdir = tempdir()?;
+    // Running python with an actual file will produce better error messages
+    let pip_compileall_py = tempdir.path().join("pip_compileall.py");
+    fs::write(&pip_compileall_py, include_str!("pip_compileall.py"))?;
     // We input the paths through stdin and get the successful paths returned through stdout
     let mut bytecode_compiler = Command::new("python")
-        .args(["-c", include_str!("pip_compileall.py")])
+        .arg(&pip_compileall_py)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::inherit())
         .spawn()
         .map_err(WheelInstallerError::PythonSubcommandError)?;
 
@@ -488,10 +480,23 @@ fn bytecode_compile_inner(
     // Close stdin to finish and avoid indefinite blocking
     drop(child_stdin);
 
+    // Already read stdout here to avoid it running full (pipes are limited)
+    let stdout = bytecode_compiler.stdout.take().unwrap();
+    let mut lines: Vec<String> = Vec::new();
+    for line in BufReader::new(stdout).lines() {
+        let line = line.map_err(|err| {
+            WheelInstallerError::PythonSubcommandError(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Invalid utf-8 returned by python compileall: {}", err),
+            ))
+        })?;
+        lines.push(line);
+    }
+
     let output = bytecode_compiler
         .wait_with_output()
         .map_err(WheelInstallerError::PythonSubcommandError)?;
-    Ok(output)
+    Ok((output.status, lines))
 }
 
 /// Moves the files and folders in src to dest, updating the RECORD in the process
@@ -666,10 +671,12 @@ fn install_data(
                 }
             }
             Some("headers") => {
-                let target_path = venv_base.join(format!(
-                    "include/site/python{}.{}/{}",
-                    python_version.0, python_version.1, dist_name
-                ));
+                let target_path = venv_base
+                    .join("include")
+                    .join("site")
+                    // TODO: Also use just python here in monotrail
+                    .join(format!("python{}.{}", python_version.0, python_version.1))
+                    .join(dist_name);
                 move_folder_recorded(&data_entry.path(), &target_path, site_packages, record)?;
             }
             Some("purelib" | "platlib") => {
@@ -836,13 +843,22 @@ pub fn install_wheel(
         }
     };
 
+    let site_packages_python = match location {
+        InstallLocation::Venv { .. } => {
+            format!(
+                "python{}.{}",
+                location.get_python_version().0,
+                location.get_python_version().1
+            )
+        }
+        // Monotrail installation is for multiple python versions (depending on the wheel tag)
+        // Potentially needs to be changed to creating pythonx.y symlinks for each python version
+        // we use it with (on install in that python version)
+        InstallLocation::Monotrail { .. } => "python".to_string(),
+    };
     let site_packages = base_location
         .join("lib")
-        .join(format!(
-            "python{}.{}",
-            location.get_python_version().0,
-            location.get_python_version().1
-        ))
+        .join(site_packages_python)
         .join("site-packages");
 
     debug!(name = name.as_str(), "Getting wheel metadata");

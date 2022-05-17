@@ -4,7 +4,7 @@ This proof of concept shows how to do python package management without virtuale
 
 Every dependency is installed only once globally and hooked to your project from your lockfile. No more venv directory.
 
-This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux and macos are supported, installation is awkward, error messages are suboptimal, only pypi is supported, only the most basic requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, etc. 
+This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux and macos are supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is unoptimized and really slow, only the most basic requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, etc. 
 
 monotrail means to show you can effectively just clone a repo with a lockfile and run a single command that install all required packages, makes them available to `import` and then runs your script, skipping explicit package management, `.venv` directories and installing the same dependency for each project again.
 

@@ -7,7 +7,7 @@ virtualenv -q .venv
 rm -f .venv/lib/python3.*/site-packages/load_monotrail.pth
 .venv/bin/pip uninstall -y -q monotrail
 .venv/bin/pip install -q target-maturin/wheels/monotrail-*.whl
-cp load_monotrail.pth .venv/lib/python3.*/site-packages/
+cp monotrail.data/data/load_monotrail.pth .venv/lib/python3.*/site-packages/
 
 # Run pytest, entrypoint
 (cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONOTRAIL_EXTRAS="import-json" ../monotrail/.venv/bin/python -m monotrail.run pytest)
