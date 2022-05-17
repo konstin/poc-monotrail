@@ -22,12 +22,16 @@ class InstalledPackage:
         )
 
     def monotrail_site_packages(
-        self, sprawl_root: Union[str, Path], python_version: (int, int)
+        self,
+        sprawl_root: Union[str, Path],
+        # keep python version around in case we'll need to refactor to use it again
+        _python_version: (int, int),
     ) -> str:
         return str(
             Path(self.monotrail_location(sprawl_root))
             .joinpath("lib")
-            .joinpath(f"python{python_version[0]}.{python_version[1]}")
+            # .joinpath(f"python{python_version[0]}.{python_version[1]}")
+            .joinpath(f"python")
             .joinpath("site-packages")
         )
 
