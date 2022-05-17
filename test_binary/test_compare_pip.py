@@ -104,8 +104,11 @@ def test_purelib_platlib():
 
 
 def test_tqdm():
-    purelib_platlib_wheel = get_root().joinpath(
-        "popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl"
+    purelib_platlib_wheel = (
+        get_root()
+        .joinpath("test-data")
+        .joinpath("popular-wheels")
+        .joinpath("tqdm-4.62.3-py2.py3-none-any.whl")
     )
     compare_with_pip("tqdm", [purelib_platlib_wheel], get_bin())
 

@@ -31,7 +31,12 @@ def test_tqdm():
     except FileNotFoundError:
         pass
 
-    tqdm_wheel = get_root().joinpath("popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl")
+    tqdm_wheel = (
+        get_root()
+        .joinpath("test-data")
+        .joinpath("popular-wheels")
+        .joinpath("tqdm-4.62.3-py2.py3-none-any.whl")
+    )
     check_call(
         [get_bin(), "install", tqdm_wheel],
         env=env,

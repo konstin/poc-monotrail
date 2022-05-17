@@ -10,7 +10,7 @@ from test_binary.utils import get_bin, get_root
 
 
 def test_popular():
-    wheels_dir = get_root().joinpath("popular-wheels")
+    wheels_dir = get_root().joinpath("test-data").joinpath("popular-wheels")
     if not wheels_dir.is_dir():
         print("Downloading wheels")
         check_call(

@@ -9,10 +9,10 @@ data_science_project/iris.png
 flamegraph*.svg
 hyperfine.json
 perf.data*
-popular-wheels
 requirements-benchmark.txt
 target
 target-maturin
 target-maturin-zig
+test-data/popular-wheels
 test-venvs
 venv
