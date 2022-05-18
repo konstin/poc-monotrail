@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy
 import pandas
 
+print(__file__)
 current = Path(__file__).parent
 iris = pandas.read_csv(current.joinpath("iris.csv"))
 plt.hist(iris["sepal_length"], density=True)

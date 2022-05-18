@@ -9,7 +9,7 @@ This is a proof of concept, so only **most features are missing** and will crash
 monotrail means to show you can effectively just clone a repo with a lockfile and run a single command that install all required packages, makes them available to `import` and then runs your script, skipping explicit package management, `.venv` directories and installing the same dependency for each project again.
 
 ```
-MONOTRAIL=1 python path/to/your/script.py
+monotrail_python path/to/your/script.py
 ```
 
 In the background, monotrail uses a `.pth` hook which runs on python startup before your code to set everything up.
@@ -33,7 +33,7 @@ With a python script:
 pip install -U pip virtualenv maturin
 virtualenv .venv
 #.venv/bin/pip install monotrail
-MONOTRAIL=1 .venv/bin/python path/to/your/script.py
+.venv/bin/monotrail_python path/to/your/script.py
 ```
 
 With jupyter notebooks
@@ -53,7 +53,7 @@ monotrail.interactive(
 
 _wait, you said venv-less!_ We need to install a `.pth` hook and I don't want to pollute your user-global environment, so we isolate it in a venv you can just `rm -rf`. You can use the resulting .venv for all of your projects while still having isolation (it would of course be a lot cooler to have `monotrail +3.8 run path/to/your/script.py` but I don't know how to dynamically load, import-hook and launch a user-specified python version. If you do, please tell me!)
 
-To run scripts, use `/path/to/.venv/bin/python -m monotrail.run <your script> <args>`.
+To run scripts, use `/path/to/.venv/bin/python -m monotrail.run_python <your script or module> <args>`.
 
 To install extras, use `MONOTRAIL_EXTRAS="extra1,extra2"`. With `MONOTRAIL_ROOT` you can change the storage location if you really need to. Setting `RUST_LOG=debug` will give you many more details.
 

@@ -2,7 +2,8 @@
 name = "monotrail"
 
 [project.scripts]
-monotrail_run = "monotrail.run:main"
+monotrail_python = "monotrail.run_python:main"
+monotrail_script = "monotrail.run_script:main"
 
 [tool.pytest.ini_options]
 minversion = "6.0"

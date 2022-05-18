@@ -216,8 +216,9 @@ fn get_packages_from_lockfile(
 
 /// Reads pyproject.toml and poetry.lock, also returns poetry.lock as string
 pub fn read_toml_files(dir: &Path) -> anyhow::Result<(PoetryPyprojectToml, PoetryLock, String)> {
-    let poetry_toml = toml::from_str(&fs::read_to_string(dir.join("pyproject.toml"))?)
-        .context("Invalid pyproject.toml")?;
+    let path = dir.join("pyproject.toml").canonicalize()?;
+    let poetry_toml = toml::from_str(&fs::read_to_string(&path)?)
+        .with_context(|| format!("Invalid pyproject.toml in {}", path.display()))?;
     let lockfile = fs::read_to_string(dir.join("poetry.lock"))?;
     let poetry_lock = toml::from_str(&lockfile).context("Invalid pyproject.toml")?;
     Ok((poetry_toml, poetry_lock, lockfile))

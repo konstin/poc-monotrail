@@ -1,29 +1,22 @@
 import importlib
 import os
+import runpy
 import sys
 from pathlib import Path
 
-from .monotrail import monotrail_from_env, project_name
+from .monotrail import monotrail_from_args, project_name
 from .monotrail_finder import MonotrailFinder
 
 
 def main():
-    # arg 1 is always the current script
+    # first arg is always the current script
     if len(sys.argv) == 1:
         print("Missing executable name", file=sys.stderr)
         sys.exit(1)
 
     script_name = sys.argv[1]
-    # If you triggered the pth autoload beforehand, it'll have already done the wrong thing by this step
-    if os.environ.get(project_name.upper()):
-        print(
-            f"Warning: You're using {sys.modules[__name__].__name__} with {project_name.upper()}=1 being set, "
-            f"this will cause problems",
-            file=sys.stderr,
-        )
-
     # Install all required packages and get their location (in rust)
-    finder_data = monotrail_from_env([])
+    finder_data = monotrail_from_args([])
 
     if script_name in finder_data.scripts:
         # Otherwise, imports from the current projects won't work
@@ -75,11 +68,7 @@ def main():
         # Case 1: it's a python script
         # prepare execution environment
         MonotrailFinder.get_singleton().update_and_activate(finder_data)
-        with open(script_path) as file:
-            # We use compile to attach the filename for debuggability
-            python_script = compile(file.read(), script_path, "exec")
-        # Exec keeps the `__name__ == "__main__"` part and keeps the cli args
-        exec(python_script)
+        runpy.run_path(str(script_path), run_name="__main__")
     else:
         # Case 2: it's not a python script, e.g. a native executable or a bash script
         # replace current process or it feels more native

@@ -52,10 +52,10 @@ fn get_python_context(py: Python) -> PyResult<PythonContext> {
     Ok(python_context)
 }
 
-/// Installs all required packages and returns package information to python, while parsing
-/// the setup from the environment variables (or defaults)
+/// Takes a python invocation, extracts the script dir (if any), installs all required packages
+/// and returns script dir and finder data to python
 #[pyfunction]
-pub fn monotrail_from_env(py: Python, args: Vec<String>) -> PyResult<FinderData> {
+pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<FinderData> {
     // We parse the python args even if we take MONOTRAIL_CWD as a validation
     // step
     let script = inject_and_run::naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
@@ -66,14 +66,13 @@ pub fn monotrail_from_env(py: Python, args: Vec<String>) -> PyResult<FinderData>
     } else {
         script.map(PathBuf::from)
     };
-    debug!("monotrail_from_env script: {:?}", script);
+    debug!("monotrail_from_args script: {:?}, args: {:?}", script, args);
     let python_context = get_python_context(py)?;
     let extras = parse_extras().map_err(format_monotrail_error)?;
     debug!("extras: {:?}", extras);
 
     let (specs, scripts, lockfile) =
         get_specs(script.as_deref(), &extras, &python_context).map_err(format_monotrail_error)?;
-
     install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)
         .map_err(format_monotrail_error)
 }
@@ -134,7 +133,7 @@ pub fn monotrail_from_git(
     .map_err(format_monotrail_error)
 }
 
-/// Like monotrail_from_env, except you explicitly pass what you want, currently only used for
+/// Like monotrail_from_args, except you explicitly pass what you want, currently only used for
 /// testing
 #[pyfunction]
 pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyResult<FinderData> {
@@ -207,7 +206,7 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
             .compact();
         tracing_subscriber::fmt().event_format(format).init();
     }
-    m.add_function(wrap_pyfunction!(monotrail_from_env, m)?)?;
+    m.add_function(wrap_pyfunction!(monotrail_from_args, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_from_requested, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_from_git, m)?)?;

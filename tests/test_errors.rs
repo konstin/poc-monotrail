@@ -12,7 +12,8 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let venv = temp_dir.path().join(".venv");
     Command::new("virtualenv").arg(&venv).output()?;
     let wheel = Path::new("test-data/pip-test-packages").join(name);
-    let cli: Cli = Cli::try_parse_from(&["monotrail", "install", &wheel.display().to_string()])?;
+    let cli: Cli =
+        Cli::try_parse_from(&["monotrail", "venv-install", &wheel.display().to_string()])?;
     if let Err(err) = run(cli, Some(&venv)) {
         let err: Error = err;
         let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();

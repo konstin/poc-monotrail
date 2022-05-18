@@ -1,7 +1,7 @@
 import os
 import sys
 
-from .monotrail import monotrail_from_env, project_name
+from .monotrail import monotrail_from_args, project_name
 from .monotrail_finder import MonotrailFinder
 
 
@@ -18,7 +18,7 @@ def load_monotrail():
         args = sys.argv
     try:
         # Install all required packages and get their location (in rust)
-        finder_data = monotrail_from_env(args)
+        finder_data = monotrail_from_args(args)
     except Exception as e:
         print(
             f"{project_name.upper()} ERROR: PACKAGES WILL NOT BE AVAILABLE: {e}",

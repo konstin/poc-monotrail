@@ -38,7 +38,7 @@ def test_tqdm():
         .joinpath("tqdm-4.62.3-py2.py3-none-any.whl")
     )
     check_call(
-        [get_bin(), "install", tqdm_wheel],
+        [get_bin(), "venv-install", tqdm_wheel],
         env=env,
     )
     check_call(

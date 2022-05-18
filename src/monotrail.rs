@@ -9,11 +9,12 @@ use crate::spec::RequestedSpec;
 use crate::{install_specs, read_poetry_specs};
 use anyhow::{bail, Context};
 use fs_err as fs;
-use fs_err::DirEntry;
+use fs_err::{DirEntry, File};
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env::current_dir;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::{env, io};
 use tracing::{debug, warn};
@@ -118,6 +119,7 @@ fn find_dep_file(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
     None
 }
 
+/// Returns all subdirs in a directory
 fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
     let read_dir = fs::read_dir(Path::new(&dir))
         .with_context(|| format!("Failed to load {} directory", env!("CARGO_PKG_NAME")))?;
@@ -461,6 +463,7 @@ pub fn specs_from_requirements_txt_resolved(
     Ok((specs, lockfile))
 }
 
+/// Convenience wrapper around `install_requested` and `spec_paths`
 pub fn install_specs_to_finder(
     specs: &[RequestedSpec],
     scripts: HashMap<String, String>,
@@ -488,4 +491,46 @@ pub fn install_specs_to_finder(
         lockfile,
         scripts,
     })
+}
+
+/// In a venv, we would have all scripts collected into .venv/bin/ (on linux and mac). Here,
+/// we not to collect them ourselves
+pub fn find_scripts(
+    packages: &[InstalledPackage],
+    sprawl_root: &Path,
+) -> anyhow::Result<HashMap<String, PathBuf>> {
+    let mut scripts = HashMap::new();
+    for package in packages {
+        let bin_dir = package
+            .monotrail_location(sprawl_root.to_path_buf())
+            .join("bin");
+        if !bin_dir.is_dir() {
+            continue;
+        }
+        for entry in fs::read_dir(&bin_dir)? {
+            let entry = entry?;
+            if !entry.metadata()?.is_file() {
+                continue;
+            }
+
+            scripts.insert(
+                entry.file_name().to_string_lossy().to_string(),
+                entry.path(),
+            );
+        }
+    }
+    Ok(scripts)
+}
+
+pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
+    // Check whether we're launching a monotrail python script
+    let mut executable_file = File::open(&executable)
+        .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
+    let placeholder_python = b"#!python";
+    // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
+    let mut start = Vec::new();
+    start.resize(placeholder_python.len(), 0);
+    executable_file.read_exact(&mut start)?;
+    let is_python_script = start == placeholder_python;
+    Ok(is_python_script)
 }

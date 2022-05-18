@@ -10,7 +10,7 @@ use tempfile::tempdir;
 /// Use the libpython.so to run a poetry command on python 3.8, unless you give +x.y as first
 /// argument
 pub fn poetry_run(args: Vec<String>) -> anyhow::Result<()> {
-    let (args, python_version) = parse_plus_arg(args)?;
+    let (args, python_version) = parse_plus_arg(&args)?;
     let python_version = python_version.unwrap_or((3, 8));
     let python_root = provision_python(python_version)?;
     let python_binary = python_root.join("install").join("bin").join("python3");

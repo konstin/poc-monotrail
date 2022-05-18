@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 use widestring::WideCString;
 
-/// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own
+/// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own.
+/// Takes args without the first-is-current-program (i.e. python) convention.
 ///
 /// `usage: python [option] ... [-c cmd | -m mod | file | -] [arg] ...`
 pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<String>, String> {
@@ -115,7 +116,7 @@ pub fn inject_and_run_python(
             bail!("Injecting monotrail failed. Try RUST_LOG=debug for more info")
         }
 
-        info!("Running main: {:?}", args);
+        debug!("Running main: {:?}", args);
         // run python interpreter as from the cli
         // https://docs.python.org/3/c-api/veryhigh.html#c.Py_BytesMain
         let py_main: libloading::Symbol<unsafe extern "C" fn(c_int, *mut *const wchar_t) -> c_int> =
@@ -144,31 +145,39 @@ pub fn inject_and_run_python(
 }
 
 /// Allows doing `monotrail_python +3.10 -m say.hello`
-pub fn parse_plus_arg(python_args: Vec<String>) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
+pub fn parse_plus_arg(python_args: &[String]) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
     if let Some(first_arg) = python_args.get(0) {
         if first_arg.starts_with('+') {
-            if let Some((major, minor)) = first_arg.trim_start_matches('+').split_once('.') {
-                let major = major
-                    .parse::<u8>()
-                    .context("Could not parse value of version_major")?;
-                let minor = minor
-                    .parse::<u8>()
-                    .context("Could not parse value of version_minor")?;
-                return Ok((python_args[1..].to_vec(), Some((major, minor))));
-            } else {
-                bail!("Expect +x.y as first argument (missing dot)");
-            }
+            let python_version = parse_major_minor(first_arg)?;
+            return Ok((python_args[1..].to_vec(), Some(python_version)));
         }
     }
-    Ok((python_args, None))
+    Ok((python_args.to_vec(), None))
 }
 
-pub fn run_from_python_args(python_args: Vec<String>) -> anyhow::Result<()> {
+/// Parses "3.8" to (3, 8)
+pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
+    let python_version =
+        if let Some((major, minor)) = version.trim_start_matches('+').split_once('.') {
+            let major = major
+                .parse::<u8>()
+                .context("Could not parse value of version_major")?;
+            let minor = minor
+                .parse::<u8>()
+                .context("Could not parse value of version_minor")?;
+            (major, minor)
+        } else {
+            bail!("Expect +x.y as first argument (missing dot)");
+        };
+    Ok(python_version)
+}
+
+pub fn run_from_python_args(python_args: &[String]) -> anyhow::Result<()> {
     let (args, python_version) = parse_plus_arg(python_args)?;
     let python_version = python_version.unwrap_or((3, 8));
     let script = naive_python_arg_parser(&args)
         .map_err(|err| format_err!("Failed to parse python args: {}", err))?;
-    debug!("monotrail_from_env script: {:?}", script);
+    debug!("monotrail_from_args script: {:?}", script);
 
     let python_root = provision_python(python_version).unwrap();
     let python_binary = python_root.join("install").join("bin").join("python3");

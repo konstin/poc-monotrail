@@ -47,6 +47,7 @@ pub struct InstalledPackage {
 
 #[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
 impl InstalledPackage {
+    /// PathBuf for pyo3
     pub fn monotrail_location(&self, sprawl_root: PathBuf) -> PathBuf {
         sprawl_root
             .join(&self.name)

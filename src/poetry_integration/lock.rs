@@ -122,7 +122,13 @@ pub fn poetry_resolve(
         }
         LaunchType::PythonBindings => {
             Command::new(&python_context.sys_executable)
-                .args(["-m", "monotrail.run", "poetry", "lock", "--no-update"])
+                .args([
+                    "-m",
+                    "monotrail.run_script",
+                    "poetry",
+                    "lock",
+                    "--no-update",
+                ])
                 // This will make the monotrail python part find the poetry lock for poetry itself
                 .env(
                     format!("{}_CWD", env!("CARGO_PKG_NAME")).to_uppercase(),

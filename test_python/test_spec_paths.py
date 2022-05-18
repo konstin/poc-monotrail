@@ -8,12 +8,12 @@ def test_spec_paths(pytestconfig):
     finder_data = monotrail_from_dir(poetry_self_toml_dir, [])
     assert finder_data.spec_paths.pop("poetry") == (
         finder_data.sprawl_root
-        + "/poetry/1.1.13/py2.py3-none-any/lib/python3.8/site-packages/poetry/__init__.py",
+        + "/poetry/1.1.13/py2.py3-none-any/lib/python/site-packages/poetry/__init__.py",
         [
             finder_data.sprawl_root
-            + "/poetry/1.1.13/py2.py3-none-any/lib/python3.8/site-packages/poetry",
+            + "/poetry/1.1.13/py2.py3-none-any/lib/python/site-packages/poetry",
             finder_data.sprawl_root
-            + "/poetry_core/1.0.8/py2.py3-none-any/lib/python3.8/site-packages/poetry",
+            + "/poetry_core/1.0.8/py2.py3-none-any/lib/python/site-packages/poetry",
         ],
     )
 

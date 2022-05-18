@@ -1,21 +1,22 @@
-use crate::inject_and_run::run_from_python_args;
+use crate::inject_and_run::{inject_and_run_python, parse_major_minor, run_from_python_args};
 use crate::install::{filter_installed, InstalledPackage};
 use crate::markers::Pep508Environment;
-use crate::monotrail::monotrail_root;
+use crate::monotrail::{
+    find_scripts, install_specs_to_finder, monotrail_root, LaunchType, PythonContext,
+};
 use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
 use crate::spec::RequestedSpec;
+use crate::standalone_python::provision_python;
 use crate::venv_parser::get_venv_python_version;
-use crate::{install_specs, package_index};
+use crate::{get_specs, install_specs, monotrail, package_index};
 use anyhow::{bail, format_err, Context};
 use clap::Parser;
-use fs_err::File;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
 use nix::unistd;
 use std::env;
 use std::ffi::CString;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
@@ -36,14 +37,32 @@ pub struct PoetryOptions {
 
 #[derive(Parser)]
 pub enum Cli {
-    Install {
+    /// Like `python <...>`, but installs the dependencies before
+    ///
+    /// If you run python with a script, e.g. `python my/files/script.py`, monotrail will look for
+    /// dependency specification (pyproject.toml or requirements.txt) next to script.py and up
+    /// the file system tree.
+    RunPython { python_args: Vec<String> },
+    /// Runs one of the scripts that would be available if you were using an activated venv.
+    /// (the contents of .venv/bin/ on linux/mac)
+    RunScript {
+        #[clap(long, short = 'E')]
+        extras: Vec<String>,
+        #[clap(long, short)]
+        python_version: Option<String>,
+        script: String,
+        #[clap(last = true)]
+        script_args: Vec<String>,
+    },
+    /// Run the poetry bundled with monotrail
+    #[clap(trailing_var_arg = true)]
+    Poetry { args: Vec<String> },
+    VenvInstall {
         targets: Vec<String>,
         #[clap(long)]
         no_compile: bool,
     },
-    RunPython {
-        python_args: Vec<String>,
-    },
+    /// Faster reimplementation of "poetry install" for both venvs and monotrail
     PoetryInstall {
         #[clap(flatten)]
         options: PoetryOptions,
@@ -54,10 +73,6 @@ pub enum Cli {
         command: String,
         #[clap(last = true)]
         command_args: Vec<String>,
-    },
-    #[clap(trailing_var_arg = true)]
-    Poetry {
-        args: Vec<String>,
     },
 }
 
@@ -140,7 +155,73 @@ fn install_location_specs(
 
 pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
     match cli {
-        Cli::Install {
+        Cli::RunScript {
+            extras,
+            python_version,
+            script,
+            script_args,
+        } => {
+            let python_version = parse_major_minor(python_version.as_deref().unwrap_or("3.8"))?;
+            let python_root = provision_python(python_version)?;
+            let python_binary = python_root.join("install").join("bin").join("python3");
+            let pep508_env = Pep508Environment::from_python(&python_binary);
+            let python_context = PythonContext {
+                sys_executable: python_binary.clone(),
+                python_version,
+                pep508_env,
+                launch_type: LaunchType::Binary,
+            };
+            let (specs, wrong_scripts, lockfile) = get_specs(None, &extras, &python_context)?;
+            let finder_data =
+                install_specs_to_finder(&specs, wrong_scripts, lockfile, None, &python_context)?;
+
+            let script_path = find_scripts(
+                &finder_data.sprawl_packages,
+                Path::new(&finder_data.sprawl_root),
+            )
+            .context("Failed to collect scripts")?
+            .get(&script)
+            .with_context(|| format_err!("Couldn't find command {} in installed packages", script))?
+            .to_path_buf();
+
+            let is_python_script = monotrail::is_python_script(&script_path)?;
+
+            if is_python_script {
+                debug!("launching (python) {}", script_path.display());
+                let args: Vec<String> = [
+                    python_binary.to_string_lossy().to_string(),
+                    script_path.to_string_lossy().to_string(),
+                ]
+                .into_iter()
+                .chain(script_args)
+                .collect();
+                inject_and_run_python(
+                    &python_root,
+                    &args,
+                    &serde_json::to_string(&finder_data).unwrap(),
+                )?;
+            } else {
+                // Sorry for the to_string_lossy all over the place
+                // https://stackoverflow.com/a/38948854/3549270
+                let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
+                    .context("Failed to convert executable path")?;
+                let args_c_string = script_args
+                    .iter()
+                    .map(|arg| {
+                        CString::new(arg.as_bytes())
+                            .context("Failed to convert executable argument")
+                    })
+                    .collect::<anyhow::Result<Vec<CString>>>()?;
+
+                debug!("launching (execv) {}", script_path.display());
+                // We replace the current process with the new process is it's like actually just running
+                // the real thing
+                // note the that this may launch a python script, a native binary or anything else
+                unistd::execv(&executable_c_str, &args_c_string)
+                    .context("Failed to launch process")?;
+            }
+        }
+        Cli::VenvInstall {
             targets,
             no_compile,
         } => {
@@ -177,7 +258,7 @@ pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
             )?;
         }
         Cli::RunPython { python_args } => {
-            run_from_python_args(python_args)?;
+            run_from_python_args(&python_args)?;
         }
         Cli::PoetryInstall { options } => {
             let venv = if let Some(venv) = venv {
@@ -194,7 +275,6 @@ pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
             };
             let python_version = get_venv_python_version(&venv)?;
             let venv_canon = venv.canonicalize()?;
-
             install_location_specs(&venv, python_version, &venv_canon, &options)?;
         }
         Cli::PoetryRun {
@@ -224,35 +304,24 @@ pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
                     }
                     executable
                 }
-                InstallLocation::Monotrail { monotrail_root, .. } => installed
-                    .iter()
-                    .map(|installed_package| {
-                        monotrail_root
-                            .join(&installed_package.name)
-                            .join(&installed_package.unique_version)
-                            .join(&installed_package.tag)
-                            .join("bin")
-                            .join(&command)
-                    })
-                    .find(|candidate| candidate.is_file())
-                    .with_context(|| {
-                        format_err!("Couldn't find command {} in installed packages", command)
-                    })?,
+                InstallLocation::Monotrail { monotrail_root, .. } => {
+                    let scripts = find_scripts(&installed, &monotrail_root)
+                        .context("Failed to collect scripts")?;
+                    scripts
+                        .get(&command)
+                        .with_context(|| {
+                            format_err!("Couldn't find command {} in installed packages", command)
+                        })?
+                        .to_path_buf()
+                }
             };
 
-            // Check whether we're launching a monotrail python script
-            let mut executable_file = File::open(&executable)
-                .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
-            let placeholder_python = b"#!python";
-            // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
-            let mut start = Vec::new();
-            start.resize(placeholder_python.len(), 0);
-            executable_file.read_exact(&mut start)?;
-            if start == placeholder_python {
+            let is_python_script = monotrail::is_python_script(&executable)?;
+            if is_python_script {
                 todo!()
             }
 
-            // Sorry for the to_string_lossy
+            // Sorry for the to_string_lossy all over the place
             // https://stackoverflow.com/a/38948854/3549270
             let executable_c_str = CString::new(executable.to_string_lossy().as_bytes())
                 .context("Failed to convert executable path")?;
