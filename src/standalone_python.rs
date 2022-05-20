@@ -1,3 +1,5 @@
+use crate::monotrail::{LaunchType, PythonContext};
+use crate::Pep508Environment;
 use anyhow::{bail, Context};
 use fs_err as fs;
 use regex::Regex;
@@ -69,7 +71,7 @@ fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()
 
 /// If a downloaded python version exists, return this, otherwise download and unpack a matching one
 /// from indygreg/python-build-standalone
-pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<PathBuf> {
+pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonContext, PathBuf)> {
     // TODO: use monotrail mechanism
     let python_parent_dir = dirs::cache_dir()
         .context("Cache dir not found")?
@@ -89,17 +91,32 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<PathBuf> {
         {
             bail!("broken python installation in {}", unpack_dir.display())
         }
-        return Ok(unpack_dir.join("python"));
+        // Good installation, reuse
+    } else {
+        let url = find_python(python_version.0, python_version.1)?;
+        // atomic installation by tempdir & rename
+        let temp_dir = tempdir_in(&python_parent_dir)
+            .context("Failed to create temporary directory for unpacking")?;
+        download_and_unpack_python(&url, temp_dir.path())?;
+        // we can use fs::rename here because we stay in the same directory
+        fs::rename(temp_dir, &unpack_dir)?;
     }
+    let python_binary = unpack_dir
+        .join("python")
+        .join("install")
+        .join("bin")
+        .join("python3");
+    // TODO: Already init and use libpython here
+    let pep508_env = Pep508Environment::from_python(&python_binary);
+    let python_context = PythonContext {
+        sys_executable: python_binary,
+        python_version,
+        pep508_env,
+        launch_type: LaunchType::Binary,
+    };
 
-    let url = find_python(python_version.0, python_version.1)?;
-    // atomic installation by tempdir & rename
-    let temp_dir = tempdir_in(&python_parent_dir)
-        .context("Failed to create temporary directory for unpacking")?;
-    download_and_unpack_python(&url, temp_dir.path())?;
-    // we can use fs::rename here because we stay in the same directory
-    fs::rename(temp_dir, &unpack_dir)?;
-    Ok(unpack_dir.join("python"))
+    let python_home = unpack_dir.join("python").join("install");
+    Ok((python_context, python_home))
 }
 
 /// Returns a regex matching a compatible optimized build from the indygreg/python-build-standalone

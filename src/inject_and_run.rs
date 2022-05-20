@@ -1,12 +1,12 @@
-use crate::monotrail::{install_specs_to_finder, LaunchType, PythonContext};
+use crate::get_specs;
+use crate::monotrail::install_specs_to_finder;
 use crate::standalone_python::provision_python;
-use crate::{get_specs, Pep508Environment};
 use anyhow::{bail, format_err, Context};
 use libc::{c_int, c_void, wchar_t};
 use std::env;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
+use tracing::debug;
 use widestring::WideCString;
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own.
@@ -51,15 +51,12 @@ pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<Strin
 ///
 /// Returns the exit code from python
 pub fn inject_and_run_python(
-    python_root: &Path,
+    python_home: &Path,
     args: &[String],
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
     debug!("Loading libpython");
-    let libpython3_so = python_root
-        .join("install")
-        .join("lib")
-        .join("libpython3.so");
+    let libpython3_so = python_home.join("lib").join("libpython3.so");
     let lib = {
         #[cfg(unix)]
         {
@@ -78,7 +75,7 @@ pub fn inject_and_run_python(
         debug!("Initializing python");
         // initialize python
         // otherwise we get an error that it can't find encoding that tells us to set PYTHONHOME
-        env::set_var("PYTHONHOME", python_root.join("install"));
+        env::set_var("PYTHONHOME", python_home);
         // https://docs.python.org/3/c-api/init.html?highlight=py_initialize#c.Py_Initialize
         // void Py_Initialize()
         let initialize: libloading::Symbol<unsafe extern "C" fn() -> c_void> =
@@ -172,23 +169,14 @@ pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
     Ok(python_version)
 }
 
-pub fn run_from_python_args(python_args: &[String]) -> anyhow::Result<()> {
+pub fn run_python_args(python_args: &[String]) -> anyhow::Result<()> {
     let (args, python_version) = parse_plus_arg(python_args)?;
     let python_version = python_version.unwrap_or((3, 8));
     let script = naive_python_arg_parser(&args)
         .map_err(|err| format_err!("Failed to parse python args: {}", err))?;
     debug!("monotrail_from_args script: {:?}", script);
 
-    let python_root = provision_python(python_version).unwrap();
-    let python_binary = python_root.join("install").join("bin").join("python3");
-
-    let pep508_env = Pep508Environment::from_python(&python_binary);
-    let python_context = PythonContext {
-        sys_executable: python_binary,
-        python_version,
-        pep508_env,
-        launch_type: LaunchType::Binary,
-    };
+    let (python_context, python_home) = provision_python(python_version)?;
 
     let (specs, scripts, lockfile) =
         get_specs(script.map(PathBuf::from).as_deref(), &[], &python_context)?;
@@ -203,7 +191,7 @@ pub fn run_from_python_args(python_args: &[String]) -> anyhow::Result<()> {
     println!(
         "Done: {:?}",
         inject_and_run_python(
-            &python_root,
+            &python_home,
             &args,
             &serde_json::to_string(&finder_data).unwrap()
         )

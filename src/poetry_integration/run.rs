@@ -1,9 +1,9 @@
 use crate::inject_and_run::{inject_and_run_python, parse_plus_arg};
-use crate::monotrail::{install_specs_to_finder, LaunchType, PythonContext};
+use crate::monotrail::install_specs_to_finder;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
+use crate::read_poetry_specs;
 use crate::standalone_python::provision_python;
-use crate::{read_poetry_specs, Pep508Environment};
 use anyhow::Context;
 use tempfile::tempdir;
 
@@ -12,9 +12,7 @@ use tempfile::tempdir;
 pub fn poetry_run(args: Vec<String>) -> anyhow::Result<()> {
     let (args, python_version) = parse_plus_arg(&args)?;
     let python_version = python_version.unwrap_or((3, 8));
-    let python_root = provision_python(python_version)?;
-    let python_binary = python_root.join("install").join("bin").join("python3");
-    let pep508_env = Pep508Environment::from_python(&python_binary);
+    let (python_context, python_home) = provision_python(python_version)?;
 
     let pyproject_toml = include_str!("poetry_boostrap_lock/pyproject.toml");
     let poetry_toml: PoetryPyprojectToml = toml::from_str(pyproject_toml).unwrap();
@@ -22,14 +20,13 @@ pub fn poetry_run(args: Vec<String>) -> anyhow::Result<()> {
     let poetry_lock: PoetryLock = toml::from_str(lockfile).unwrap();
 
     let scripts = poetry_toml.tool.poetry.scripts.clone().unwrap_or_default();
-    let specs = read_poetry_specs(poetry_toml, poetry_lock, true, &[], &pep508_env)?;
-
-    let python_context = PythonContext {
-        sys_executable: python_binary,
-        python_version,
-        pep508_env,
-        launch_type: LaunchType::Binary,
-    };
+    let specs = read_poetry_specs(
+        poetry_toml,
+        poetry_lock,
+        true,
+        &[],
+        &python_context.pep508_env,
+    )?;
 
     let finder_data =
         install_specs_to_finder(&specs, scripts, lockfile.to_string(), None, &python_context)
@@ -47,7 +44,7 @@ pub fn poetry_run(args: Vec<String>) -> anyhow::Result<()> {
     .collect();
 
     inject_and_run_python(
-        &python_root,
+        &python_home,
         &poetry_args,
         &serde_json::to_string(&finder_data)?,
     )

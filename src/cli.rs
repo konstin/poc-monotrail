@@ -1,9 +1,7 @@
-use crate::inject_and_run::{inject_and_run_python, parse_major_minor, run_from_python_args};
+use crate::inject_and_run::{inject_and_run_python, parse_major_minor, run_python_args};
 use crate::install::{filter_installed, InstalledPackage};
 use crate::markers::Pep508Environment;
-use crate::monotrail::{
-    find_scripts, install_specs_to_finder, monotrail_root, LaunchType, PythonContext,
-};
+use crate::monotrail::{find_scripts, install_specs_to_finder, monotrail_root};
 use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
@@ -45,13 +43,13 @@ pub enum Cli {
     RunPython { python_args: Vec<String> },
     /// Runs one of the scripts that would be available if you were using an activated venv.
     /// (the contents of .venv/bin/ on linux/mac)
+    #[clap(trailing_var_arg = true)]
     RunScript {
         #[clap(long, short = 'E')]
         extras: Vec<String>,
         #[clap(long, short)]
         python_version: Option<String>,
         script: String,
-        #[clap(last = true)]
         script_args: Vec<String>,
     },
     /// Run the poetry bundled with monotrail
@@ -155,72 +153,15 @@ fn install_location_specs(
 
 pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
     match cli {
+        Cli::RunPython { python_args } => {
+            run_python_args(&python_args)?;
+        }
         Cli::RunScript {
             extras,
             python_version,
             script,
             script_args,
-        } => {
-            let python_version = parse_major_minor(python_version.as_deref().unwrap_or("3.8"))?;
-            let python_root = provision_python(python_version)?;
-            let python_binary = python_root.join("install").join("bin").join("python3");
-            let pep508_env = Pep508Environment::from_python(&python_binary);
-            let python_context = PythonContext {
-                sys_executable: python_binary.clone(),
-                python_version,
-                pep508_env,
-                launch_type: LaunchType::Binary,
-            };
-            let (specs, wrong_scripts, lockfile) = get_specs(None, &extras, &python_context)?;
-            let finder_data =
-                install_specs_to_finder(&specs, wrong_scripts, lockfile, None, &python_context)?;
-
-            let script_path = find_scripts(
-                &finder_data.sprawl_packages,
-                Path::new(&finder_data.sprawl_root),
-            )
-            .context("Failed to collect scripts")?
-            .get(&script)
-            .with_context(|| format_err!("Couldn't find command {} in installed packages", script))?
-            .to_path_buf();
-
-            let is_python_script = monotrail::is_python_script(&script_path)?;
-
-            if is_python_script {
-                debug!("launching (python) {}", script_path.display());
-                let args: Vec<String> = [
-                    python_binary.to_string_lossy().to_string(),
-                    script_path.to_string_lossy().to_string(),
-                ]
-                .into_iter()
-                .chain(script_args)
-                .collect();
-                inject_and_run_python(
-                    &python_root,
-                    &args,
-                    &serde_json::to_string(&finder_data).unwrap(),
-                )?;
-            } else {
-                // Sorry for the to_string_lossy all over the place
-                // https://stackoverflow.com/a/38948854/3549270
-                let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
-                    .context("Failed to convert executable path")?;
-                let args_c_string = script_args
-                    .iter()
-                    .map(|arg| {
-                        CString::new(arg.as_bytes())
-                            .context("Failed to convert executable argument")
-                    })
-                    .collect::<anyhow::Result<Vec<CString>>>()?;
-
-                debug!("launching (execv) {}", script_path.display());
-                // We replace the current process with the new process is it's like actually just running
-                // the real thing
-                // note the that this may launch a python script, a native binary or anything else
-                unistd::execv(&executable_c_str, &args_c_string)
-                    .context("Failed to launch process")?;
-            }
-        }
+        } => run_script(&extras, python_version, &script, script_args)?,
         Cli::VenvInstall {
             targets,
             no_compile,
@@ -256,9 +197,6 @@ pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
                 no_compile,
                 false,
             )?;
-        }
-        Cli::RunPython { python_args } => {
-            run_from_python_args(&python_args)?;
         }
         Cli::PoetryInstall { options } => {
             let venv = if let Some(venv) = venv {
@@ -346,5 +284,71 @@ pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
             poetry_run(args)?;
         }
     };
+    Ok(())
+}
+
+fn run_script(
+    extras: &[String],
+    python_version: Option<String>,
+    script: &str,
+    script_args: Vec<String>,
+) -> anyhow::Result<()> {
+    let python_version = parse_major_minor(python_version.as_deref().unwrap_or("3.8"))?;
+    let (python_context, python_home) = provision_python(python_version)?;
+
+    let (specs, wrong_scripts, lockfile) = get_specs(None, extras, &python_context)?;
+    let finder_data =
+        install_specs_to_finder(&specs, wrong_scripts, lockfile, None, &python_context)?;
+
+    let scripts = find_scripts(
+        &finder_data.sprawl_packages,
+        Path::new(&finder_data.sprawl_root),
+    )
+    .context("Failed to collect scripts")?;
+    let script_path = scripts
+        .get(&script.to_string())
+        .with_context(|| {
+            format_err!(
+                "Couldn't find command {} in installed packages.\nInstalled scripts: {:?}",
+                script,
+                scripts.keys()
+            )
+        })?
+        .to_path_buf();
+
+    let is_python_script = monotrail::is_python_script(&script_path)?;
+
+    if is_python_script {
+        debug!("launching (python) {}", script_path.display());
+        let args: Vec<String> = [
+            python_context.sys_executable.to_string_lossy().to_string(),
+            script_path.to_string_lossy().to_string(),
+        ]
+        .into_iter()
+        .chain(script_args)
+        .collect();
+        inject_and_run_python(
+            &python_home,
+            &args,
+            &serde_json::to_string(&finder_data).unwrap(),
+        )?;
+    } else {
+        // Sorry for the to_string_lossy all over the place
+        // https://stackoverflow.com/a/38948854/3549270
+        let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
+            .context("Failed to convert executable path")?;
+        let args_c_string = script_args
+            .iter()
+            .map(|arg| {
+                CString::new(arg.as_bytes()).context("Failed to convert executable argument")
+            })
+            .collect::<anyhow::Result<Vec<CString>>>()?;
+
+        debug!("launching (execv) {}", script_path.display());
+        // We replace the current process with the new process is it's like actually just running
+        // the real thing
+        // note the that this may launch a python script, a native binary or anything else
+        unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
+    }
     Ok(())
 }
