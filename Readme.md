@@ -3,9 +3,8 @@
 This proof of concept shows how to get python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml` in the directory: 
 
 ```
-monotrail run -p 3.9 python my_script.py
+monotrail run python my_script.py
 ```
-
 
 Every dependency is installed only once globally and hooked to your code. No venv directory, no explicit installation, no activate, no pyenv.
 
