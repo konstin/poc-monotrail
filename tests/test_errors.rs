@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Error, Result};
 use clap::Parser;
-use monotrail::{run, Cli};
+use monotrail::{run_cli, Cli};
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
@@ -14,7 +14,7 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let wheel = Path::new("test-data/pip-test-packages").join(name);
     let cli: Cli =
         Cli::try_parse_from(&["monotrail", "venv-install", &wheel.display().to_string()])?;
-    if let Err(err) = run(cli, Some(&venv)) {
+    if let Err(err) = run_cli(cli, Some(&venv)) {
         let err: Error = err;
         let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
         assert_eq!(expected, actual);

@@ -2,8 +2,8 @@ use crate::inject_and_run::{inject_and_run_python, parse_plus_arg};
 use crate::monotrail::install_specs_to_finder;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
-use crate::read_poetry_specs;
 use crate::standalone_python::provision_python;
+use crate::{read_poetry_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::Context;
 use tempfile::tempdir;
 
@@ -11,7 +11,7 @@ use tempfile::tempdir;
 /// argument
 pub fn poetry_run(args: Vec<String>) -> anyhow::Result<()> {
     let (args, python_version) = parse_plus_arg(&args)?;
-    let python_version = python_version.unwrap_or((3, 8));
+    let python_version = python_version.unwrap_or(DEFAULT_PYTHON_VERSION);
     let (python_context, python_home) = provision_python(python_version)?;
 
     let pyproject_toml = include_str!("poetry_boostrap_lock/pyproject.toml");

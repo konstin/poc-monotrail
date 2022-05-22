@@ -7,6 +7,7 @@ authors = ["konstin <konstin@mailbox.org>"]
 [tool.poetry.dependencies]
 python = "^3.8"
 notebook = "^6.4.11"
+pydevd-pycharm = "~221.5591.52"
 
 [tool.poetry.dev-dependencies]
 

@@ -378,10 +378,21 @@ pub fn get_specs(
     let dir_running = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(file) if file.is_file() => {
-            if let Some(parent) = file.parent() {
+            let path = if let Some(parent) = file.parent() {
                 parent.to_path_buf()
             } else {
                 bail!("File has no parent directory ಠ_ಠ: {}", file.display())
+            };
+            let grandma = path.parent().unwrap_or_else(|| Path::new("/dev/null"));
+            let root_marker = grandma.join(format!("{}-root-marker.txt", env!("CARGO_PKG_NAME")));
+
+            if root_marker.is_file() {
+                // This is the system created in `scripts_to_path` to communicate through execve
+                PathBuf::from(
+                    fs::read_to_string(root_marker).context("Failed to read root marger")?,
+                )
+            } else {
+                path
             }
         }
         Some(dir) if dir.is_dir() => dir.to_path_buf(),
@@ -482,7 +493,25 @@ pub fn install_specs_to_finder(
         python_context.python_version,
     )?;
 
-    Ok(FinderData {
+    // ugly hack: jupyter otherwise tries to locate its kernel.json relative to the python
+    // interpreter, while we're installing them relative to the jupyter package.
+    // If you want to help this project please make a pull request to jupyter to also make it search
+    // relative to the package, based on ipykernel.__file__ or ipykernel.__path__ :)
+    // https://docs.jupyter.org/en/latest/use/jupyter-directories.html#data-files
+    if let Some(jupyter) = sprawl_packages.iter().find(|x| x.name == "ipykernel") {
+        let mut jupyter_path = jupyter
+            .monotrail_location(PathBuf::from(&sprawl_root))
+            .join("share")
+            .join("jupyter")
+            .into_os_string();
+        if let Some(existing_jupyter_path) = env::var_os("JUPYTER_PATH") {
+            jupyter_path.push(":");
+            jupyter_path.push(existing_jupyter_path);
+        }
+        env::set_var("JUPYTER_PATH", jupyter_path);
+    }
+
+    let finder_data = FinderData {
         sprawl_root,
         sprawl_packages,
         spec_paths,
@@ -490,7 +519,9 @@ pub fn install_specs_to_finder(
         pth_files,
         lockfile,
         scripts,
-    })
+    };
+
+    Ok(finder_data)
 }
 
 /// In a venv, we would have all scripts collected into .venv/bin/ (on linux and mac). Here,

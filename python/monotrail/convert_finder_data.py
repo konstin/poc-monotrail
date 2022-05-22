@@ -1,6 +1,7 @@
 """Manually reimplementing some bridging code. This could be much more elegant by exporting type from the rust binary
 to python"""
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple, List, Optional, Dict, Union
@@ -65,3 +66,13 @@ class FinderData:
             InstalledPackage(**i) for i in data["sprawl_packages"]
         ]
         return cls(**data)
+
+
+def maybe_debug():
+    """delayed until with have the package"""
+    if os.environ.get("PYCHARM_REMOTE_DEBUG"):
+        # noinspection PyUnresolvedReferences
+        import pydevd_pycharm
+
+        port = int(os.environ["PYCHARM_REMOTE_DEBUG"])
+        pydevd_pycharm.settrace("localhost", port=port, suspend=False)

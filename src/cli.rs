@@ -1,7 +1,9 @@
-use crate::inject_and_run::{inject_and_run_python, parse_major_minor, run_python_args};
+use crate::inject_and_run::{
+    inject_and_run_python, parse_major_minor, prepare_execve_environment, run_python_args,
+};
 use crate::install::{filter_installed, InstalledPackage};
 use crate::markers::Pep508Environment;
-use crate::monotrail::{find_scripts, install_specs_to_finder, monotrail_root};
+use crate::monotrail::{find_scripts, install_specs_to_finder, is_python_script, monotrail_root};
 use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
@@ -16,6 +18,7 @@ use nix::unistd;
 use std::env;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
+use tempfile::TempDir;
 use tracing::debug;
 
 #[derive(Parser)]
@@ -33,8 +36,32 @@ pub struct PoetryOptions {
     skip_existing: bool,
 }
 
+#[derive(clap::Subcommand)]
+pub enum RunSubcommand {
+    #[clap(trailing_var_arg = true)]
+    Python { python_args: Vec<String> },
+    #[clap(trailing_var_arg = true)]
+    Script {
+        script: String,
+        script_args: Vec<String>,
+    },
+}
+
 #[derive(Parser)]
 pub enum Cli {
+    Run {
+        /// Install those extras from pyproject.toml
+        #[clap(long, short = 'E')]
+        extras: Vec<String>,
+        /// Run this python version x.y
+        #[clap(long, short)]
+        python_version: Option<String>,
+        /// Directory with the pyproject.toml
+        #[clap(long)]
+        root: Option<PathBuf>,
+        #[clap(subcommand)]
+        action: RunSubcommand,
+    },
     /// Like `python <...>`, but installs the dependencies before
     ///
     /// If you run python with a script, e.g. `python my/files/script.py`, monotrail will look for
@@ -151,10 +178,31 @@ fn install_location_specs(
     Ok((location, installed_done))
 }
 
-pub fn run(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
+pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
     match cli {
+        Cli::Run {
+            extras,
+            python_version,
+            root,
+            action,
+        } => match action {
+            RunSubcommand::Python { python_args } => {
+                run_python_args(
+                    &python_args,
+                    python_version.as_deref(),
+                    root.as_deref(),
+                    &extras,
+                )?;
+            }
+            RunSubcommand::Script {
+                script,
+                script_args,
+            } => {
+                run_script(&extras, python_version, &script, script_args)?;
+            }
+        },
         Cli::RunPython { python_args } => {
-            run_python_args(&python_args)?;
+            run_python_args(&python_args, None, None, &[])?;
         }
         Cli::RunScript {
             extras,
@@ -315,10 +363,15 @@ fn run_script(
             )
         })?
         .to_path_buf();
+    let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
+    prepare_execve_environment(
+        &scripts,
+        &env::current_dir()?,
+        scripts_tmp.path(),
+        python_version,
+    )?;
 
-    let is_python_script = monotrail::is_python_script(&script_path)?;
-
-    if is_python_script {
+    if is_python_script(&script_path)? {
         debug!("launching (python) {}", script_path.display());
         let args: Vec<String> = [
             python_context.sys_executable.to_string_lossy().to_string(),
@@ -350,5 +403,7 @@ fn run_script(
         // note the that this may launch a python script, a native binary or anything else
         unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
     }
+    // just to assert it lives until here
+    drop(scripts_tmp);
     Ok(())
 }

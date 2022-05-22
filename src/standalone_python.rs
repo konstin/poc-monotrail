@@ -6,6 +6,7 @@ use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir_in;
+use tracing::info;
 
 const PYTHON_STANDALONE_LATEST_RELEASE: &str =
     "https://api.github.com/repos/indygreg/python-build-standalone/releases/latest";
@@ -61,6 +62,8 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
 
 /// Download the prebuilt python .tar.zstd and unpacks it into the the target dir
 fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()> {
+    // TODO: Add MB from API
+    info!("Downloading {}", url);
     let tar_zstd = ureq::get(url).call()?.into_reader();
     let tar = zstd::Decoder::new(tar_zstd)?;
     let mut archive = tar::Archive::new(tar);

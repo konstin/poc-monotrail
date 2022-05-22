@@ -132,11 +132,19 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         else:
             return None
 
-        spec = spec_from_file_location(
-            fullname,
-            location,
-            submodule_search_locations=submodule_search_locations,
-        )
+        if len(submodule_search_locations) <= 1:
+            # We must set submodule_search_locations in the base case otherwise we can't launch single file modules
+            # such as ipykernel_launcher:
+            # > No module named ipykernel_launcher.__main__; 'ipykernel_launcher' is a package and cannot be directly
+            # > executed"
+            spec = spec_from_file_location(fullname, location)
+        else:
+            # namespace package
+            spec = spec_from_file_location(
+                fullname,
+                location,
+                submodule_search_locations=submodule_search_locations,
+            )
 
         return spec
 

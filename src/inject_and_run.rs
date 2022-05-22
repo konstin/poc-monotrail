@@ -1,12 +1,14 @@
-use crate::get_specs;
 use crate::monotrail::install_specs_to_finder;
 use crate::standalone_python::provision_python;
+use crate::{get_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::{bail, format_err, Context};
+use fs_err as fs;
 use libc::{c_int, c_void, wchar_t};
+use std::collections::HashMap;
 use std::env;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
-use tracing::debug;
+use tracing::{debug, warn};
 use widestring::WideCString;
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own.
@@ -55,7 +57,7 @@ pub fn inject_and_run_python(
     args: &[String],
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
-    debug!("Loading libpython");
+    debug!("Initializing libpython");
     let libpython3_so = python_home.join("lib").join("libpython3.so");
     let lib = {
         #[cfg(unix)]
@@ -72,10 +74,11 @@ pub fn inject_and_run_python(
         }
     };
     unsafe {
-        debug!("Initializing python");
         // initialize python
         // otherwise we get an error that it can't find encoding that tells us to set PYTHONHOME
         env::set_var("PYTHONHOME", python_home);
+        // TODO: Do this via python c api instead
+        env::set_var("PYTHONNOUSERSITE", "1");
         // https://docs.python.org/3/c-api/init.html?highlight=py_initialize#c.Py_Initialize
         // void Py_Initialize()
         let initialize: libloading::Symbol<unsafe extern "C" fn() -> c_void> =
@@ -95,7 +98,7 @@ pub fn inject_and_run_python(
         let update_and_activate =
             "MonotrailFinder.get_singleton().update_and_activate(finder_data)";
         let command_str = format!(
-            "{}\n{}\nfinder_data_str=r'{}'\n{}\n{}\n",
+            "{}\n{}\nfinder_data_str=r'{}'\n{}\n{}\nmaybe_debug()\n",
             include_str!("../python/monotrail/monotrail_finder.py"),
             include_str!("../python/monotrail/convert_finder_data.py"),
             // TODO: actual encoding strings
@@ -169,18 +172,44 @@ pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
     Ok(python_version)
 }
 
-pub fn run_python_args(python_args: &[String]) -> anyhow::Result<()> {
-    let (args, python_version) = parse_plus_arg(python_args)?;
-    let python_version = python_version.unwrap_or((3, 8));
-    let script = naive_python_arg_parser(&args)
-        .map_err(|err| format_err!("Failed to parse python args: {}", err))?;
+pub fn run_python_args(
+    python_args: &[String],
+    python_version: Option<&str>,
+    root: Option<&Path>,
+    extras: &[String],
+) -> anyhow::Result<()> {
+    let (args, python_version_plus) = parse_plus_arg(&python_args)?;
+    let python_version_arg = python_version.map(parse_major_minor).transpose()?;
+    let python_version = match (python_version_plus, python_version_arg) {
+        (None, None) => DEFAULT_PYTHON_VERSION,
+        (Some(python_version_plus), None) => python_version_plus,
+        (None, Some(python_version_plus)) => python_version_plus,
+        (Some(python_version_plus), Some(python_version_arg)) => {
+            if python_version_plus == python_version_arg {
+                warn!("Python version passed twice, once as argument and once with plus");
+                python_version_plus
+            } else {
+                bail!(
+                    "Conflicting python versions: as argument {:?}, with plus {:?}",
+                    python_version_plus,
+                    python_version_arg
+                );
+            }
+        }
+    };
+
+    let script = if let Some(root) = root {
+        Some(root.to_path_buf())
+    } else {
+        naive_python_arg_parser(&args)
+            .map_err(|err| format_err!("Failed to parse python args: {}", err))?
+            .map(PathBuf::from)
+    };
     debug!("monotrail_from_args script: {:?}", script);
 
     let (python_context, python_home) = provision_python(python_version)?;
 
-    let (specs, scripts, lockfile) =
-        get_specs(script.map(PathBuf::from).as_deref(), &[], &python_context)?;
-
+    let (specs, scripts, lockfile) = get_specs(script.as_deref(), extras, &python_context)?;
     let finder_data = install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)?;
 
     let args: Vec<_> = [python_context.sys_executable.to_string_lossy().to_string()]
@@ -222,4 +251,65 @@ mod tests {
             assert_eq!(&naive_python_arg_parser(args), parsing);
         }
     }
+}
+
+/// Extends PATH with a directory containing all the scripts we found. This is because many tools
+/// such as jupyter depend on scripts being in path instead of using the python api. It also adds
+/// monotrail as python so execve with other scripts works (required e.g. by jupyter)
+///
+/// You have to pass a tempdir to control its lifetime
+pub fn prepare_execve_environment(
+    scripts: &HashMap<String, PathBuf>,
+    root: &Path,
+    tempdir: &Path,
+    python_version: (u8, u8),
+) -> anyhow::Result<()> {
+    let path_dir = tempdir.join(format!("{}-scripts-links", env!("CARGO_PKG_NAME")));
+    fs::create_dir_all(&path_dir).context("Failed to create scripts PATH dir")?;
+    for (script_name, script_path) in scripts {
+        #[cfg(unix)]
+        {
+            fs_err::os::unix::fs::symlink(&script_path, path_dir.join(script_name))
+                .context("Failed to create symlink for scripts PATH")?;
+        }
+        #[cfg(windows)]
+        {
+            os::windows::fs::symlink_file(&script_path, path_dir.join(script_name))
+                .context("Failed to create symlink for scripts PATH")?;
+        }
+    }
+
+    // TODO
+    #[cfg(unix)]
+    {
+        // We need to allow execve & friends with python scripts, because that's how e.g. jupyter
+        // launches the server and kernels. We can't inject monotrail as python through a wrapper
+        // script due to https://www.in-ulm.de/~mascheck/various/shebang/#interpreter-script .
+        // I also couldn't get env as intermediary (https://unix.stackexchange.com/a/477651/77322)
+        // to work, so instead we make the monotrail executable moonlight as python. We detect
+        // where we're python before even running clap
+        let pythons = [
+            "python".to_string(),
+            format!("python{}", python_version.0),
+            format!("python{}.{}", python_version.0, python_version.1),
+        ];
+        for python in pythons {
+            fs_err::os::unix::fs::symlink(&env::current_exe()?, path_dir.join(python))
+                .context("Failed to create symlink for current exe")?;
+        }
+    }
+
+    // venv/bin/activate also puts venv scripts first. Our python launcher we have to put first
+    // anyway to overwrite system python
+    let mut path = path_dir.into_os_string();
+    path.push(":");
+    path.push(env::var_os("PATH").unwrap_or_default());
+    env::set_var("PATH", path);
+
+    // Make a execve-spawned monotrail find the configuration we originally read again
+    // TODO: Does the subprocess know about the fullpath of the link through which it was called
+    //       and can we use that to read those from a file instead which would be more stable
+    env::set_var("MONOTRAIL_EXECVE_ROOT", root);
+
+    Ok(())
 }
