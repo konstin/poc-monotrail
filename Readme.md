@@ -29,13 +29,19 @@ monotrail.interactive(
 
 ## Usage
 
-With a python script, first download the binary and put it in PATH (e.g. via `.local/bin`). Make sure you have either a `requirements.txt` or `pyproject.toml`/`poetry.lock`
+First download the binary and put it in PATH (e.g. via `.local/bin`). Make sure you have either a `requirements.txt` or `pyproject.toml`/`poetry.lock`:
 
 ```
 monotrail run python my_script.py
 ```
 
-You can also run the scripts that used to be in `.venv/bin`:
+Picking the python version and extras:
+
+```
+monotrail run -p 3.9 --extras fancy-pants python my_script.py --some-option
+```
+
+Running scripts that used to be in `.venv/bin`:
 
 ```
 monotrail run script pytest
