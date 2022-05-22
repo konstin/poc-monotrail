@@ -1,20 +1,23 @@
 # Proof Of Concept: Monotrail
 
-This proof of concept shows how to do python package management without virtualenvs.
-
-Every dependency is installed only once globally and hooked to your project from your lockfile. No more venv directory.
-
-This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux and macos are supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is unoptimized and really slow, only the most basic requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, etc. 
-
-monotrail means to show you can effectively just clone a repo with a lockfile and run a single command that install all required packages, makes them available to `import` and then runs your script, skipping explicit package management, `.venv` directories and installing the same dependency for each project again.
+This proof of concept shows how to get python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml` in the directory: 
 
 ```
-monotrail_python path/to/your/script.py
+monotrail run -p 3.9 python my_script.py
 ```
 
-In the background, monotrail uses a `.pth` hook which runs on python startup before your code to set everything up.
 
-It also features an interactive mode, where you can add packages at runtime, get an isolated package set per notebook and don't get any version conflicts.
+Every dependency is installed only once globally and hooked to your code. No venv directory, no explicit installation, no activate, no pyenv.
+
+This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux and macos are supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is really slow, only the most basic requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, etc. 
+
+monotrail means to show you can use python without the traditional "installing packages in an environment". It also integrates [PyOxy](https://github.com/indygreg/PyOxidizer/tree/main/pyoxy) so you don't need to install python anymore. 
+
+There's also an interactive mode meant for notebooks, where you can add packages at runtime, get an isolated package set per notebook and avoid version conflicts.
+
+```jupyterpython
+!pip install monotrail
+```
 
 ```jupyterpython
 import monotrail
@@ -27,13 +30,23 @@ monotrail.interactive(
 
 ## Usage
 
-With a python script:
+With a python script, first download the binary and put it in PATH (e.g. via `.local/bin`). Make sure you have either a `requirements.txt` or `pyproject.toml`/`poetry.lock`
 
 ```
-pip install -U pip virtualenv maturin
-virtualenv .venv
-#.venv/bin/pip install monotrail
-.venv/bin/monotrail_python path/to/your/script.py
+monotrail run python my_script.py
+```
+
+You can also run the scripts that used to be in `.venv/bin`:
+
+```
+monotrail run script pytest
+```
+
+There's also a python package with an entrypoint:
+
+```
+pip install monotrail
+monotrail_python path/to/your/script.py
 ```
 
 With jupyter notebooks
@@ -51,23 +64,23 @@ monotrail.interactive(
 )
 ```
 
-_wait, you said venv-less!_ We need to install a `.pth` hook and I don't want to pollute your user-global environment, so we isolate it in a venv you can just `rm -rf`. You can use the resulting .venv for all of your projects while still having isolation (it would of course be a lot cooler to have `monotrail +3.8 run path/to/your/script.py` but I don't know how to dynamically load, import-hook and launch a user-specified python version. If you do, please tell me!)
-
-To run scripts, use `/path/to/.venv/bin/python -m monotrail.run_python <your script or module> <args>`.
-
-To install extras, use `MONOTRAIL_EXTRAS="extra1,extra2"`. With `MONOTRAIL_ROOT` you can change the storage location if you really need to. Setting `RUST_LOG=debug` will give you many more details.
+Setting `RUST_LOG=debug` will give you details to track down bugs.
 
 ## Background
 
-Python has a module called [site](https://docs.python.org/3/library/site.html) which runs automatically and if you're using a virtualenv environment, it makes the packages in there available. You can also use it to run arbitrary code by placing a `.pth` file in `site-packages`, so we install a `load_monotrail.pth`. This import our `monotrail` module, and `if os.environ.get("MONOTRAIL")`, it loads the actual machinery. It's a small shim that calls into rust. There we search for a dependencies listing (`poetry.lock` or `requirements.txt`), install all packages if not installed and return their location of all installed dependencies. Back in python, we build a custom [PathFinder](https://docs.python.org/3/library/importlib.html#importlib.machinery.PathFinder) with everything and add it to `sys.meta_path`. When python searches where `import` something from, it goes through all the `Finder`s in `sys.meta_path` until one returns a location. Ours returns the location of the locked packages in the global package installation location in your cache dir (`.cache` on linux).
+monotrail first parses which python version you want (3.8 by default) and if not present downloads it from [PyOxy](https://github.com/indygreg/PyOxidizer/tree/main/pyoxy). It doesn't run python as an executable but instead loads `libpython.so` and uses the [C API](https://docs.python.org/3/c-api/veryhigh.html).
 
-Interactive mode is very similar, except we only create the `PathFinder` on the first call to `monotrail.interactive()`.
+Next, we search for a dependencies listing (`poetry.lock` or `requirements.txt`). If required we run poetry to resolve the dependencies (which we bootstrap through a pre-recorded `poetry.lock` for poetry itself). We install all missing packages to separate directories in `.cache/monotrail` and record all locations.
 
-## Benchmarks
+We initialize python and inject a custom [PathFinder](https://docs.python.org/3/library/importlib.html#importlib.machinery.PathFinder) with everything and add it to `sys.meta_path`. When python searches where `import` something from, it goes through all the `Finder`s in `sys.meta_path` until one returns a location. Ours knows the locations of the packages from the lockfile and python doesn't see anything else, so you can only load from the packages matching the lockfile. 
+
+Interactive mode does pretty much the same, except we skip the python installation and there's a check that the version of an already imported package didn't change.
+
+## Benchmarks (wheel installation)
 
 One neat thing about venv-less installation is that we install every package version only once, so no more 3 different installations of pytorch. This takes a lot less disk space (even though clearing the cache is an unsolved problem) but most importantly it means that if you have used all required package versions once before "installation" is instantaneous. It also removes the need to recreate broken venvs.
 
-By reimplementing wheel installation in rust, it also became a good bit faster. 
+By reimplementing wheel installation in rust, it also became a good bit faster. `install-wheel-rs` has a separate python interface so you can reuse it as a fast wheel installer on its own.
 
 Installing a single large wheel (plotly)
 
