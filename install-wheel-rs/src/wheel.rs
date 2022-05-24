@@ -368,6 +368,7 @@ fn bytecode_compile(
     site_packages: &Path,
     unpacked_paths: Vec<PathBuf>,
     python_version: (u8, u8),
+    sys_executable: &Path,
     // Only for logging
     name: &str,
     record: &mut Vec<RecordEntry>,
@@ -384,7 +385,8 @@ fn bytecode_compile(
     // to cpython segmentation faults, so we add a simple retry loop
     let mut retries = 3;
     let (status, lines) = loop {
-        let (status, lines) = bytecode_compile_inner(site_packages, &py_source_paths)?;
+        let (status, lines) =
+            bytecode_compile_inner(site_packages, &py_source_paths, &sys_executable)?;
         retries -= 1;
         if status.success() || retries == 0 {
             break (status, lines);
@@ -451,13 +453,14 @@ fn bytecode_compile(
 fn bytecode_compile_inner(
     site_packages: &Path,
     py_source_paths: &[PathBuf],
+    sys_executable: &Path,
 ) -> Result<(ExitStatus, Vec<String>), WheelInstallerError> {
     let tempdir = tempdir()?;
     // Running python with an actual file will produce better error messages
     let pip_compileall_py = tempdir.path().join("pip_compileall.py");
     fs::write(&pip_compileall_py, include_str!("pip_compileall.py"))?;
     // We input the paths through stdin and get the successful paths returned through stdout
-    let mut bytecode_compiler = Command::new("python")
+    let mut bytecode_compiler = Command::new(sys_executable)
         .arg(&pip_compileall_py)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -812,6 +815,7 @@ pub fn install_wheel(
     compile: bool,
     extras: &[String],
     unique_version: &str,
+    sys_executable: &Path,
 ) -> Result<String, WheelInstallerError> {
     // TODO: A valid metadata parse should be given to this function, at least in two cases
     // we have already done it anyway earlier. Neither should we have to return the tag
@@ -948,7 +952,7 @@ pub fn install_wheel(
         // 2.e Remove empty distribution-1.0.data directory.
         fs::remove_dir_all(data_dir)?;
     } else {
-        debug!(name = name.as_str(), "No data");
+        trace!(name = name.as_str(), "No data");
     }
 
     // 2.f Compile any installed .py to .pyc. (Uninstallers should be smart enough to remove .pyc even if it is not mentioned in RECORD.)
@@ -958,6 +962,7 @@ pub fn install_wheel(
             &site_packages,
             unpacked_paths,
             location.get_python_version(),
+            &sys_executable,
             name.as_str(),
             &mut record,
         )?;

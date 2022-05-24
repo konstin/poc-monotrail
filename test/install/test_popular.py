@@ -5,8 +5,8 @@ Test with the top 100 pypi wheels and some more
 from pathlib import Path
 from subprocess import check_call
 
-from test_binary.test_compare_pip import compare_with_pip
-from test_binary.utils import get_bin, get_root
+from test.install.test_compare_pip import compare_with_pip
+from test.install.utils import get_bin, get_root
 
 
 def test_popular():

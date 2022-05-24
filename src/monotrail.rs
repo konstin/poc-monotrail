@@ -132,37 +132,42 @@ fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
 pub fn filter_installed_monotrail(
     specs: &[RequestedSpec],
     monotrail_root: &Path,
+    compatible_tags: &[(String, String, String)],
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     // Behold my monstrous iterator
     // name -> version -> compatible tag
-    let installed_packages: Vec<(String, String, String)> = get_dir_content(monotrail_root)
-        // No monotrail dir, no packages
-        .unwrap_or_default()
-        .iter()
-        .map(|name_dir| {
-            Ok(get_dir_content(&name_dir.path())?
-                .iter()
-                .map(|version_dir| {
-                    Ok(get_dir_content(&version_dir.path())?
-                        .iter()
-                        .map(|tag_dir| {
-                            (
-                                name_dir.file_name().to_string_lossy().to_string(),
-                                version_dir.file_name().to_string_lossy().to_string(),
-                                tag_dir.file_name().to_string_lossy().to_string(),
-                            )
-                        })
-                        .collect::<Vec<(String, String, String)>>())
-                })
-                .collect::<anyhow::Result<Vec<Vec<(String, String, String)>>>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>())
-        })
-        .collect::<anyhow::Result<Vec<Vec<(String, String, String)>>>>()?
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let mut compatible: Vec<(String, String, String)> = Vec::new();
+    // No monotrail dir, no packages
+    for name_dir in get_dir_content(monotrail_root).unwrap_or_default() {
+        for version_dir in get_dir_content(&name_dir.path())? {
+            for tag_dir in get_dir_content(&version_dir.path())? {
+                let tag = tag_dir.file_name().to_string_lossy().to_string();
+                let is_compatible = match tag.split('-').collect::<Vec<_>>()[..] {
+                    [python_tag, abi_tag, platform_tag] => compatible_tags.iter().any(|ok_tag| {
+                        python_tag.contains(&ok_tag.0)
+                            && abi_tag.contains(&ok_tag.1)
+                            && platform_tag.contains(&ok_tag.2)
+                    }),
+                    _ => {
+                        warn!(
+                            "Invalid tag {} in {}, skipping",
+                            tag,
+                            tag_dir.path().display()
+                        );
+                        continue;
+                    }
+                };
+                if !is_compatible {
+                    continue;
+                }
+                compatible.push((
+                    name_dir.file_name().to_string_lossy().to_string(),
+                    version_dir.file_name().to_string_lossy().to_string(),
+                    tag,
+                ))
+            }
+        }
+    }
 
     let mut installed = Vec::new();
     let mut not_installed = Vec::new();
@@ -175,11 +180,9 @@ pub fn filter_installed_monotrail(
 
         if let Some(unique_version) = unique_version {
             if let Some((name, installed_version, tag)) =
-                installed_packages
-                    .iter()
-                    .find(|(name, installed_version, _tag)| {
-                        name == &spec.normalized_name() && installed_version == &unique_version
-                    })
+                compatible.iter().find(|(name, installed_version, _tag)| {
+                    name == &spec.normalized_name() && installed_version == &unique_version
+                })
             {
                 installed.push(InstalledPackage {
                     name: name.clone(),
@@ -196,7 +199,7 @@ pub fn filter_installed_monotrail(
         } else {
             // For now we just take any version there is
             // This would take proper version resolution to make sense
-            if let Some((name, unique_version, _path)) = installed_packages
+            if let Some((name, unique_version, _path)) = compatible
                 .iter()
                 .find(|(name, _version, _path)| name == &spec.normalized_name())
             {
@@ -231,7 +234,7 @@ pub fn install_requested(
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
 
     let (to_install_specs, installed_done) =
-        filter_installed_monotrail(specs, Path::new(&monotrail_root))?;
+        filter_installed_monotrail(specs, Path::new(&monotrail_root), &compatible_tags)?;
 
     let mut installed = install_specs(
         &to_install_specs,

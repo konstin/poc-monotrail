@@ -41,6 +41,7 @@ fn get_pep508_env(py: Python) -> PyResult<String> {
 }
 
 fn get_python_context(py: Python) -> PyResult<PythonContext> {
+    // Would be nicer through https://docs.python.org/3/c-api/init.html#c.Py_GetProgramFullPath
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
     let python_context = PythonContext {
         sys_executable: PathBuf::from(sys_executable),

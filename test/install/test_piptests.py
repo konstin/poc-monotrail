@@ -3,8 +3,8 @@
 Use the wheels from pip's tests to cover the edge cases
 """
 
-from test_binary.test_compare_pip import compare_with_pip
-from test_binary.utils import get_bin, get_root
+from test.install.test_compare_pip import compare_with_pip
+from test.install.utils import get_bin, get_root
 
 
 def test_piptests():

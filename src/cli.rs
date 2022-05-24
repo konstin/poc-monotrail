@@ -163,7 +163,7 @@ fn install_location_specs(
     };
 
     let (to_install, mut installed_done) = if options.skip_existing || options.monotrail {
-        filter_installed(&location, &specs)?
+        filter_installed(&location, &specs, &compatible_tags)?
     } else {
         (specs, Vec::new())
     };
@@ -178,7 +178,7 @@ fn install_location_specs(
     Ok((location, installed_done))
 }
 
-pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
+pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
     match cli {
         Cli::Run {
             extras,
@@ -186,30 +186,34 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
             root,
             action,
         } => match action {
-            RunSubcommand::Python { python_args } => {
-                run_python_args(
-                    &python_args,
-                    python_version.as_deref(),
-                    root.as_deref(),
-                    &extras,
-                )?;
-            }
+            RunSubcommand::Python { python_args } => Ok(Some(run_python_args(
+                &python_args,
+                python_version.as_deref(),
+                root.as_deref(),
+                &extras,
+            )?)),
             RunSubcommand::Script {
                 script,
                 script_args,
-            } => {
-                run_script(&extras, python_version, &script, script_args)?;
-            }
+            } => Ok(Some(run_script(
+                &extras,
+                python_version,
+                &script,
+                script_args,
+            )?)),
         },
-        Cli::RunPython { python_args } => {
-            run_python_args(&python_args, None, None, &[])?;
-        }
+        Cli::RunPython { python_args } => Ok(Some(run_python_args(&python_args, None, None, &[])?)),
         Cli::RunScript {
             extras,
             python_version,
             script,
             script_args,
-        } => run_script(&extras, python_version, &script, script_args)?,
+        } => Ok(Some(run_script(
+            &extras,
+            python_version,
+            &script,
+            script_args,
+        )?)),
         Cli::VenvInstall {
             targets,
             no_compile,
@@ -245,6 +249,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
                 no_compile,
                 false,
             )?;
+            Ok(None)
         }
         Cli::PoetryInstall { options } => {
             let venv = if let Some(venv) = venv {
@@ -262,6 +267,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
             let python_version = get_venv_python_version(&venv)?;
             let venv_canon = venv.canonicalize()?;
             install_location_specs(&venv, python_version, &venv_canon, &options)?;
+            Ok(None)
         }
         Cli::PoetryRun {
             options,
@@ -327,12 +333,10 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<()> {
             // the real thing
             // note the that this may launch a python script, a native binary or anything else
             unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
+            unreachable!()
         }
-        Cli::Poetry { args } => {
-            poetry_run(args)?;
-        }
-    };
-    Ok(())
+        Cli::Poetry { args } => Ok(Some(poetry_run(&args, None)?)),
+    }
 }
 
 fn run_script(
@@ -340,7 +344,7 @@ fn run_script(
     python_version: Option<String>,
     script: &str,
     script_args: Vec<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<i32> {
     let python_version = parse_major_minor(python_version.as_deref().unwrap_or("3.8"))?;
     let (python_context, python_home) = provision_python(python_version)?;
 
@@ -371,7 +375,7 @@ fn run_script(
         python_version,
     )?;
 
-    if is_python_script(&script_path)? {
+    let exit_code = if is_python_script(&script_path)? {
         debug!("launching (python) {}", script_path.display());
         let args: Vec<String> = [
             python_context.sys_executable.to_string_lossy().to_string(),
@@ -380,11 +384,12 @@ fn run_script(
         .into_iter()
         .chain(script_args)
         .collect();
-        inject_and_run_python(
+        let exit_code = inject_and_run_python(
             &python_home,
             &args,
             &serde_json::to_string(&finder_data).unwrap(),
         )?;
+        exit_code as i32
     } else {
         // Sorry for the to_string_lossy all over the place
         // https://stackoverflow.com/a/38948854/3549270
@@ -402,8 +407,9 @@ fn run_script(
         // the real thing
         // note the that this may launch a python script, a native binary or anything else
         unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
-    }
+        unreachable!()
+    };
     // just to assert it lives until here
     drop(scripts_tmp);
-    Ok(())
+    Ok(exit_code)
 }

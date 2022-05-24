@@ -12,7 +12,7 @@ from typing import List, Union
 
 import pytest
 
-from test_binary.utils import get_bin, get_root
+from test.install.utils import get_bin, get_root
 
 
 def compare_with_pip(
@@ -95,7 +95,7 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         sys.exit(1)
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="python only test")
+@pytest.mark.skipif(sys.platform != "linux", reason="linux only wheel")
 def test_purelib_platlib():
     purelib_platlib_wheel = get_root().joinpath(
         "test-data/wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl"

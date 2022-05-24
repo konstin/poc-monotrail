@@ -113,9 +113,13 @@ pub fn poetry_resolve(
     let start = Instant::now();
     let result = match python_context.launch_type {
         LaunchType::Binary => {
+            let plus_version = format!(
+                "+{}.{}",
+                python_context.python_version.0, python_context.python_version.1
+            );
             // First argument must always be the program itself
             Command::new(env::current_exe()?)
-                .args(&["poetry", "lock", "--no-update"])
+                .args(&["poetry", &plus_version, "lock", "--no-update"])
                 // This will make poetry-resolve find the pyproject.toml we want to resolve
                 .current_dir(&resolve_dir)
                 .status()

@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from subprocess import check_call, SubprocessError, DEVNULL
 
-from test_binary.utils import get_bin, get_root
+from test.install.utils import get_bin, get_root
 
 
 def test_tqdm():
@@ -42,7 +42,13 @@ def test_tqdm():
         env=env,
     )
     check_call(
-        [f"{venv}/bin/python", get_root().joinpath("test_binary/test_tqdm_impl.py")],
+        [
+            f"{venv}/bin/python",
+            get_root()
+            .joinpath("test")
+            .joinpath("install")
+            .joinpath("test_tqdm_impl.py"),
+        ],
         env=env,
     )
     check_call([f"{venv}/bin/tqdm", "--version"], env=env)

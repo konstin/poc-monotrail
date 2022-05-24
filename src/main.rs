@@ -8,7 +8,7 @@ use tracing::debug;
 
 /// Checks under what name we're running and if it's python, shortcuts to running as python,
 /// otherwise does the normal cli run
-fn run() -> anyhow::Result<()> {
+fn run() -> anyhow::Result<Option<i32>> {
     // Notably, we can't use env::current_exe() here because it resolves the symlink
     let args: Vec<String> = args().into_iter().collect();
     let name = Path::new(
@@ -24,7 +24,12 @@ fn run() -> anyhow::Result<()> {
         // TODO: Also keep the extras
         let root = env::var_os("MONOTRAIL_EXECVE_ROOT").map(PathBuf::from);
         // TODO: Make sure we also keep the python version
-        run_python_args(&args[1..], None, root.as_deref(), &[])
+        Ok(Some(run_python_args(
+            &args[1..],
+            None,
+            root.as_deref(),
+            &[],
+        )?))
     } else {
         debug!("START: Running as monotrail: '{}' {:?}", name, args);
         run_cli(Cli::parse(), None)
@@ -44,11 +49,17 @@ fn main() {
         tracing_subscriber::fmt().event_format(format).init();
     }
 
-    if let Err(e) = run() {
-        eprintln!("💥 {} failed", env!("CARGO_PKG_NAME"));
-        for cause in e.chain().collect::<Vec<_>>().iter() {
-            eprintln!("  Caused by: {}", cause);
+    match run() {
+        Err(e) => {
+            eprintln!("💥 {} failed", env!("CARGO_PKG_NAME"));
+            for cause in e.chain().collect::<Vec<_>>().iter() {
+                eprintln!("  Caused by: {}", cause);
+            }
+            std::process::exit(1);
         }
-        std::process::exit(1);
+        Ok(None) => {}
+        Ok(Some(exit_code)) => {
+            std::process::exit(exit_code);
+        }
     }
 }

@@ -57,7 +57,7 @@ jobs:
           args: --release
 
       - name: Download popular wheels
-        run: pip download -d test-data/popular-wheels -r popular.txt
+        run: pip download -d test-data/popular-wheels -r test-data/popular.txt
 
       - name: cargo test
         uses: actions-rs/cargo@v1
@@ -65,8 +65,8 @@ jobs:
           command: test
           args: --workspace --release
 
-      - name: pytest test_binary
-        run: pytest test_binary
+      - name: pytest test/install test/binary
+        run: pytest test/install test/binary
 
       - name: Install hyperfine (linux)
         if: matrix.os == 'ubuntu-latest-skip-for-slowness'
@@ -149,5 +149,5 @@ jobs:
         run: bash make_paper.sh
       - name: pip install pytest
         run: .venv/bin/pip install pytest jupyter nbconvert
-      - name: pytest test_python
-        run: .venv/bin/pytest test_python
+      - name: pytest test/python
+        run: .venv/bin/pytest test/python

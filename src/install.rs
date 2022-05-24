@@ -133,6 +133,7 @@ pub fn filter_installed_venv(
 pub fn filter_installed(
     location: &InstallLocation<impl Deref<Target = Path>>,
     specs: &[RequestedSpec],
+    compatible_tags: &[(String, String, String)],
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     match location {
         InstallLocation::Venv {
@@ -142,9 +143,11 @@ pub fn filter_installed(
             "Failed to filter packages installed in the venv at {}",
             venv_base.display()
         )),
-        InstallLocation::Monotrail { monotrail_root, .. } => {
-            Ok(filter_installed_monotrail(specs, monotrail_root)?)
-        }
+        InstallLocation::Monotrail { monotrail_root, .. } => Ok(filter_installed_monotrail(
+            specs,
+            monotrail_root,
+            &compatible_tags,
+        )?),
     }
 }
 
@@ -174,8 +177,13 @@ pub fn install_specs(
             } else {
                 info!("Installing {}", spec.requested);
             }
-            let (python_version, unique_version, tag) =
-                download_and_install(spec, &location, compatible_tags, no_compile)?;
+            let (python_version, unique_version, tag) = download_and_install(
+                spec,
+                &location,
+                compatible_tags,
+                no_compile,
+                &location.get_python(),
+            )?;
             debug!("Installed {} {}", spec.name, unique_version);
             let installed_package = InstalledPackage {
                 name: spec.normalized_name(),
@@ -206,8 +214,13 @@ pub fn install_specs(
                         }
                     }
 
-                    let (python_version, unique_version, tag) =
-                        download_and_install(spec, &location, compatible_tags, no_compile)?;
+                    let (python_version, unique_version, tag) = download_and_install(
+                        spec,
+                        &location,
+                        compatible_tags,
+                        no_compile,
+                        &location.get_python(),
+                    )?;
                     debug!("Installed {} {}", spec.name, unique_version);
                     {
                         let mut current = current.lock().unwrap();
@@ -301,6 +314,7 @@ fn download_and_install(
     location: &InstallLocation<LockedDir>,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
+    sys_executable: &Path,
 ) -> anyhow::Result<(String, String, String)> {
     let spec = requested_spec.resolve(compatible_tags)?;
     trace!("requested: {:?}, resolved: {:?}", requested_spec, spec);
@@ -385,6 +399,7 @@ fn download_and_install(
         !no_compile,
         &spec.extras,
         &spec.unique_version,
+        &sys_executable,
     )
     .with_context(|| format!("Failed to install {}", spec.requested))?;
     Ok((spec.python_version, spec.unique_version, tag))

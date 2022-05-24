@@ -23,7 +23,7 @@ def main():
     else:
         script = sys.argv[1]
         if not Path(script).is_file():
-            print(f"No such file: {script}")
+            print(f"No such file: {script}", file=sys.stderr)
         sys.path.insert(0, str(Path(script).parent))
         finder_data = monotrail_from_args([script])
         MonotrailFinder.get_singleton().update_and_activate(finder_data)

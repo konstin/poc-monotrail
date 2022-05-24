@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::env;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
-use tracing::{debug, warn};
+use tracing::{debug, trace};
 use widestring::WideCString;
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own.
@@ -57,7 +57,7 @@ pub fn inject_and_run_python(
     args: &[String],
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
-    debug!("Initializing libpython");
+    trace!("Loading libpython");
     let libpython3_so = python_home.join("lib").join("libpython3.so");
     let lib = {
         #[cfg(unix)]
@@ -73,6 +73,7 @@ pub fn inject_and_run_python(
             libloading::os::unix::Windows::Library::new(libpython3_so)?
         }
     };
+    trace!("Initializing libpython");
     unsafe {
         // initialize python
         // otherwise we get an error that it can't find encoding that tells us to set PYTHONHOME
@@ -173,30 +174,12 @@ pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
 }
 
 pub fn run_python_args(
-    python_args: &[String],
+    args: &[String],
     python_version: Option<&str>,
     root: Option<&Path>,
     extras: &[String],
-) -> anyhow::Result<()> {
-    let (args, python_version_plus) = parse_plus_arg(&python_args)?;
-    let python_version_arg = python_version.map(parse_major_minor).transpose()?;
-    let python_version = match (python_version_plus, python_version_arg) {
-        (None, None) => DEFAULT_PYTHON_VERSION,
-        (Some(python_version_plus), None) => python_version_plus,
-        (None, Some(python_version_plus)) => python_version_plus,
-        (Some(python_version_plus), Some(python_version_arg)) => {
-            if python_version_plus == python_version_arg {
-                warn!("Python version passed twice, once as argument and once with plus");
-                python_version_plus
-            } else {
-                bail!(
-                    "Conflicting python versions: as argument {:?}, with plus {:?}",
-                    python_version_plus,
-                    python_version_arg
-                );
-            }
-        }
-    };
+) -> anyhow::Result<i32> {
+    let (args, python_version) = determine_python_version(args, python_version)?;
 
     let script = if let Some(root) = root {
         Some(root.to_path_buf())
@@ -217,15 +200,57 @@ pub fn run_python_args(
         .chain(args)
         .collect();
 
-    println!(
-        "Done: {:?}",
-        inject_and_run_python(
-            &python_home,
-            &args,
-            &serde_json::to_string(&finder_data).unwrap()
-        )
+    let exit_code = inject_and_run_python(
+        &python_home,
+        &args,
+        &serde_json::to_string(&finder_data).unwrap(),
+    )
+    .context("inject and run failed")?;
+    debug!("Python done: {:?}", exit_code);
+    Ok(exit_code as i32)
+}
+
+/// There are three possible sources of a python version:
+///  - explicitly as cli argument
+///  - as +x.y in the python args
+///  - through MONOTRAIL_PYTHON_VERSION, as forwarding through calling our python hook (TODO: give
+///    version info to the python hook, maybe with /usr/bin/env, but i don't know how)
+/// We ensure that only one is set a time  
+pub fn determine_python_version(
+    python_args: &[String],
+    python_version: Option<&str>,
+) -> anyhow::Result<(Vec<String>, (u8, u8))> {
+    let (args, python_version_plus) = parse_plus_arg(&python_args)?;
+    let python_version_arg = python_version.map(parse_major_minor).transpose()?;
+    let env_var = format!("{}_PYTHON_VERSION", env!("CARGO_PKG_NAME").to_uppercase());
+    let python_version_env = env::var_os(&env_var)
+        .map(|x| parse_major_minor(x.to_string_lossy().as_ref()))
+        .transpose()
+        .with_context(|| format!("Couldn't parse {}", env_var))?;
+    trace!(
+        "python versions: as argument: {:?}, with plus {:?}, with {} {:?}",
+        python_version_plus,
+        python_version_arg,
+        env_var,
+        python_version_env
     );
-    Ok(())
+    let python_version = match (python_version_plus, python_version_arg, python_version_env) {
+        (None, None, None) => DEFAULT_PYTHON_VERSION,
+        (Some(python_version_plus), None, None) => python_version_plus,
+        (None, Some(python_version_arg), None) => python_version_arg,
+        (None, None, Some(python_version_env)) => python_version_env,
+        (python_version_plus, python_version_arg, python_version_env) => {
+            bail!(
+                "Conflicting python versions: as argument {:?}, with plus {:?}, with {} {:?}",
+                python_version_plus,
+                python_version_arg,
+                env_var,
+                python_version_env
+            );
+        }
+    };
+    debug!("Running python {}.{}", python_version.0, python_version.1);
+    Ok((args, python_version))
 }
 
 #[cfg(test)]
@@ -309,7 +334,14 @@ pub fn prepare_execve_environment(
     // Make a execve-spawned monotrail find the configuration we originally read again
     // TODO: Does the subprocess know about the fullpath of the link through which it was called
     //       and can we use that to read those from a file instead which would be more stable
-    env::set_var("MONOTRAIL_EXECVE_ROOT", root);
+    env::set_var(
+        format!("{}_EXECVE_ROOT", env!("CARGO_PKG_NAME").to_uppercase()),
+        root,
+    );
+    env::set_var(
+        format!("{}_PYTHON_VERSION", env!("CARGO_PKG_NAME").to_uppercase()),
+        format!("{}.{}", python_version.0, python_version.1),
+    );
 
     Ok(())
 }

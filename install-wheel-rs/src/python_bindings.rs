@@ -4,7 +4,7 @@ use pyo3::types::PyModule;
 use pyo3::{pyclass, pymethods, pymodule, PyErr, PyResult, Python};
 use std::env;
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 create_exception!(
     install_wheel_rs,
@@ -43,9 +43,21 @@ impl LockedVenv {
     }
 
     pub fn install_wheel(&self, py: Python, wheel: PathBuf) -> PyResult<()> {
+        // Would be nicer through https://docs.python.org/3/c-api/init.html#c.Py_GetProgramFullPath
+        let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
+
         // TODO: Pass those options on to the user
         // unique_version can be anything since it's only used to monotrail
-        py.allow_threads(|| install_wheel(&self.location, &wheel, true, &[], ""))?;
+        py.allow_threads(|| {
+            install_wheel(
+                &self.location,
+                &wheel,
+                true,
+                &[],
+                "",
+                Path::new(&sys_executable),
+            )
+        })?;
         Ok(())
     }
 }

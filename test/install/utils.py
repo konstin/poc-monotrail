@@ -24,7 +24,7 @@ def get_bin() -> Path:
 
 
 def get_root() -> Path:
-    return Path(__file__).parent.parent
+    return Path(__file__).parent.parent.parent
 
 
 if __name__ == "__main__":
