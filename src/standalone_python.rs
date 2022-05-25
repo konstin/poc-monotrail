@@ -89,13 +89,13 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
         python_parent_dir.join(format!("cpython-{}.{}", python_version.0, python_version.1));
 
     if unpack_dir.is_dir() {
-        if !unpack_dir
-            .join("python")
-            .join("install")
-            .join("lib")
-            .join("libpython3.so")
-            .is_file()
-        {
+        let lib_dir = unpack_dir.join("python").join("install").join("lib");
+        let lib = if cfg!(target_os = "macos") {
+            format!("libpython{}.{}.dylib", python_version.0, python_version.1)
+        } else {
+            "libpython3.so".to_string()
+        };
+        if !lib_dir.join(lib).is_file() {
             bail!("broken python installation in {}", unpack_dir.display())
         }
         // Good installation, reuse

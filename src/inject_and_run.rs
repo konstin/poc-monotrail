@@ -54,11 +54,19 @@ pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<Strin
 /// Returns the exit code from python
 pub fn inject_and_run_python(
     python_home: &Path,
+    python_version: (u8, u8),
     args: &[String],
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
     trace!("Loading libpython");
-    let libpython3_so = python_home.join("lib").join("libpython3.so");
+    let libpython3_so = if cfg!(target_os = "macos") {
+        python_home.join("lib").join(format!(
+            "libpython{}.{}.dylib",
+            python_version.0, python_version.1
+        ))
+    } else {
+        python_home.join("lib").join("libpython3.so".to_string())
+    };
     let lib = {
         #[cfg(unix)]
         {
@@ -202,6 +210,7 @@ pub fn run_python_args(
 
     let exit_code = inject_and_run_python(
         &python_home,
+        python_context.python_version,
         &args,
         &serde_json::to_string(&finder_data).unwrap(),
     )

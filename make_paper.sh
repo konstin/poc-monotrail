@@ -14,8 +14,8 @@ virtualenv -p 3.8 -q .venv
 #rm -rf .venv
 
 echo "Installed"
-.venv/bin/monotrail_python data_science_project/import_pandas.py
-.venv/bin/monotrail_python data_science_project/make_paper.py
-MONOTRAIL_CWD="data_science_project" .venv/bin/monotrail_script numpy_identity_3
+time .venv/bin/monotrail_python data_science_project/import_pandas.py
+time .venv/bin/monotrail_python data_science_project/make_paper.py
+time MONOTRAIL_CWD="data_science_project" .venv/bin/monotrail_script numpy_identity_3
 # .venv/bin/monotrail_python flipstring/flip.py "hello world!"
 #.venv/bin/pytest test/python

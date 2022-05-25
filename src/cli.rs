@@ -386,6 +386,7 @@ fn run_script(
         .collect();
         let exit_code = inject_and_run_python(
             &python_home,
+            python_version,
             &args,
             &serde_json::to_string(&finder_data).unwrap(),
         )?;

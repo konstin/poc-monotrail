@@ -44,6 +44,7 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
 
     let exit_code = inject_and_run_python(
         &python_home,
+        python_version,
         &poetry_args,
         &serde_json::to_string(&finder_data)?,
     )
