@@ -10,7 +10,7 @@ use crate::poetry_integration::run::poetry_run;
 use crate::spec::RequestedSpec;
 use crate::standalone_python::provision_python;
 use crate::venv_parser::get_venv_python_version;
-use crate::{get_specs, install_specs, monotrail, package_index};
+use crate::{get_specs, install_specs, package_index};
 use anyhow::{bail, format_err, Context};
 use clap::Parser;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
@@ -308,7 +308,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                 }
             };
 
-            let is_python_script = monotrail::is_python_script(&executable)?;
+            let is_python_script = is_python_script(&executable)?;
             if is_python_script {
                 todo!()
             }

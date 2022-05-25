@@ -1,7 +1,7 @@
 pub use install_location::{InstallLocation, LockedDir};
 use std::io;
 use thiserror::Error;
-pub use wheel::{install_wheel, parse_key_value_file};
+pub use wheel::{install_wheel, parse_key_value_file, MONOTRAIL_SCRIPT_SHEBANG};
 pub use wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
 use zip::result::ZipError;
 

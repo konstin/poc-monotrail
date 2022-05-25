@@ -15,10 +15,12 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::str::FromStr;
 use std::{env, io};
 use tempfile::{tempdir, TempDir};
-use tracing::{debug, span, trace, warn, Level};
+use tracing::{debug, span, warn, Level};
 use walkdir::WalkDir;
 use zip::result::ZipError;
 use zip::ZipArchive;
+
+pub const MONOTRAIL_SCRIPT_SHEBANG: &'static str = "#!/usr/bin/env python";
 
 /// Line in a RECORD file
 /// https://www.python.org/dev/peps/pep-0376/#record
@@ -55,9 +57,9 @@ struct Script {
 /// Wrapper script template function
 ///
 /// https://github.com/pypa/pip/blob/7f8a6844037fb7255cfd0d34ff8e8cf44f2598d4/src/pip/_vendor/distlib/scripts.py#L41-L48
-fn get_script_launcher(module: &str, import_name: &str, python: &Path) -> String {
+fn get_script_launcher(module: &str, import_name: &str, shebang: &str) -> String {
     format!(
-        r##"#!{python}
+        r##"{shebang}
 # -*- coding: utf-8 -*-
 import re
 import sys
@@ -66,7 +68,7 @@ if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
     sys.exit({import_name}())
 "##,
-        python = python.display(),
+        shebang = shebang,
         module = module,
         import_name = import_name
     )
@@ -273,29 +275,34 @@ fn unpack_wheel_files(
     Ok(extracted_paths)
 }
 
+fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
+    if matches!(location, InstallLocation::Venv { .. }) {
+        format!("#!{}", location.get_python().display())
+    } else {
+        // This will use the monotrail binary moonlighting as python. `python` alone doesn't,
+        // we need env to find the python link we put in PATH
+        MONOTRAIL_SCRIPT_SHEBANG.to_string()
+    }
+}
+
 /// Create the wrapper scripts in the bin folder of the venv for launching console scripts
 ///
 /// We also pass venv_base so we can write the same path as pip does
 fn write_script_entrypoints(
     site_packages: &Path,
-    python: &Path,
+    location: &InstallLocation<LockedDir>,
     entrypoints: &[Script],
     record: &mut Vec<RecordEntry>,
-    rewrite_shebang: bool,
 ) -> Result<(), WheelInstallerError> {
     // for monotrail
     fs::create_dir_all(site_packages.join("../../../bin"))?;
-    let python = if rewrite_shebang {
-        python
-    } else {
-        // we inject a fake python (which is actually the monotrail executable) in PATH later which moonlights
-        // as python
-        Path::new("python")
-    };
     for entrypoint in entrypoints {
         let entrypoint_relative = Path::new("../../../bin").join(&entrypoint.script_name);
-        let launcher_python_script =
-            get_script_launcher(&entrypoint.module, &entrypoint.function, python);
+        let launcher_python_script = get_script_launcher(
+            &entrypoint.module,
+            &entrypoint.function,
+            &get_shebang(&location),
+        );
         write_file_recorded(
             site_packages,
             &entrypoint_relative,
@@ -476,7 +483,7 @@ fn bytecode_compile_inner(
 
     // Pass paths newline terminated to compileall
     for path in py_source_paths {
-        trace!("bytecode compiling {}", path.display());
+        debug!("bytecode compiling {}", path.display());
         // There is no OsStr -> Bytes conversion on windows :o
         // https://stackoverflow.com/questions/43083544/how-can-i-convert-osstr-to-u8-vecu8-on-windows
         writeln!(&mut child_stdin, "{}", site_packages.join(path).display())
@@ -552,11 +559,10 @@ fn move_folder_recorded(
 ///
 /// Has to deal with both binaries files (just move) and scripts (rewrite the shebang if applicable)
 fn install_script(
-    venv_base: &Path,
     site_packages: &Path,
     record: &mut [RecordEntry],
     file: DirEntry,
-    rewrite_shebang: bool,
+    location: &InstallLocation<LockedDir>,
 ) -> Result<(), WheelInstallerError> {
     let path = file.path();
     if !path.is_file() {
@@ -577,18 +583,15 @@ fn install_script(
     // > The b'#!pythonw' convention is allowed. b'#!pythonw' indicates a GUI script
     // > instead of a console script.
     //
-    // We do this in venvs as required, but in monotrail mode we keep the original fake shebang
-    // for later launch tricks
+    // We do this in venvs as required, but in monotrail mode we use a fake shebang
+    // (#!/usr/bin/env python) for injection monotrail as python into PATH later
     let placeholder_python = b"#!python";
     // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
     let mut start = Vec::new();
     start.resize(placeholder_python.len(), 0);
     script.read_exact(&mut start)?;
-    let size_and_encoded_hash = if start == placeholder_python && rewrite_shebang {
-        start = format!("#!{}/bin/python", venv_base.canonicalize()?.display())
-            .as_bytes()
-            .to_vec();
-
+    let size_and_encoded_hash = if start == placeholder_python {
+        let start = get_shebang(&location).as_bytes().to_vec();
         let mut target = File::create(site_packages.join(&target_path))?;
         let size_and_encoded_hash = copy_and_hash(&mut start.chain(script), &mut target)?;
         fs::remove_file(&path)?;
@@ -639,11 +642,10 @@ fn install_data(
     site_packages: &Path,
     data_dir: &Path,
     dist_name: &str,
-    python_version: (u8, u8),
+    location: &InstallLocation<LockedDir>,
     console_scripts: &[Script],
     gui_scripts: &[Script],
     record: &mut [RecordEntry],
-    rewrite_shebang: bool,
 ) -> Result<(), WheelInstallerError> {
     for data_entry in fs::read_dir(data_dir)? {
         let data_entry = data_entry?;
@@ -672,7 +674,7 @@ fn install_data(
                         continue;
                     }
 
-                    install_script(venv_base, site_packages, record, file, rewrite_shebang)?;
+                    install_script(site_packages, record, file, &location)?;
                 }
             }
             Some("headers") => {
@@ -680,7 +682,11 @@ fn install_data(
                     .join("include")
                     .join("site")
                     // TODO: Also use just python here in monotrail
-                    .join(format!("python{}.{}", python_version.0, python_version.1))
+                    .join(format!(
+                        "python{}.{}",
+                        location.get_python_version().0,
+                        location.get_python_version().1
+                    ))
                     .join(dist_name);
                 move_folder_recorded(&data_entry.path(), &target_path, site_packages, record)?;
             }
@@ -806,9 +812,9 @@ pub fn parse_key_value_file(
 
 /// Install the given wheel to the given venv
 ///
-/// https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
+/// <https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl>
 ///
-/// Wheel 1.0: https://www.python.org/dev/peps/pep-0427/
+/// Wheel 1.0: <https://www.python.org/dev/peps/pep-0427/>
 pub fn install_wheel(
     location: &InstallLocation<LockedDir>,
     wheel_path: &Path,
@@ -912,22 +918,8 @@ pub fn install_wheel(
 
     debug!(name = name.as_str(), "Writing entrypoints");
     let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir, extras)?;
-    let python = location.get_python();
-    let rewrite_shebang = matches!(location, InstallLocation::Venv { .. });
-    write_script_entrypoints(
-        &site_packages,
-        &python,
-        &console_scripts,
-        &mut record,
-        rewrite_shebang,
-    )?;
-    write_script_entrypoints(
-        &site_packages,
-        &python,
-        &gui_scripts,
-        &mut record,
-        rewrite_shebang,
-    )?;
+    write_script_entrypoints(&site_packages, &location, &console_scripts, &mut record)?;
+    write_script_entrypoints(&site_packages, &location, &gui_scripts, &mut record)?;
 
     let data_dir = site_packages.join(format!("{}-{}.data", escaped_name, version));
     // 2.a Unpacked archive includes distribution-1.0.dist-info/ and (if there is data) distribution-1.0.data/.
@@ -939,20 +931,19 @@ pub fn install_wheel(
             &site_packages,
             &data_dir,
             name,
-            location.get_python_version(),
+            &location,
             &console_scripts,
             &gui_scripts,
             &mut record,
             // For the monotrail install, we want to keep the fake shebang for our own
             // later replacement logic
-            rewrite_shebang,
         )?;
         // 2.c If applicable, update scripts starting with #!python to point to the correct interpreter.
         // Script are unsupported through data
         // 2.e Remove empty distribution-1.0.data directory.
         fs::remove_dir_all(data_dir)?;
     } else {
-        trace!(name = name.as_str(), "No data");
+        debug!(name = name.as_str(), "No data");
     }
 
     // 2.f Compile any installed .py to .pyc. (Uninstallers should be smart enough to remove .pyc even if it is not mentioned in RECORD.)

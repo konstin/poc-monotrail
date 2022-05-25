@@ -10,14 +10,14 @@ use crate::{install_specs, read_poetry_specs};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
-use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os};
+use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, MONOTRAIL_SCRIPT_SHEBANG};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::{env, io};
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 enum LockfileType {
     PyprojectToml,
@@ -249,12 +249,24 @@ pub fn install_requested(
     )?;
 
     installed.extend(installed_done);
+    // Helps debugging
+    installed.sort_by(|left, right| left.name.cmp(&right.name));
 
     let monotrail_location_string = monotrail_root
         .to_str()
         .with_context(|| format!("{} path is cursed", env!("CARGO_PKG_NAME")))?
         .to_string();
     debug!("python extension has {} packages", installed.len());
+    trace!(
+        "Installed Packages:{}",
+        installed
+            .iter()
+            .map(|package| format!(
+                "    {} {} {} {}",
+                package.name, package.python_version, package.unique_version, package.tag
+            ))
+            .fold(String::new(), |acc, value| acc + "\n" + &value)
+    );
     Ok((monotrail_location_string, installed))
 }
 
@@ -553,6 +565,11 @@ pub fn find_scripts(
             );
         }
     }
+    trace!(
+        "Found {} scripts: {:?}",
+        scripts.keys().len(),
+        scripts.keys().into_iter().collect::<Vec<_>>()
+    );
     Ok(scripts)
 }
 
@@ -560,11 +577,10 @@ pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
     // Check whether we're launching a monotrail python script
     let mut executable_file = File::open(&executable)
         .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
-    let placeholder_python = b"#!python";
     // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
     let mut start = Vec::new();
-    start.resize(placeholder_python.len(), 0);
+    start.resize(MONOTRAIL_SCRIPT_SHEBANG.as_bytes().len(), 0);
     executable_file.read_exact(&mut start)?;
-    let is_python_script = start == placeholder_python;
+    let is_python_script = start == MONOTRAIL_SCRIPT_SHEBANG.as_bytes();
     Ok(is_python_script)
 }

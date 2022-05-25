@@ -4,8 +4,8 @@
 //!
 //! just to be clear: the parser below is horrible
 //!
-//! https://peps.python.org/pep-0508/#grammar
-//! https://github.com/pypa/pip/blob/b4d2b0f63f4955c7d6eee2653c6e1fa6fa507c31/src/pip/_vendor/distlib/markers.py
+//! <https://peps.python.org/pep-0508/#grammar>
+//! <https://github.com/pypa/pip/blob/b4d2b0f63f4955c7d6eee2653c6e1fa6fa507c31/src/pip/_vendor/distlib/markers.py>
 
 use crate::PEP508_QUERY_ENV;
 use pep440::Version as Pep440Version;

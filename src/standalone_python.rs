@@ -25,20 +25,6 @@ struct GitHubAsset {
     browser_download_url: String,
 }
 
-fn download_url_from_release(
-    major: u8,
-    minor: u8,
-    latest_release: GitHubRelease,
-) -> Option<String> {
-    let version_re = filename_regex(major, minor);
-    let asset = latest_release.assets.into_iter().find(|asset| {
-        // TODO: Proper name parsing
-        // https://github.com/indygreg/python-build-standalone/issues/127
-        version_re.is_match(&asset.name)
-    })?;
-    Some(asset.browser_download_url)
-}
-
 /// Returns the url of the matching pgo+lto prebuilt python. We first try to find one in the latest
 /// indygreg/python-build-standalone, then fall back to a known good release in case a more recent
 /// release broke compatibility
@@ -47,17 +33,35 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
         .call()?
         .into_json()?;
 
-    if let Some(url) = download_url_from_release(major, minor, latest_release) {
-        return Ok(url);
+    let version_re = filename_regex(major, minor);
+    let asset = latest_release.assets.into_iter().find(|asset| {
+        // TODO: Proper name parsing
+        // https://github.com/indygreg/python-build-standalone/issues/127
+        version_re.is_match(&asset.name)
+    });
+    if let Some(asset) = asset {
+        return Ok(asset.browser_download_url);
     }
 
     let latest_release: GitHubRelease = ureq::get(PYTHON_STANDALONE_KNOWN_GOOD_RELEASE)
         .call()?
         .into_json()?;
 
-    let url = download_url_from_release(major, minor, latest_release)
-        .context("Failed to find a matching python-build-standalone download")?;
-    Ok(url)
+    let asset = latest_release
+        .assets
+        .into_iter()
+        .find(|asset| {
+            // TODO: Proper name parsing
+            // https://github.com/indygreg/python-build-standalone/issues/127
+            version_re.is_match(&asset.name)
+        })
+        .with_context(|| {
+            format!(
+                "Failed to find a matching python-build-standalone download: {}",
+                version_re
+            )
+        })?;
+    Ok(asset.browser_download_url)
 }
 
 /// Download the prebuilt python .tar.zstd and unpacks it into the the target dir
@@ -131,9 +135,10 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
     let target_triple = if target_triple.starts_with("x86_64-unknown-linux") {
         cpufeatures::new!(cpu_v3, "avx2");
         cpufeatures::new!(cpu_v2, "sse4.2");
-        if cpu_v3::init().get() {
+        // For python3.8 there's only the base version
+        if cpu_v3::init().get() && minor > 8 {
             target_triple.replace("x86_64", "x86_64_v3")
-        } else if cpu_v2::init().get() {
+        } else if cpu_v2::init().get() && minor > 8 {
             target_triple.replace("x86_64", "x86_64_v2")
         } else {
             target_triple
@@ -155,26 +160,36 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
 
 #[cfg(test)]
 mod test {
-    use crate::standalone_python::download_url_from_release;
+    use crate::standalone_python::{filename_regex, GitHubRelease};
     use std::fs;
 
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn test_download_url_from_release_20220502() {
-        let data_20220502 = serde_json::from_str(
+        let data_20220502: GitHubRelease = serde_json::from_str(
             &fs::read_to_string("test-data/standalone_python_github_release.json").unwrap(),
         )
         .unwrap();
-        let url = download_url_from_release(3, 9, data_20220502).unwrap();
-        assert_eq!(url, "https://github.com/indygreg/python-build-standalone/releases/download/20220502/cpython-3.9.12%2B20220502-x86_64_v3-unknown-linux-gnu-pgo%2Blto-full.tar.zst")
+        let version_re = filename_regex(3, 9);
+        let asset = data_20220502
+            .assets
+            .into_iter()
+            .find(|asset| version_re.is_match(&asset.name))
+            .unwrap();
+        assert_eq!(asset.browser_download_url, "https://github.com/indygreg/python-build-standalone/releases/download/20220502/cpython-3.9.12%2B20220502-x86_64_v3-unknown-linux-gnu-pgo%2Blto-full.tar.zst")
     }
 
     #[test]
     fn test_download_url_from_release_20220502_any() {
-        let data_20220502 = serde_json::from_str(
+        let data_20220502: GitHubRelease = serde_json::from_str(
             &fs::read_to_string("test-data/standalone_python_github_release.json").unwrap(),
         )
         .unwrap();
-        assert!(download_url_from_release(3, 9, data_20220502).is_some());
+        let version_re = filename_regex(3, 9);
+        data_20220502
+            .assets
+            .into_iter()
+            .find(|asset| version_re.is_match(&asset.name))
+            .unwrap();
     }
 }
