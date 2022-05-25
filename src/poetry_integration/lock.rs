@@ -64,7 +64,10 @@ pub fn poetry_resolve(
     let pyproject_toml_content =
         dummy_poetry_pyproject_toml(dependencies, python_context.python_version);
     let pyproject_toml_path = resolve_dir.path().join("pyproject.toml");
-    fs::write(&pyproject_toml_path, toml::to_vec(&pyproject_toml_content)?)?;
+    fs::write(
+        &pyproject_toml_path,
+        toml::to_vec(&pyproject_toml_content).context("Failed to write pyproject.toml")?,
+    )?;
     // If we have a previous lockfile, we want to reuse it for two reasons:
     // * if there wasn't any change in requirements, we don't need to do any resolution
     // * if requirements changed, we want to maximize the chance of not changing versions
@@ -92,7 +95,8 @@ pub fn poetry_resolve(
         include_str!("poetry_boostrap_lock/pyproject.toml"),
     )?;
 
-    let (poetry_toml, poetry_lock, _lockfile) = read_toml_files(&poetry_boostrap_lock)?;
+    let (poetry_toml, poetry_lock, _lockfile) =
+        read_toml_files(&poetry_boostrap_lock).context("Failed to read toml files")?;
     let specs = read_poetry_specs(
         poetry_toml,
         poetry_lock,

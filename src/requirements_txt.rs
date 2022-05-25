@@ -1,38 +1,82 @@
-use regex::Regex;
+use crate::poetry_integration::poetry_toml;
+use anyhow::{bail, format_err, Context};
+use requirements::enums::Comparison;
+use std::collections::HashMap;
+use std::path::Path;
 
 /// Reads a simple requirements.txt format (only name and optionally version),
 /// returns a spec with name and optionally version
 pub fn parse_requirements_txt(
-    requirements_txt: &str,
-) -> Result<Vec<(String, Option<String>)>, String> {
-    let re = Regex::new(r"^(?P<name>[\w\d_\-]+)(\s*==\s*(?P<version>[\d\w.\-]+))?$").unwrap();
-    requirements_txt
-        .lines()
-        .enumerate()
-        .map(|(pos, line)| (pos, line.trim()))
-        .filter(|(_, line)| !line.is_empty())
-        .map(|(pos, line)| match re.captures(line) {
-            None => {
-                // +1 to correct for zero indexing
-                return Err(format!(
-                    "invalid version specification in line {}: '{}'",
-                    pos + 1,
-                    line
-                ));
-            }
-            Some(captures) => Ok((
-                captures.name("name").unwrap().as_str().to_string(),
-                captures
-                    .name("version")
-                    .map(|version| version.as_str().to_string()),
-            )),
-        })
-        .collect()
+    requirements: &str,
+    // as debug info
+    requirements_txt: &Path,
+) -> anyhow::Result<HashMap<String, poetry_toml::Dependency>> {
+    let requirements = requirements::parse_str(&requirements)
+        .map_err(|err| format_err!("Failed to parse {}: {}", requirements_txt.display(), err))?;
+
+    let mut poetry_requirements: HashMap<String, poetry_toml::Dependency> = HashMap::new();
+    for requirement in requirements {
+        if requirement.vcs.is_some()
+            || requirement.uri.is_some()
+            || requirement.subdirectory.is_some()
+            || requirement.editable
+            || !requirement.extra_index_url.is_empty()
+        {
+            bail!(
+                "Unsupported feature in '{}' of {}",
+                requirement.line,
+                requirements_txt.display()
+            );
+        }
+        assert!(requirement.specifier);
+        let git: Option<String> = if let Some(_) = requirement.vcs {
+            bail!("Not implemented")
+        } else {
+            None
+        };
+
+        let version = if !requirement.specs.is_empty() {
+            let specs = requirement
+                .specs
+                .iter()
+                .map(|(comparison, version)| {
+                    if comparison == &Comparison::Equal {
+                        version.to_string()
+                    } else {
+                        format!("{}{}", comparison, version)
+                    }
+                })
+                .collect::<Vec<String>>();
+            Some(specs.join(","))
+        } else {
+            None
+        };
+
+        let dep = poetry_toml::Dependency::Expanded {
+            version,
+            optional: Some(false),
+            extras: Some(requirement.extras.clone()),
+            git,
+            branch: requirement.revision.clone(),
+        };
+
+        let name = requirement.name.with_context(|| {
+            format!(
+                "requirement needs a name in '{}' of {}",
+                requirement.line,
+                requirements_txt.display()
+            )
+        })?;
+        poetry_requirements.insert(name, dep);
+    }
+    Ok(poetry_requirements)
 }
 
 #[cfg(test)]
 mod test {
     use crate::requirements_txt::parse_requirements_txt;
+    use std::collections::BTreeMap;
+    use std::path::Path;
 
     use indoc::indoc;
 
@@ -46,27 +90,26 @@ mod test {
 
         "};
 
-        let expected = vec![
-            ("inflection".to_string(), Some("0.5.1".to_string())),
-            ("upsidedown".to_string(), Some("0.4".to_string())),
-            ("numpy".to_string(), None),
-        ];
-
-        assert_eq!(parse_requirements_txt(valid).unwrap(), expected);
-    }
-
-    #[test]
-    fn test_requirements_txt_error() {
-        let invalid = indoc! {"
-
-            inflection==0.5.1
-            upsidedown=0.4
-
+        let expected = indoc! {"
+            [inflection]
+            version = \"0.5.1\"
+            optional = false
+            extras = []
+            
+            [numpy]
+            optional = false
+            extras = []
+            
+            [upsidedown]
+            version = \"0.4\"
+            optional = false
+            extras = []
         "};
 
-        assert_eq!(
-            parse_requirements_txt(invalid).unwrap_err(),
-            "invalid version specification in line 3: 'upsidedown=0.4'"
-        );
+        let reqs = parse_requirements_txt(valid, Path::new("")).unwrap();
+        // sort lines
+        let reqs = BTreeMap::from_iter(&reqs);
+        let poetry_toml = toml::to_string(&reqs).unwrap();
+        assert_eq!(poetry_toml, expected);
     }
 }

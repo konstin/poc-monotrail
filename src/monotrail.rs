@@ -2,7 +2,6 @@ use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::package_index::cache_dir;
 use crate::poetry_integration::lock::poetry_resolve;
-use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
@@ -453,26 +452,8 @@ pub fn specs_from_requirements_txt_resolved(
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, String)> {
-    let requirements = fs::read_to_string(&requirements_txt)?;
-
-    let requirements = parse_requirements_txt(&requirements).map_err(|err| {
-        anyhow::Error::msg(err).context(format!(
-            "requirements specification is invalid: {}",
-            requirements_txt.display()
-        ))
-    })?;
-    let requirements = requirements
-        .into_iter()
-        .map(|(name, version)| {
-            (
-                name,
-                poetry_toml::Dependency::Compact(
-                    // If no version is given, we'll let poetry pick one with `*`
-                    version.as_deref().unwrap_or("*").to_string(),
-                ),
-            )
-        })
-        .collect();
+    let requirements =
+        parse_requirements_txt(&fs::read_to_string(&requirements_txt)?, &requirements_txt)?;
     // We don't know whether the requirements.txt is from `pip freeze` or just a list of
     // version, so we let it go through poetry resolve either way. For a frozen file
     // there will just be no change
