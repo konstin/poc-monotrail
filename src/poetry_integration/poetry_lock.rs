@@ -23,6 +23,8 @@ pub struct Package {
     pub python_versions: String,
     #[serde(default)]
     pub extras: HashMap<String, Vec<String>>,
+    // https://github.com/alexcrichton/toml-rs/issues/142#issuecomment-279009115
+    #[serde(serialize_with = "toml::ser::tables_last")]
     pub dependencies: Option<HashMap<String, Dependency>>,
     pub source: Option<Source>,
 }

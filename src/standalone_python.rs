@@ -117,7 +117,7 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
     let pep508_env = Pep508Environment::from_python(&python_binary);
     let python_context = PythonContext {
         sys_executable: python_binary,
-        python_version,
+        version: python_version,
         pep508_env,
         launch_type: LaunchType::Binary,
     };

@@ -210,12 +210,14 @@ pub fn run_python_args(
 
     let exit_code = inject_and_run_python(
         &python_home,
-        python_context.python_version,
+        python_context.version,
         &args,
         &serde_json::to_string(&finder_data).unwrap(),
     )
     .context("inject and run failed")?;
-    debug!("Python done: {:?}", exit_code);
+    if exit_code != 0 {
+        debug!("Python didn't exit with code 0: {}", exit_code);
+    }
     Ok(exit_code as i32)
 }
 

@@ -34,7 +34,7 @@ pub enum LaunchType {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PythonContext {
     pub sys_executable: PathBuf,
-    pub python_version: (u8, u8),
+    pub version: (u8, u8),
     pub pep508_env: Pep508Environment,
     pub launch_type: LaunchType,
 }
@@ -457,11 +457,11 @@ pub fn specs_from_requirements_txt_resolved(
     // We don't know whether the requirements.txt is from `pip freeze` or just a list of
     // version, so we let it go through poetry resolve either way. For a frozen file
     // there will just be no change
-    let (poetry_toml, poetry_lock, lockfile) =
+    let (poetry_section, poetry_lock, lockfile) =
         poetry_resolve(requirements, lockfile, python_context)
             .context("Failed to resolve dependencies with poetry")?;
     let specs = read_poetry_specs(
-        poetry_toml,
+        &poetry_section,
         poetry_lock,
         false,
         extras,
@@ -481,12 +481,12 @@ pub fn install_specs_to_finder(
     let (sprawl_root, sprawl_packages) = install_requested(
         specs,
         &python_context.sys_executable,
-        python_context.python_version,
+        python_context.version,
     )?;
     let (spec_paths, pth_files) = spec_paths(
         sprawl_root.as_ref(),
         &sprawl_packages,
-        python_context.python_version,
+        python_context.version,
     )?;
 
     // ugly hack: jupyter otherwise tries to locate its kernel.json relative to the python

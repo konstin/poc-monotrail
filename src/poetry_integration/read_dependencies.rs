@@ -5,7 +5,8 @@ use crate::markers::Pep508Environment;
 use crate::monotrail::{specs_from_requirements_txt_resolved, PythonContext};
 use crate::package_index::cache_dir;
 use crate::poetry_integration::poetry_lock::PoetryLock;
-use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
+use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection};
+use crate::poetry_integration::run::poetry_run;
 use crate::poetry_integration::{poetry_lock, poetry_toml};
 use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use anyhow::{bail, Context};
@@ -15,6 +16,7 @@ use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use tracing::debug;
 
 /// Resolves a single package's filename and url inside a poetry lockfile
 ///
@@ -157,19 +159,18 @@ fn resolution_to_specs(
 /// Get the root deps from pyproject.toml, already filtered by activated extras.
 /// The is no root package in poetry.lock that we could use so we also need to read pyproject.toml
 fn get_root_info(
-    pyproject_toml: &PoetryPyprojectToml,
+    poetry_section: &PoetrySection,
     no_dev: bool,
     extras: &[String],
 ) -> anyhow::Result<HashMap<String, poetry_toml::Dependency>> {
-    let poetry_section = pyproject_toml.tool.poetry.clone();
-
     let root_deps = if no_dev {
         poetry_section.dependencies.clone()
     } else {
         poetry_section
             .dependencies
+            .clone()
             .into_iter()
-            .chain(poetry_section.dev_dependencies)
+            .chain(poetry_section.dev_dependencies.clone())
             .collect()
     };
 
@@ -215,18 +216,22 @@ fn get_packages_from_lockfile(
 }
 
 /// Reads pyproject.toml and poetry.lock, also returns poetry.lock as string
-pub fn read_toml_files(dir: &Path) -> anyhow::Result<(PoetryPyprojectToml, PoetryLock, String)> {
+pub fn read_toml_files(dir: &Path) -> anyhow::Result<(PoetrySection, PoetryLock, String)> {
     let path = dir.join("pyproject.toml").canonicalize()?;
-    let poetry_toml = toml::from_str(&fs::read_to_string(&path)?)
+    let poetry_toml: PoetryPyprojectToml = toml::from_str(&fs::read_to_string(&path)?)
         .with_context(|| format!("Invalid pyproject.toml in {}", path.display()))?;
+    let poetry_section = poetry_toml
+        .tool
+        .and_then(|tool| tool.poetry)
+        .with_context(|| format!("[tool.poetry] section missing in {}", path.display()))?;
     let lockfile = fs::read_to_string(dir.join("poetry.lock"))?;
-    let poetry_lock = toml::from_str(&lockfile).context("Invalid pyproject.toml")?;
-    Ok((poetry_toml, poetry_lock, lockfile))
+    let poetry_lock = toml::from_str(&lockfile).context("Invalid poetry.lock")?;
+    Ok((poetry_section, poetry_lock, lockfile))
 }
 
 /// Parses pyproject.toml and poetry.lock and returns a list of packages to install
 pub fn read_poetry_specs(
-    pyproject_toml: PoetryPyprojectToml,
+    poetry_section: &PoetrySection,
     poetry_lock: PoetryLock,
     no_dev: bool,
     extras: &[String],
@@ -234,7 +239,7 @@ pub fn read_poetry_specs(
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     // The deps in pyproject.toml which we need to read explicitly since they aren't marked
     // poetry.lock (raw names)
-    let root_deps = get_root_info(&pyproject_toml, no_dev, extras)?;
+    let root_deps = get_root_info(&poetry_section, no_dev, extras)?;
     // All the details info from poetry.lock, indexed by normalized name
     let packages = get_packages_from_lockfile(&poetry_lock)?;
 
@@ -319,28 +324,64 @@ pub fn specs_from_git(
         .join(format!("{}-{}", url, revision));
     repo_at_revision(&url, &revision, &repo_dir).context("Failed to checkout repository")?;
 
-    let (specs, lockfile) = if repo_dir.join("poetry.lock").is_file() {
-        let (poetry_toml, poetry_lock, lockfile) = read_toml_files(&repo_dir)
+    if repo_dir.join("poetry.lock").is_file() {
+        let (poetry_section, poetry_lock, lockfile) = read_toml_files(&repo_dir)
             .context("Failed to read pyproject.toml/poetry.lock from repository root")?;
         let specs = read_poetry_specs(
-            poetry_toml,
+            &poetry_section,
             poetry_lock,
             true,
             extras,
             &python_context.pep508_env,
         )?;
-        (specs, lockfile)
-    } else if repo_dir.join("requirements.txt").is_file() {
-        specs_from_requirements_txt_resolved(
+        return Ok((specs, repo_dir, lockfile));
+    } else if repo_dir.join("pyproject.toml").is_file() {
+        // We have a pyproject.toml, but no poetry.lock. Let's check if we have a poetry dependency
+        // specification, if so, write it to poetry.lock, otherwise ignore
+        let path = repo_dir.join("pyproject.toml");
+        let poetry_toml: PoetryPyprojectToml = toml::from_str(&fs::read_to_string(&path)?)
+            .with_context(|| format!("Invalid pyproject.toml in {}", path.display()))?;
+        if let Some(_poetry_section) = poetry_toml.tool.and_then(|tool| tool.poetry) {
+            debug!(
+                "Found {} but no matching lockfile, generating one",
+                repo_dir.join("pyproject.toml").display()
+            );
+            let python_version =
+                format!("{}.{}", python_context.version.0, python_context.version.1);
+            poetry_run(
+                &["lock".to_string(), "--no-update".to_string()],
+                Some(&python_version),
+            )
+            .context("Failed to run `poetry lock`")?;
+
+            let (poetry_section, poetry_lock, lockfile) = read_toml_files(&repo_dir)
+                .context("Failed to read pyproject.toml/poetry.lock from repository root after `poetry lock --no-update`")?;
+            let specs = read_poetry_specs(
+                &poetry_section,
+                poetry_lock,
+                true,
+                extras,
+                &python_context.pep508_env,
+            )?;
+            return Ok((specs, repo_dir, lockfile));
+        } else {
+            debug!(
+                "Found {} but [tool.poetry] section, ignoring",
+                repo_dir.join("pyproject.toml").display()
+            );
+        }
+    }
+
+    if repo_dir.join("requirements.txt").is_file() {
+        let (specs, lockfile) = specs_from_requirements_txt_resolved(
             &repo_dir.join("requirements.txt"),
             extras,
             lockfile,
             python_context,
-        )?
-    } else {
-        bail!("Neither poetry.lock nor requirements.txt found");
-    };
-    Ok((specs, repo_dir, lockfile))
+        )?;
+        return Ok((specs, repo_dir, lockfile));
+    }
+    bail!("Neither poetry.lock nor pyproject.toml with [tool.poetry] section nor requirements.txt found");
 }
 
 #[cfg(test)]
@@ -408,9 +449,10 @@ mod test {
         ];
 
         for (toml_dir, no_dev, extras, specs_count) in expected {
-            let (poetry_toml, poetry_lock, _lockfile) = read_toml_files(toml_dir).unwrap();
+            let (poetry_section, poetry_lock, _lockfile) = read_toml_files(toml_dir).unwrap();
             let specs =
-                read_poetry_specs(poetry_toml, poetry_lock, no_dev, &extras, &pep508_env).unwrap();
+                read_poetry_specs(&poetry_section, poetry_lock, no_dev, &extras, &pep508_env)
+                    .unwrap();
             assert_eq!(specs.len(), specs_count);
         }
     }
@@ -422,8 +464,8 @@ pub fn poetry_spec_from_dir(
     extras: &[String],
     pep508_env: &Pep508Environment,
 ) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>, String)> {
-    let (poetry_toml, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
-    let scripts = poetry_toml.tool.poetry.scripts.clone().unwrap_or_default();
-    let specs = read_poetry_specs(poetry_toml, poetry_lock, false, extras, pep508_env)?;
+    let (poetry_section, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
+    let scripts = poetry_section.scripts.clone().unwrap_or_default();
+    let specs = read_poetry_specs(&poetry_section, poetry_lock, false, extras, pep508_env)?;
     Ok((specs, scripts, lockfile))
 }

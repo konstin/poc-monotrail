@@ -29,7 +29,7 @@ impl Default for BuildSystem {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct PoetryPyprojectToml {
-    pub tool: ToolSection,
+    pub tool: Option<ToolSection>,
     pub build_system: Option<BuildSystem>,
 }
 
@@ -39,7 +39,7 @@ pub struct PoetryPyprojectToml {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct ToolSection {
-    pub poetry: PoetrySection,
+    pub poetry: Option<PoetrySection>,
 }
 
 /// ```toml
@@ -90,7 +90,10 @@ pub struct PoetrySection {
     pub version: String,
     pub description: String,
     pub authors: Vec<String>,
+    // https://github.com/alexcrichton/toml-rs/issues/142#issuecomment-279009115
+    #[serde(serialize_with = "toml::ser::tables_last")]
     pub dependencies: HashMap<String, Dependency>,
+    #[serde(serialize_with = "toml::ser::tables_last")]
     pub dev_dependencies: HashMap<String, Dependency>,
     pub extras: Option<HashMap<String, Vec<String>>>,
     pub scripts: Option<HashMap<String, String>>,

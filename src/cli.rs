@@ -138,9 +138,9 @@ fn install_location_specs(
     )?;
     // TODO: don't parse this from a subprocess but do it like maturin
     let pep508_env = Pep508Environment::from_python(Path::new("python"));
-    let (poetry_toml, poetry_lock, _lockfile) = read_toml_files(&env::current_dir()?)?;
+    let (poetry_section, poetry_lock, _lockfile) = read_toml_files(&env::current_dir()?)?;
     let specs = read_poetry_specs(
-        poetry_toml,
+        &poetry_section,
         poetry_lock,
         options.no_dev,
         &options.extras,

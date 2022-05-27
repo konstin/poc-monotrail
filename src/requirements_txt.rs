@@ -4,8 +4,7 @@ use requirements::enums::Comparison;
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Reads a simple requirements.txt format (only name and optionally version),
-/// returns a spec with name and optionally version
+/// Reads requirements.txt badly with lots of features unsupported and others wrongly implemented
 pub fn parse_requirements_txt(
     requirements: &str,
     // as debug info
@@ -48,8 +47,10 @@ pub fn parse_requirements_txt(
                 })
                 .collect::<Vec<String>>();
             Some(specs.join(","))
-        } else {
+        } else if git.is_some() {
             None
+        } else {
+            Some("*".to_string())
         };
 
         let dep = poetry_toml::Dependency::Expanded {
@@ -97,6 +98,7 @@ mod test {
             extras = []
             
             [numpy]
+            version = \"*\"
             optional = false
             extras = []
             

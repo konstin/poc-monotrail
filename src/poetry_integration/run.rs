@@ -18,14 +18,15 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
     let lockfile = include_str!("poetry_boostrap_lock/poetry.lock");
     let poetry_lock: PoetryLock = toml::from_str(lockfile).unwrap();
 
-    let scripts = poetry_toml.tool.poetry.scripts.clone().unwrap_or_default();
+    let poetry_section = poetry_toml.tool.unwrap().poetry.unwrap();
     let specs = read_poetry_specs(
-        poetry_toml,
+        &poetry_section,
         poetry_lock,
         true,
         &[],
         &python_context.pep508_env,
     )?;
+    let scripts = poetry_section.scripts.clone().unwrap_or_default();
 
     let finder_data =
         install_specs_to_finder(&specs, scripts, lockfile.to_string(), None, &python_context)

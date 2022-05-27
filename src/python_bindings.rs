@@ -45,7 +45,7 @@ fn get_python_context(py: Python) -> PyResult<PythonContext> {
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
     let python_context = PythonContext {
         sys_executable: PathBuf::from(sys_executable),
-        python_version: (py.version_info().major, py.version_info().minor),
+        version: (py.version_info().major, py.version_info().minor),
         pep508_env: Pep508Environment::from_json_str(&get_pep508_env(py)?),
         launch_type: LaunchType::PythonBindings,
     };
@@ -91,11 +91,11 @@ pub fn monotrail_from_requested(
     let python_context = get_python_context(py)?;
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
-    let (poetry_toml, poetry_lock, lockfile) =
+    let (poetry_section, poetry_lock, lockfile) =
         poetry_resolve(requested, lockfile.as_deref(), &python_context)
             .context("Failed to resolve requested dependencies through poetry")
             .map_err(format_monotrail_error)?;
-    let specs = read_poetry_specs(poetry_toml, poetry_lock, false, &[], &pep508_env)
+    let specs = read_poetry_specs(&poetry_section, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
     install_specs_to_finder(&specs, HashMap::new(), lockfile, None, &python_context)

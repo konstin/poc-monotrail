@@ -4,7 +4,7 @@ use crate::monotrail::{install_requested, LaunchType, PythonContext};
 use crate::package_index::cache_dir;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml;
-use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
+use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection};
 use crate::poetry_integration::read_dependencies::read_toml_files;
 use crate::read_poetry_specs;
 use anyhow::{bail, Context};
@@ -35,8 +35,8 @@ fn dummy_poetry_pyproject_toml(
         )),
     );
     PoetryPyprojectToml {
-        tool: poetry_toml::ToolSection {
-            poetry: poetry_toml::PoetrySection {
+        tool: Some(poetry_toml::ToolSection {
+            poetry: Some(PoetrySection {
                 name: "monotrail_dummy_project_for_locking".to_string(),
                 version: "1.0.0".to_string(),
                 description: "monotrail generated this dummy pyproject.toml to call poetry and let it do the dependency resolution".to_string(),
@@ -45,8 +45,8 @@ fn dummy_poetry_pyproject_toml(
                 dev_dependencies: HashMap::new(),
                 extras: Some(HashMap::new()),
                 scripts: None,
-            },
-        },
+            }),
+        }),
         build_system: Default::default()
     }
 }
@@ -58,11 +58,10 @@ pub fn poetry_resolve(
     dependencies: HashMap<String, poetry_toml::Dependency>,
     lockfile: Option<&str>,
     python_context: &PythonContext,
-) -> anyhow::Result<(PoetryPyprojectToml, PoetryLock, String)> {
+) -> anyhow::Result<(PoetrySection, PoetryLock, String)> {
     // Write a dummy poetry pyproject.toml with the requested dependencies
     let resolve_dir = tempdir()?;
-    let pyproject_toml_content =
-        dummy_poetry_pyproject_toml(dependencies, python_context.python_version);
+    let pyproject_toml_content = dummy_poetry_pyproject_toml(dependencies, python_context.version);
     let pyproject_toml_path = resolve_dir.path().join("pyproject.toml");
     fs::write(
         &pyproject_toml_path,
@@ -95,10 +94,10 @@ pub fn poetry_resolve(
         include_str!("poetry_boostrap_lock/pyproject.toml"),
     )?;
 
-    let (poetry_toml, poetry_lock, _lockfile) =
+    let (poetry_section, poetry_lock, _lockfile) =
         read_toml_files(&poetry_boostrap_lock).context("Failed to read toml files")?;
     let specs = read_poetry_specs(
-        poetry_toml,
+        &poetry_section,
         poetry_lock,
         false,
         &[],
@@ -107,7 +106,7 @@ pub fn poetry_resolve(
     install_requested(
         &specs,
         &python_context.sys_executable,
-        python_context.python_version,
+        python_context.version,
     )
     .context("Failed to bootstrap poetry")?;
     drop(bootstrapping_span);
@@ -117,10 +116,8 @@ pub fn poetry_resolve(
     let start = Instant::now();
     let result = match python_context.launch_type {
         LaunchType::Binary => {
-            let plus_version = format!(
-                "+{}.{}",
-                python_context.python_version.0, python_context.python_version.1
-            );
+            let plus_version =
+                format!("+{}.{}", python_context.version.0, python_context.version.1);
             // First argument must always be the program itself
             Command::new(env::current_exe()?)
                 .args(&["poetry", &plus_version, "lock", "--no-update"])
@@ -182,5 +179,6 @@ pub fn poetry_resolve(
     // read poetry lock with the dependencies resolved by poetry
     let poetry_lock = toml::from_str(&fs::read_to_string(resolve_dir.path().join("poetry.lock"))?)?;
 
-    Ok((pyproject_toml_content, poetry_lock, lockfile))
+    let poetry_section = pyproject_toml_content.tool.unwrap().poetry.unwrap();
+    Ok((poetry_section, poetry_lock, lockfile))
 }
