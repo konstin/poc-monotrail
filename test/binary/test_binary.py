@@ -62,3 +62,31 @@ def test_jupyter(version, pytestconfig, tmp_path):
         text=True,
     )
     assert output.splitlines()[-1] == version
+
+
+def test_tox(pytestconfig):
+    """Run the same command across multiple python versions"""
+    data_science_project = pytestconfig.rootpath.joinpath("data_science_project")
+    command = [
+        get_bin(),
+        "run",
+        "-p",
+        "3.8",
+        "-p",
+        "3.9",
+        "-p",
+        "3.10",
+        "python",
+        "numpy_version.py",
+    ]
+    output = subprocess.check_output(
+        command,
+        cwd=data_science_project,
+        text=True,
+    )
+    hellos = list(filter(lambda line: line.startswith("hi from"), output.splitlines()))
+    assert hellos == [
+        "hi from python 3.8 and numpy 1.22.3",
+        "hi from python 3.9 and numpy 1.22.3",
+        "hi from python 3.10 and numpy 1.22.3",
+    ]

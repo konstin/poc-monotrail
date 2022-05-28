@@ -1,10 +1,13 @@
+"""
+The major missing point is setting up the execve environment
+"""
+
 import importlib
 import os
 import runpy
 import sys
-from pathlib import Path
 
-from .monotrail import monotrail_from_args, project_name
+from .monotrail import monotrail_from_args, project_name, monotrail_find_scripts
 from .monotrail_finder import MonotrailFinder
 
 
@@ -18,6 +21,7 @@ def main():
     # Install all required packages and get their location (in rust)
     finder_data = monotrail_from_args([])
 
+    # Search poetry scripts
     if script_name in finder_data.scripts:
         # Otherwise, imports from the current projects won't work
         if f"{project_name.upper()}_CWD" in os.environ:
@@ -37,16 +41,9 @@ def main():
         # it's required to be a callable module if no function name is provided, otherwise we error
         sys.exit(obj())
 
-    # Find the actual location of the entrypoint
-    for package in finder_data.sprawl_packages:
-        script_path = (
-            Path(package.monotrail_location(finder_data.sprawl_root))
-            .joinpath("bin")
-            .joinpath(script_name)
-        )
-        if script_path.is_file():
-            break
-    else:
+    scripts = monotrail_find_scripts(finder_data.sprawl_root, finder_data.sprawl_packages)
+    script_path = scripts.get(script_name)
+    if not script_path:
         print(f"Couldn't find '{script_name}' in installed packages", file=sys.stderr)
         sys.exit(1)
 
@@ -58,12 +55,15 @@ def main():
     #
     # > The b'#!pythonw' convention is allowed. b'#!pythonw' indicates a GUI script
     # > instead of a console script.
-    placeholder_python = b"#!python"
+    #
+    # We do this in venvs as required, but in monotrail mode we use a fake shebang
+    # (#!/usr/bin/env python) for injection monotrail as python into PATH later
+    placeholder_python = b"#!/usr/bin/env python"
     with open(script_path, "rb") as file:
         shebang = file.read(len(placeholder_python))
 
     # sys.argv[0] must be the full path to the current script
-    sys.argv = [str(script_path.absolute())] + sys.argv[2:]
+    sys.argv = [script_path] + sys.argv[2:]
     if shebang == placeholder_python:
         # Case 1: it's a python script
         # prepare execution environment

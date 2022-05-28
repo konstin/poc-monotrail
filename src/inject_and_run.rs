@@ -239,7 +239,7 @@ pub fn determine_python_version(
         .transpose()
         .with_context(|| format!("Couldn't parse {}", env_var))?;
     trace!(
-        "python versions: as argument: {:?}, with plus {:?}, with {} {:?}",
+        "python versions: as argument: {:?}, with plus: {:?}, with {}: {:?}",
         python_version_plus,
         python_version_arg,
         env_var,
@@ -252,7 +252,7 @@ pub fn determine_python_version(
         (None, None, Some(python_version_env)) => python_version_env,
         (python_version_plus, python_version_arg, python_version_env) => {
             bail!(
-                "Conflicting python versions: as argument {:?}, with plus {:?}, with {} {:?}",
+                "Conflicting python versions: as argument {:?}, with plus: {:?}, with {}: {:?}",
                 python_version_plus,
                 python_version_arg,
                 env_var,
@@ -315,7 +315,6 @@ pub fn prepare_execve_environment(
         }
     }
 
-    // TODO
     #[cfg(unix)]
     {
         // We need to allow execve & friends with python scripts, because that's how e.g. jupyter

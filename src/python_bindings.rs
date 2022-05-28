@@ -6,7 +6,7 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{
-    get_specs, install_specs_to_finder, spec_paths, FinderData, LaunchType, PythonContext,
+    self, get_specs, install_specs_to_finder, spec_paths, FinderData, LaunchType, PythonContext,
 };
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
@@ -168,6 +168,15 @@ pub fn monotrail_spec_paths(
     Ok((modules, pth_files))
 }
 
+/// Searches all the bin dirs for scripts
+#[pyfunction]
+pub fn monotrail_find_scripts(
+    sprawl_root: PathBuf,
+    sprawl_packages: Vec<InstalledPackage>,
+) -> PyResult<HashMap<String, PathBuf>> {
+    monotrail::find_scripts(&sprawl_packages, &sprawl_root).map_err(format_monotrail_error)
+}
+
 fn parse_extras() -> anyhow::Result<Vec<String>> {
     let extras_env_var = format!("{}_EXTRAS", env!("CARGO_PKG_NAME").to_uppercase());
     let extras = if let Some(extras) = env::var_os(&extras_env_var) {
@@ -212,6 +221,7 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(monotrail_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_from_git, m)?)?;
     m.add_function(wrap_pyfunction!(monotrail_spec_paths, m)?)?;
+    m.add_function(wrap_pyfunction!(monotrail_find_scripts, m)?)?;
     m.add("project_name", env!("CARGO_PKG_NAME"))?;
     m.add_class::<InstalledPackage>()?;
     m.add_class::<FinderData>()?;

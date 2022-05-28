@@ -69,6 +69,12 @@ monotrail.interactive(
 )
 ```
 
+As tox replacement:
+
+```shell
+monotrail run -p 3.8 -p 3.9 -p 3.10 script pytest
+```
+
 Setting `RUST_LOG=debug` will give you details to track down bugs.
 
 ## Background

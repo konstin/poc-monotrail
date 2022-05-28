@@ -43,3 +43,6 @@ def monotrail_from_git(
 def monotrail_spec_paths(
     sprawl_root: str, sprawl_packages: List[InstalledPackage]
 ) -> Tuple[Dict[str, Tuple[str, List[str]]], List[str]]: ...
+def monotrail_find_scripts(
+    sprawl_root: str, sprawl_packages: List[InstalledPackage]
+) -> Dict[str, str]: ...
