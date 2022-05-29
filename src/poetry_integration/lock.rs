@@ -1,27 +1,28 @@
 //! calls to poetry to resolve a set of requirements
 
+use crate::cache_dir;
 use crate::monotrail::{install_requested, LaunchType, PythonContext};
-use crate::package_index::cache_dir;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection};
 use crate::poetry_integration::read_dependencies::read_toml_files;
 use crate::read_poetry_specs;
-use anyhow::{bail, Context};
+use anyhow::{bail, format_err, Context};
 use fs_err as fs;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::default::Default;
 use std::process::Command;
 use std::time::Instant;
 use std::{env, io};
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 use tracing::{debug, span, Level};
 
 /// Minimal dummy pyproject.toml with the user requested deps for poetry to resolve
-fn dummy_poetry_pyproject_toml(
-    mut dependencies: HashMap<String, poetry_toml::Dependency>,
+pub fn dummy_poetry_pyproject_toml(
+    dependencies: &BTreeMap<String, poetry_toml::Dependency>,
     python_version: (u8, u8),
 ) -> PoetryPyprojectToml {
+    let mut dependencies = dependencies.clone();
     // Add python entry with current version; resolving will otherwise fail with complaints
     dependencies.insert(
         "python".to_string(),
@@ -42,8 +43,8 @@ fn dummy_poetry_pyproject_toml(
                 description: "monotrail generated this dummy pyproject.toml to call poetry and let it do the dependency resolution".to_string(),
                 authors: vec!["konstin <konstin@mailbox.org>".to_string()],
                 dependencies,
-                dev_dependencies: HashMap::new(),
-                extras: Some(HashMap::new()),
+                dev_dependencies: BTreeMap::new(),
+                extras: Some(BTreeMap::new()),
                 scripts: None,
             }),
         }),
@@ -53,9 +54,8 @@ fn dummy_poetry_pyproject_toml(
 
 /// Calls poetry to resolve the user specified dependencies into a set of locked consistent
 /// dependencies. Produces a poetry.lock in the process
-#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn poetry_resolve(
-    dependencies: HashMap<String, poetry_toml::Dependency>,
+    dependencies: &BTreeMap<String, poetry_toml::Dependency>,
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(PoetrySection, PoetryLock, String)> {
@@ -76,6 +76,26 @@ pub fn poetry_resolve(
         fs::write(&poetry_lock_path, &lockfile)?;
     }
 
+    poetry_resolve_from_dir(&resolve_dir, &python_context)?;
+    // read back the pyproject.toml and compare, just to be sure
+    let pyproject_toml_reread = toml::from_str(&fs::read_to_string(pyproject_toml_path)?)?;
+    if pyproject_toml_content != pyproject_toml_reread {
+        bail!("Consistency check failed: the pyproject.toml we read is not the one we wrote");
+    }
+    let lockfile = fs::read_to_string(poetry_lock_path)?;
+    // read poetry lock with the dependencies resolved by poetry
+    let poetry_lock = toml::from_str(&fs::read_to_string(resolve_dir.path().join("poetry.lock"))?)?;
+
+    let poetry_section = pyproject_toml_content.tool.unwrap().poetry.unwrap();
+    Ok((poetry_section, poetry_lock, lockfile))
+}
+
+/// Runs `poetry lock --no-update` in the given tempdir, which needs to contain a pyproject.toml
+/// and optionally a poetry.lock
+pub fn poetry_resolve_from_dir(
+    resolve_dir: &TempDir,
+    python_context: &PythonContext,
+) -> anyhow::Result<()> {
     // Setup a directory with the dependencies of poetry itself, so we can run poetry in a
     // recursive call to monotrail through the python interface.
     // Poetry internally is normally installed through get-poetry.py which creates a new virtualenv
@@ -111,11 +131,11 @@ pub fn poetry_resolve(
     .context("Failed to bootstrap poetry")?;
     drop(bootstrapping_span);
 
-    debug!("resolving with poetry");
     let resolve_span = span!(Level::DEBUG, "resolving_with_poetry");
     let start = Instant::now();
     let result = match python_context.launch_type {
         LaunchType::Binary => {
+            debug!("resolving with poetry (binary)");
             let plus_version =
                 format!("+{}.{}", python_context.version.0, python_context.version.1);
             // First argument must always be the program itself
@@ -126,6 +146,7 @@ pub fn poetry_resolve(
                 .status()
         }
         LaunchType::PythonBindings => {
+            debug!("resolving with poetry (python bindings)");
             Command::new(&python_context.sys_executable)
                 .args([
                     "-m",
@@ -153,32 +174,22 @@ pub fn poetry_resolve(
     match result {
         Ok(status) if status.success() => {
             // we're good
+            Ok(())
         }
         Ok(status) => {
             match python_context.launch_type {
-                LaunchType::Binary => bail!("Recursive invocation to resolve dependencies failed: {}. Please check the log above", status),
-                LaunchType::PythonBindings => bail!(
+                LaunchType::Binary => Err(format_err!("Recursive invocation to resolve dependencies failed: {}. Please check the log above", status)),
+                LaunchType::PythonBindings => Err(format_err!(
                     "Poetry's dependency resolution errored: {}. Please check the log above",
                     status
-                ),
+                )),
             }
         }
         Err(err) if err.kind() == io::ErrorKind::NotFound && python_context.launch_type == LaunchType::PythonBindings => {
-            bail!("Could not find poetry. Is it installed and in PATH? https://python-poetry.org/docs/#installation")
+            Err(format_err!("Could not find poetry. Is it installed and in PATH? https://python-poetry.org/docs/#installation"))
         }
         Err(err) => {
-            return Err(err).context("Failed to run poetry to resolve dependencies");
+            Err(err).context("Failed to run poetry to resolve dependencies")
         }
     }
-    // read back the pyproject.toml and compare, just to be sure
-    let pyproject_toml_reread = toml::from_str(&fs::read_to_string(pyproject_toml_path)?)?;
-    if pyproject_toml_content != pyproject_toml_reread {
-        bail!("Consistency check failed: the pyproject.toml we read is not the one we wrote");
-    }
-    let lockfile = fs::read_to_string(poetry_lock_path)?;
-    // read poetry lock with the dependencies resolved by poetry
-    let poetry_lock = toml::from_str(&fs::read_to_string(resolve_dir.path().join("poetry.lock"))?)?;
-
-    let poetry_section = pyproject_toml_content.tool.unwrap().poetry.unwrap();
-    Ok((poetry_section, poetry_lock, lockfile))
 }

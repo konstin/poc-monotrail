@@ -41,7 +41,9 @@ def main():
         # it's required to be a callable module if no function name is provided, otherwise we error
         sys.exit(obj())
 
-    scripts = monotrail_find_scripts(finder_data.sprawl_root, finder_data.sprawl_packages)
+    scripts = monotrail_find_scripts(
+        finder_data.sprawl_root, finder_data.sprawl_packages
+    )
     script_path = scripts.get(script_name)
     if not script_path:
         print(f"Couldn't find '{script_name}' in installed packages", file=sys.stderr)

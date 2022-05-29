@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// ```toml
 /// [build-system]
@@ -82,6 +82,8 @@ impl Dependency {
 /// [tool.poetry.dev-dependencies]
 /// [tool.poetry.extras]
 /// ``
+///
+/// Uses `BTreeMap` instead of `HashMap` to ensure we keep the sorting
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
@@ -92,9 +94,9 @@ pub struct PoetrySection {
     pub authors: Vec<String>,
     // https://github.com/alexcrichton/toml-rs/issues/142#issuecomment-279009115
     #[serde(serialize_with = "toml::ser::tables_last")]
-    pub dependencies: HashMap<String, Dependency>,
+    pub dependencies: BTreeMap<String, Dependency>,
     #[serde(serialize_with = "toml::ser::tables_last")]
-    pub dev_dependencies: HashMap<String, Dependency>,
-    pub extras: Option<HashMap<String, Vec<String>>>,
-    pub scripts: Option<HashMap<String, String>>,
+    pub dev_dependencies: BTreeMap<String, Dependency>,
+    pub extras: Option<BTreeMap<String, Vec<String>>>,
+    pub scripts: Option<BTreeMap<String, String>>,
 }

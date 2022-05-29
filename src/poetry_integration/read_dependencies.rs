@@ -1,9 +1,9 @@
 //! Parsing of pyproject.toml and poetry.lock
 
+use crate::cache_dir;
 use crate::install::repo_at_revision;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{specs_from_requirements_txt_resolved, PythonContext};
-use crate::package_index::cache_dir;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection};
 use crate::poetry_integration::run::poetry_run;
@@ -13,7 +13,7 @@ use anyhow::{bail, Context};
 use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
 use regex::Regex;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tracing::debug;
@@ -356,6 +356,9 @@ pub fn specs_from_git(
 
             let (poetry_section, poetry_lock, lockfile) = read_toml_files(&repo_dir)
                 .context("Failed to read pyproject.toml/poetry.lock from repository root after `poetry lock --no-update`")?;
+            debug!("Writing poetry.lock");
+            fs::write(repo_dir.join("poetry.lock"), &lockfile)
+                .context("Failed to write poetry.lock")?;
             let specs = read_poetry_specs(
                 &poetry_section,
                 poetry_lock,
@@ -463,7 +466,7 @@ pub fn poetry_spec_from_dir(
     dep_file_location: &Path,
     extras: &[String],
     pep508_env: &Pep508Environment,
-) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>, String)> {
+) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, String>, String)> {
     let (poetry_section, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
     let scripts = poetry_section.scripts.clone().unwrap_or_default();
     let specs = read_poetry_specs(&poetry_section, poetry_lock, false, extras, pep508_env)?;

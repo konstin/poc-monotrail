@@ -18,7 +18,7 @@ There's also an interactive mode meant for notebooks, where you can add packages
 !pip install monotrail
 ```
 
-```jupyterpython
+```python
 import monotrail
 
 monotrail.interactive(
@@ -41,10 +41,10 @@ Picking the python version and extras:
 monotrail run -p 3.9 --extras fancy-pants python my_script.py --some-option
 ```
 
-Running scripts that used to be in `.venv/bin`:
+Running commands that used to be in `.venv/bin`:
 
 ```
-monotrail run script pytest
+monotrail run command pytest
 ```
 
 There's also a python package with an entrypoint:
@@ -60,7 +60,7 @@ With jupyter notebooks
 !pip install monotrail
 ```
 
-```jupyterpython
+```python
 import monotrail
 
 monotrail.interactive(
@@ -69,10 +69,16 @@ monotrail.interactive(
 )
 ```
 
-As tox replacement:
+Ass [pipx](https://github.com/pypa/pipx) replace: 
 
 ```shell
-monotrail run -p 3.8 -p 3.9 -p 3.10 script pytest
+monotrail ppipx --extras jupyter black .
+```
+
+As [tox](https://github.com/tox-dev/tox) replacement:
+
+```shell
+monotrail run -p 3.8 -p 3.9 -p 3.10 command pytest
 ```
 
 Setting `RUST_LOG=debug` will give you details to track down bugs.

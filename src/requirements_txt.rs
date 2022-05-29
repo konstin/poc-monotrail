@@ -1,7 +1,7 @@
 use crate::poetry_integration::poetry_toml;
 use anyhow::{bail, format_err, Context};
 use requirements::enums::Comparison;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Reads requirements.txt badly with lots of features unsupported and others wrongly implemented
@@ -9,11 +9,11 @@ pub fn parse_requirements_txt(
     requirements: &str,
     // as debug info
     requirements_txt: &Path,
-) -> anyhow::Result<HashMap<String, poetry_toml::Dependency>> {
+) -> anyhow::Result<BTreeMap<String, poetry_toml::Dependency>> {
     let requirements = requirements::parse_str(&requirements)
         .map_err(|err| format_err!("Failed to parse {}: {}", requirements_txt.display(), err))?;
 
-    let mut poetry_requirements: HashMap<String, poetry_toml::Dependency> = HashMap::new();
+    let mut poetry_requirements: BTreeMap<String, poetry_toml::Dependency> = BTreeMap::new();
     for requirement in requirements {
         if requirement.vcs.is_some()
             || requirement.uri.is_some()

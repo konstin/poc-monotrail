@@ -1,4 +1,3 @@
-use crate::package_index;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
@@ -15,7 +14,7 @@ pub fn build_source_distribution_to_wheel_cached(
     sdist: &Path,
     compatible_tags: &[(String, String, String)],
 ) -> Result<PathBuf> {
-    let target_dir = package_index::cache_dir()?
+    let target_dir = crate::cache_dir()?
         .join("artifacts")
         .join(name)
         .join(version);

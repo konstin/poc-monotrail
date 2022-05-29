@@ -15,7 +15,7 @@ use anyhow::{bail, Context};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::path::PathBuf;
 use tracing::{debug, trace};
@@ -92,13 +92,13 @@ pub fn monotrail_from_requested(
     let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
 
     let (poetry_section, poetry_lock, lockfile) =
-        poetry_resolve(requested, lockfile.as_deref(), &python_context)
+        poetry_resolve(&requested, lockfile.as_deref(), &python_context)
             .context("Failed to resolve requested dependencies through poetry")
             .map_err(format_monotrail_error)?;
     let specs = read_poetry_specs(&poetry_section, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(&specs, HashMap::new(), lockfile, None, &python_context)
+    install_specs_to_finder(&specs, BTreeMap::new(), lockfile, None, &python_context)
         .map_err(format_monotrail_error)
 }
 
@@ -126,7 +126,7 @@ pub fn monotrail_from_git(
 
     install_specs_to_finder(
         &specs,
-        HashMap::new(),
+        BTreeMap::new(),
         lockfile,
         Some(repo_dir),
         &python_context,
@@ -173,7 +173,7 @@ pub fn monotrail_spec_paths(
 pub fn monotrail_find_scripts(
     sprawl_root: PathBuf,
     sprawl_packages: Vec<InstalledPackage>,
-) -> PyResult<HashMap<String, PathBuf>> {
+) -> PyResult<BTreeMap<String, PathBuf>> {
     monotrail::find_scripts(&sprawl_packages, &sprawl_root).map_err(format_monotrail_error)
 }
 

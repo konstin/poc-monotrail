@@ -6,9 +6,9 @@ use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::Path;
 use std::str::FromStr;
-use std::{io, result};
 use tracing::debug;
 
 /// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
@@ -138,16 +138,4 @@ pub(crate) fn download_distribution(
         .persist(&target_file)
         .context("Failed to moved wheel to target position")?;
     Ok(())
-}
-
-/// `~/.cache/monotrail`
-pub(crate) fn cache_dir() -> result::Result<PathBuf, WheelInstallerError> {
-    Ok(dirs::cache_dir()
-        .ok_or_else(|| {
-            WheelInstallerError::IOError(io::Error::new(
-                io::ErrorKind::NotFound,
-                "System needs to have a cache dir",
-            ))
-        })?
-        .join(env!("CARGO_PKG_NAME")))
 }

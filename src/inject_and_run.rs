@@ -4,7 +4,7 @@ use crate::{get_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
 use libc::{c_int, c_void, wchar_t};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::env;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
@@ -295,7 +295,7 @@ mod tests {
 ///
 /// You have to pass a tempdir to control its lifetime
 pub fn prepare_execve_environment(
-    scripts: &HashMap<String, PathBuf>,
+    scripts: &BTreeMap<String, PathBuf>,
     root: &Path,
     tempdir: &Path,
     python_version: (u8, u8),

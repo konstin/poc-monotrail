@@ -1,6 +1,6 @@
+use crate::cache_dir;
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
-use crate::package_index::cache_dir;
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
 use crate::requirements_txt::parse_requirements_txt;
@@ -11,7 +11,7 @@ use fs_err as fs;
 use fs_err::{DirEntry, File};
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, MONOTRAIL_SCRIPT_SHEBANG};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env::current_dir;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -59,7 +59,7 @@ pub struct FinderData {
     pub lockfile: String,
     /// The installed scripts indexed by name. They are in the bin folder of each project, coming
     /// from entry_points.txt or data folder scripts
-    pub scripts: HashMap<String, String>,
+    pub scripts: BTreeMap<String, String>,
 }
 
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
@@ -82,7 +82,7 @@ pub struct FinderData {
     #[pyo3(get)]
     pub lockfile: String,
     #[pyo3(get)]
-    pub scripts: HashMap<String, String>,
+    pub scripts: BTreeMap<String, String>,
 }
 
 #[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
@@ -388,7 +388,7 @@ pub fn get_specs(
     script: Option<&Path>,
     extras: &[String],
     python_context: &PythonContext,
-) -> anyhow::Result<(Vec<RequestedSpec>, HashMap<String, String>, String)> {
+) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, String>, String)> {
     let dir_running = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(file) if file.is_file() => {
@@ -439,7 +439,7 @@ pub fn get_specs(
                 None,
                 python_context,
             )?;
-            Ok((specs, HashMap::new(), lockfile))
+            Ok((specs, BTreeMap::new(), lockfile))
         }
     }
 }
@@ -458,7 +458,7 @@ pub fn specs_from_requirements_txt_resolved(
     // version, so we let it go through poetry resolve either way. For a frozen file
     // there will just be no change
     let (poetry_section, poetry_lock, lockfile) =
-        poetry_resolve(requirements, lockfile, python_context)
+        poetry_resolve(&requirements, lockfile, python_context)
             .context("Failed to resolve dependencies with poetry")?;
     let specs = read_poetry_specs(
         &poetry_section,
@@ -473,7 +473,7 @@ pub fn specs_from_requirements_txt_resolved(
 /// Convenience wrapper around `install_requested` and `spec_paths`
 pub fn install_specs_to_finder(
     specs: &[RequestedSpec],
-    scripts: HashMap<String, String>,
+    scripts: BTreeMap<String, String>,
     lockfile: String,
     repo_dir: Option<PathBuf>,
     python_context: &PythonContext,
@@ -525,8 +525,8 @@ pub fn install_specs_to_finder(
 pub fn find_scripts(
     packages: &[InstalledPackage],
     sprawl_root: &Path,
-) -> anyhow::Result<HashMap<String, PathBuf>> {
-    let mut scripts = HashMap::new();
+) -> anyhow::Result<BTreeMap<String, PathBuf>> {
+    let mut scripts = BTreeMap::new();
     for package in packages {
         let bin_dir = package
             .monotrail_location(sprawl_root.to_path_buf())

@@ -90,3 +90,28 @@ def test_tox(pytestconfig):
         "hi from python 3.9 and numpy 1.22.3",
         "hi from python 3.10 and numpy 1.22.3",
     ]
+
+
+def test_pipx_black(pytestconfig):
+    subprocess.check_call(
+        [get_bin(), "ppipx", "--extras", "jupyter", "black", pytestconfig.rootpath]
+    )
+
+
+@pytest.mark.skip(reason="Broken on clap")
+def test_pipx_black_version(pytestconfig):
+    output = subprocess.check_output(
+        [
+            get_bin(),
+            "ppipx",
+            "--extras",
+            "jupyter",
+            "--version",
+            "22.3.0",
+            "--python-version",
+            "3.9",
+            "black",
+            "--version",
+        ]
+    )
+    assert output.splitlines()[-1] == "HI"
