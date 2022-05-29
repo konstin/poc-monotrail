@@ -1,6 +1,8 @@
+#![allow(clippy::needless_borrow)]
+
 use anyhow::Context;
 use clap::Parser;
-use monotrail::{run_cli, run_python_args, Cli};
+use monotrail::{parse_major_minor, run_cli, run_python_args, Cli};
 use std::env;
 use std::env::args;
 use std::path::{Path, PathBuf};
@@ -19,19 +21,39 @@ fn run() -> anyhow::Result<Option<i32>> {
     .context("Expected first argument to have a filename")?
     .to_string_lossy()
     .to_string();
-    if name.starts_with("python") {
-        debug!("START: Running as python: {:?}", args);
+    if let Some(version) = name.strip_prefix("python") {
+        let root = env::var_os(format!(
+            "{}_EXECVE_ROOT",
+            env!("CARGO_PKG_NAME").to_uppercase()
+        ))
+        .map(PathBuf::from);
+        debug!(
+            "START: python as {}: `{}` in {:?}",
+            name,
+            args.join(" "),
+            root
+        );
         // TODO: Also keep the extras
-        let root = env::var_os("MONOTRAIL_EXECVE_ROOT").map(PathBuf::from);
-        // TODO: Make sure we also keep the python version
+        // Allows to link monotrail to .local/bin/python3.10 and use it as python from the terminal
+        let python_version = if version.is_empty() || version == "3" {
+            None
+        } else {
+            parse_major_minor(&version).with_context(|| {
+                format!(
+                    "Can't launch as {}, couldn't parse {} as python x.y version",
+                    name, version
+                )
+            })?;
+            Some(version)
+        };
         Ok(Some(run_python_args(
             &args[1..],
-            None,
+            python_version,
             root.as_deref(),
             &[],
         )?))
     } else {
-        debug!("START: Running as monotrail: '{}' {:?}", name, args);
+        debug!("START: monotrail as '{}': `{}`", name, args.join(" "));
         run_cli(Cli::parse(), None)
     }
 }

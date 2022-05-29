@@ -268,6 +268,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             &command,
             &args,
         )?)),
+        Cli::Poetry { args } => Ok(Some(poetry_run(&args, None)?)),
         Cli::VenvInstall {
             targets,
             no_compile,
@@ -323,7 +324,6 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             install_location_specs(&venv, python_version, &venv_canon, &options)?;
             Ok(None)
         }
-        Cli::Poetry { args } => Ok(Some(poetry_run(&args, None)?)),
     }
 }
 
@@ -343,9 +343,9 @@ fn run_script(
     let exit_code = run_script_finder_data(
         &script,
         &args,
-        python_version,
         &python_context,
         &python_home,
+        &env::current_dir()?,
         &finder_data,
     )?;
     Ok(exit_code)
@@ -472,9 +472,9 @@ fn ppipx(
     run_script_finder_data(
         &command,
         &args,
-        python_version,
         &python_context,
         &python_home,
+        &resolution_dir,
         &finder_data,
     )
 }
@@ -482,9 +482,9 @@ fn ppipx(
 fn run_script_finder_data(
     script: &str,
     args: &[String],
-    python_version: (u8, u8),
     python_context: &PythonContext,
     python_home: &Path,
+    root: &Path,
     finder_data: &FinderData,
 ) -> anyhow::Result<i32> {
     let scripts = find_scripts(
@@ -493,12 +493,7 @@ fn run_script_finder_data(
     )
     .context("Failed to collect scripts")?;
     let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
-    prepare_execve_environment(
-        &scripts,
-        &env::current_dir()?,
-        scripts_tmp.path(),
-        python_version,
-    )?;
+    prepare_execve_environment(&scripts, &root, scripts_tmp.path(), python_context.version)?;
 
     let script_path = scripts.get(&script.to_string()).with_context(|| {
         format_err!(
@@ -519,7 +514,7 @@ fn run_script_finder_data(
         .collect();
         let exit_code = inject_and_run_python(
             &python_home,
-            python_version,
+            python_context.version,
             &args,
             &serde_json::to_string(&finder_data).unwrap(),
         )?;

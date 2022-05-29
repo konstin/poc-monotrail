@@ -1,3 +1,5 @@
+#![allow(clippy::needless_borrow)]
+
 use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::{compatible_tags, WheelFilename};
 use crate::{Arch, Os, WheelInstallerError};
@@ -20,7 +22,7 @@ use walkdir::WalkDir;
 use zip::result::ZipError;
 use zip::ZipArchive;
 
-pub const MONOTRAIL_SCRIPT_SHEBANG: &'static str = "#!/usr/bin/env python";
+pub const MONOTRAIL_SCRIPT_SHEBANG: &str = "#!/usr/bin/env python";
 
 /// Line in a RECORD file
 /// https://www.python.org/dev/peps/pep-0376/#record

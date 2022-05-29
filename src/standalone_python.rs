@@ -6,7 +6,7 @@ use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir_in;
-use tracing::info;
+use tracing::{debug, info};
 
 const PYTHON_STANDALONE_LATEST_RELEASE: &str =
     "https://api.github.com/repos/indygreg/python-build-standalone/releases/latest";
@@ -99,7 +99,12 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
             bail!("broken python installation in {}", unpack_dir.display())
         }
         // Good installation, reuse
+        debug!("Python {}.{} ready", python_version.0, python_version.1);
     } else {
+        debug!(
+            "Installing python {}.{}",
+            python_version.0, python_version.1
+        );
         let url = find_python(python_version.0, python_version.1)?;
         // atomic installation by tempdir & rename
         let temp_dir = tempdir_in(&python_parent_dir)
@@ -107,6 +112,7 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
         download_and_unpack_python(&url, temp_dir.path())?;
         // we can use fs::rename here because we stay in the same directory
         fs::rename(temp_dir, &unpack_dir)?;
+        debug!("Installed python {}.{}", python_version.0, python_version.1);
     }
     let python_binary = unpack_dir
         .join("python")

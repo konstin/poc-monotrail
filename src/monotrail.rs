@@ -39,6 +39,9 @@ pub struct PythonContext {
     pub launch_type: LaunchType,
 }
 
+/// Name of the import -> (`__init__.py`, submodule import dirs)
+pub type SpecPaths = HashMap<String, (PathBuf, Vec<PathBuf>)>;
+
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
 #[cfg(not(feature = "python_bindings"))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -48,7 +51,7 @@ pub struct FinderData {
     /// All resolved and installed packages indexed by name
     pub sprawl_packages: Vec<InstalledPackage>,
     /// Given a module name, where's the corresponding module file and what are the submodule_search_locations?
-    pub spec_paths: HashMap<String, (PathBuf, Vec<PathBuf>)>,
+    pub spec_paths: SpecPaths,
     /// In from git mode where we check out a repository and make it available for import as if it was added to sys.path
     pub repo_dir: Option<PathBuf>,
     /// We need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
@@ -74,7 +77,7 @@ pub struct FinderData {
     #[pyo3(get)]
     pub sprawl_packages: Vec<InstalledPackage>,
     #[pyo3(get)]
-    pub spec_paths: HashMap<String, (PathBuf, Vec<PathBuf>)>,
+    pub spec_paths: SpecPaths,
     #[pyo3(get)]
     pub repo_dir: Option<PathBuf>,
     #[pyo3(get)]
@@ -255,7 +258,7 @@ pub fn install_requested(
         .to_str()
         .with_context(|| format!("{} path is cursed", env!("CARGO_PKG_NAME")))?
         .to_string();
-    debug!("python extension has {} packages", installed.len());
+    debug!("Prepared {} packages", installed.len());
     trace!(
         "Installed Packages:{}",
         installed
@@ -291,7 +294,7 @@ pub fn spec_paths(
     sprawl_root: &Path,
     sprawl_packages: &[InstalledPackage],
     python_version: (u8, u8),
-) -> anyhow::Result<(HashMap<String, (PathBuf, Vec<PathBuf>)>, Vec<PathBuf>)> {
+) -> anyhow::Result<(SpecPaths, Vec<PathBuf>)> {
     let mut dir_modules: HashMap<String, Vec<InstalledPackage>> = HashMap::new();
     let mut file_modules: HashMap<String, (InstalledPackage, PathBuf)> = HashMap::new();
     let mut pth_files: Vec<PathBuf> = Vec::new();

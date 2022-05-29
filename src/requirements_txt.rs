@@ -28,8 +28,8 @@ pub fn parse_requirements_txt(
             );
         }
         assert!(requirement.specifier);
-        let git: Option<String> = if let Some(_) = requirement.vcs {
-            bail!("Not implemented")
+        let git: Option<String> = if let Some(vcs) = requirement.vcs {
+            bail!("Not implemented: {:?}", vcs)
         } else {
             None
         };

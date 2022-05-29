@@ -65,7 +65,7 @@ pub fn inject_and_run_python(
             python_version.0, python_version.1
         ))
     } else {
-        python_home.join("lib").join("libpython3.so".to_string())
+        python_home.join("lib").join("libpython3.so")
     };
     let lib = {
         #[cfg(unix)]
@@ -125,7 +125,7 @@ pub fn inject_and_run_python(
             bail!("Injecting monotrail failed. Try RUST_LOG=debug for more info")
         }
 
-        debug!("Running main: {:?}", args);
+        debug!("Running Py_Main: {}", args.join(" "));
         // run python interpreter as from the cli
         // https://docs.python.org/3/c-api/veryhigh.html#c.Py_BytesMain
         let py_main: libloading::Symbol<unsafe extern "C" fn(c_int, *mut *const wchar_t) -> c_int> =
@@ -154,6 +154,7 @@ pub fn inject_and_run_python(
 }
 
 /// Allows doing `monotrail_python +3.10 -m say.hello`
+#[allow(clippy::type_complexity)]
 pub fn parse_plus_arg(python_args: &[String]) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
     if let Some(first_arg) = python_args.get(0) {
         if first_arg.starts_with('+') {
@@ -196,7 +197,7 @@ pub fn run_python_args(
             .map_err(|err| format_err!("Failed to parse python args: {}", err))?
             .map(PathBuf::from)
     };
-    debug!("monotrail_from_args script: {:?}", script);
+    debug!("run_python_args: {:?}, `{}`", script, args.join(" "));
 
     let (python_context, python_home) = provision_python(python_version)?;
 
@@ -260,7 +261,6 @@ pub fn determine_python_version(
             );
         }
     };
-    debug!("Running python {}.{}", python_version.0, python_version.1);
     Ok((args, python_version))
 }
 

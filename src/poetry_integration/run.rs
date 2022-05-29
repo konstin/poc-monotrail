@@ -26,7 +26,7 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
         &[],
         &python_context.pep508_env,
     )?;
-    let scripts = poetry_section.scripts.clone().unwrap_or_default();
+    let scripts = poetry_section.scripts.unwrap_or_default();
 
     let finder_data =
         install_specs_to_finder(&specs, scripts, lockfile.to_string(), None, &python_context)

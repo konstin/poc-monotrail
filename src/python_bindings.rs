@@ -7,6 +7,7 @@ use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{
     self, get_specs, install_specs_to_finder, spec_paths, FinderData, LaunchType, PythonContext,
+    SpecPaths,
 };
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
@@ -15,7 +16,7 @@ use anyhow::{bail, Context};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap};
 use std::env;
 use std::path::PathBuf;
 use tracing::{debug, trace};
@@ -157,7 +158,7 @@ pub fn monotrail_spec_paths(
     py: Python,
     sprawl_root: PathBuf,
     sprawl_packages: Vec<InstalledPackage>,
-) -> PyResult<(HashMap<String, (PathBuf, Vec<PathBuf>)>, Vec<PathBuf>)> {
+) -> PyResult<(SpecPaths, Vec<PathBuf>)> {
     let python_version = (py.version_info().major, py.version_info().minor);
     let (modules, pth_files) = spec_paths(&sprawl_root, &sprawl_packages, python_version)
         .map_err(format_monotrail_error)?;
