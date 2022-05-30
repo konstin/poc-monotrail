@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+    tags: ["*"]
   pull_request:
 
 jobs:
@@ -87,6 +88,20 @@ jobs:
           #  ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
           
           rm -r .venv-benchmark
+
+      - name: Collect binary
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          mkdir gh_pages_folder
+          cp target/release/monotrail gh_pages_folder
+
+      - name: Deploy to github pages
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: JamesIves/github-pages-deploy-action@v4.3.3
+        with:
+          branch: gh-pages
+          folder: gh_pages_folder
+          target-folder: ${{ github.ref_name }}
   
   test_maturin:
     name: Test Maturin
