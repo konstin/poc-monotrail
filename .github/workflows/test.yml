@@ -12,7 +12,13 @@ jobs:
     name: Test Cargo
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest ] #, windows-latest ]
+        include:
+          - os: ubuntu-latest
+            platform-name: ubuntu
+          - os: macos-latest
+            platform-name: macos
+          # - os: windows-latest
+          #   name: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
@@ -30,6 +36,7 @@ jobs:
         id: rustup
         with:
           profile: minimal
+          toolchain: stable
       # We need normal poetry as reference
       - name: Install poetry
         run: pipx install poetry
@@ -101,7 +108,7 @@ jobs:
         with:
           branch: gh-pages
           folder: gh_pages_folder
-          target-folder: ${{ github.ref_name }}
+          target-folder: ${{ github.ref_name }}/${{ matrix.platform-name }}
   
   test_maturin:
     name: Test Maturin
@@ -125,6 +132,7 @@ jobs:
         id: rustup
         with:
           profile: minimal
+          toolchain: stable
       # We need normal poetry as reference
       - name: Install poetry
         run: pipx install poetry
