@@ -45,7 +45,7 @@ pub enum WheelInstallerError {
     RecordCsvError(#[from] csv::Error),
     #[error("Broken virtualenv: {0}")]
     BrokenVenv(String),
-    #[error("Failed to detect the operating system version")]
+    #[error("Failed to detect the operating system version: {0}")]
     OsVersionDetectionError(String),
     #[error("Invalid version specification, only none or == is supported")]
     Pep440,

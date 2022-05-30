@@ -11,7 +11,7 @@ from nbconvert.preprocessors import (
 
 @pytest.mark.parametrize("notebook", ["interactive.ipynb", "from_git.ipynb"])
 def test_interactive(notebook, pytestconfig):
-    if notebook == "from_git.ipynb" and platform.system() == "Darwin":
+    if notebook == "from_git.ipynb":
         pytest.skip("CI fails macos")
     notebook_dir = pytestconfig.rootpath.joinpath("test").joinpath("python")
     with notebook_dir.joinpath(notebook).open() as f:
