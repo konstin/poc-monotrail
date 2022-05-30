@@ -88,6 +88,7 @@ pub fn inject_and_run_python(
         env::set_var("PYTHONHOME", python_home);
         // TODO: Do this via python c api instead
         env::set_var("PYTHONNOUSERSITE", "1");
+        env::set_var("PYTHONUTF8", "1");
         // https://docs.python.org/3/c-api/init.html?highlight=py_initialize#c.Py_Initialize
         // void Py_Initialize()
         let initialize: libloading::Symbol<unsafe extern "C" fn() -> c_void> =
