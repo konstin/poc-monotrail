@@ -1,6 +1,6 @@
 # Proof Of Concept: Monotrail
 
-This proof of concept shows how to get python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml` in the directory: 
+This proof of concept shows how to use python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml`/`poetry.lock` in the directory: 
 
 ```
 monotrail run python my_script.py
@@ -8,28 +8,22 @@ monotrail run python my_script.py
 
 Every dependency is installed only once globally and hooked to your code. No venv directory, no explicit installation, no activate, no pyenv.
 
-This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux and macos are supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is really slow, only the most basic requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, etc. 
+This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux (and a bit of macos) is supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is slow, only the some requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, nbconvert doesn't work, first argument can't start with a hyphen, etc. 
 
 monotrail means to show you can use python without the traditional "installing packages in an environment". It also integrates [PyOxy](https://github.com/indygreg/PyOxidizer/tree/main/pyoxy) so you don't need to install python anymore. 
 
-There's also an interactive mode meant for notebooks, where you can add packages at runtime, get an isolated package set per notebook and avoid version conflicts.
-
-```jupyterpython
-!pip install monotrail
-```
-
-```python
-import monotrail
-
-monotrail.interactive(
-    numpy="^1.21",
-    pandas="^1"
-)
-```
+It includes simple reimplementations of pipx and tox. There's also a pip package meant for notebooks, where you can interactively add packages at runtime, get an isolated package set per notebook and avoid version conflicts.
 
 ## Usage
 
-First download the binary and put it in PATH (e.g. via `.local/bin`). Make sure you have either a `requirements.txt` or `pyproject.toml`/`poetry.lock`:
+First download the binary and put it in PATH (e.g. via `.local/bin`):
+
+```shell
+wget -O ~/.local/bin/monotrail https://konstin.github.io/poc-monotrail/main/ubuntu/monotrail
+chmod +x ~/.local/bin/monotrail
+```
+
+Make sure you have either a `requirements.txt` or `pyproject.toml`/`poetry.lock`:
 
 ```
 monotrail run python my_script.py
@@ -166,6 +160,52 @@ Summary
     2.75 ± 0.37 times faster than '.venv/bin/pip install -q -r requirements-benchmark.txt'
     6.56 ± 0.88 times faster than 'poetry install -q --no-root -E import-json'
 ```
+
+## Startup time
+
+Hello world:
+
+```
+$ hyperfine --warmup 2 "python hello.py" "../target/release/monotrail run python hello.py"
+Benchmark 1: python hello.py
+  Time (mean ± σ):      15.6 ms ±   0.8 ms    [User: 13.5 ms, System: 2.4 ms]
+  Range (min … max):    14.1 ms …  21.4 ms    167 runs
+ 
+Benchmark 2: ../target/release/monotrail run python hello.py
+  Time (mean ± σ):     141.7 ms ±   2.0 ms    [User: 92.4 ms, System: 49.6 ms]
+  Range (min … max):   137.6 ms … 144.7 ms    21 runs
+ 
+Summary
+  'python hello.py' ran
+    9.08 ± 0.48 times faster than '../target/release/monotrail run python hello.py'
+```
+
+Simplest numpy usage:
+
+```python
+import sys
+import numpy
+print(
+    f"hi from python {sys.version_info.major}.{sys.version_info.minor} and "
+    f"numpy {numpy.__version__}"
+)
+```
+
+```
+$ hyperfine --warmup 2 "python numpy_version.py" "../target/release/monotrail run python numpy_version.py"
+Benchmark 1: python numpy_version.py
+  Time (mean ± σ):      96.9 ms ±   0.8 ms    [User: 126.2 ms, System: 169.1 ms]
+  Range (min … max):    95.4 ms …  98.9 ms    29 runs
+ 
+Benchmark 2: ../target/release/monotrail run python numpy_version.py
+  Time (mean ± σ):     213.6 ms ±   4.1 ms    [User: 187.1 ms, System: 197.5 ms]
+  Range (min … max):   209.0 ms … 225.7 ms    13 runs
+ 
+Summary
+  'python numpy_version.py' ran
+    2.20 ± 0.05 times faster than '../target/release/monotrail run python numpy_version.py'
+```
+
 
 # Dev setup
 

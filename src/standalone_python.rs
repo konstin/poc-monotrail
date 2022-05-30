@@ -84,7 +84,6 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
         .context("Cache dir not found")?
         .join("monotrail")
         .join("python-build-standalone");
-    fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
     let unpack_dir =
         python_parent_dir.join(format!("cpython-{}.{}", python_version.0, python_version.1));
 
@@ -105,6 +104,7 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
             "Installing python {}.{}",
             python_version.0, python_version.1
         );
+        fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
         let url = find_python(python_version.0, python_version.1)?;
         // atomic installation by tempdir & rename
         let temp_dir = tempdir_in(&python_parent_dir)

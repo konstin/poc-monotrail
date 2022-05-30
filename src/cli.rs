@@ -111,6 +111,7 @@ pub enum Cli {
     /// normally installed poetry, e.g. `monotrail poetry update` instead of `poetry update`
     #[clap(trailing_var_arg = true)]
     Poetry { args: Vec<String> },
+    /// Install the given list of wheels in the current venv
     VenvInstall {
         targets: Vec<String>,
         #[clap(long)]
