@@ -413,6 +413,10 @@ pub fn get_specs(
             }
         }
         Some(dir) if dir.is_dir() => dir.to_path_buf(),
+        Some(underscore) if underscore == Path::new("-") => {
+            // stdin
+            current_dir().context("Couldn't get current directory ಠ_ಠ")?
+        }
         Some(neither) => {
             bail!(
                 "Running file is neither file not directory (is the python invocation unsupported?): {}",

@@ -63,7 +63,7 @@ monotrail.interactive(
 )
 ```
 
-Ass [pipx](https://github.com/pypa/pipx) replace: 
+As [pipx](https://github.com/pypa/pipx) replacement: 
 
 ```shell
 monotrail ppipx --extras jupyter black .
