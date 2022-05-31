@@ -1,4 +1,4 @@
-use crate::monotrail::install_specs_to_finder;
+use crate::monotrail::{find_scripts, install_specs_to_finder};
 use crate::standalone_python::provision_python;
 use crate::{get_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::{bail, format_err, Context};
@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
+use tempfile::TempDir;
 use tracing::{debug, trace};
 use widestring::WideCString;
 
@@ -49,12 +50,16 @@ pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<Strin
 }
 
 /// The way we're using to load symbol by symbol with the type generic is really ugly and cumbersome
-/// If you know how to do this with `extern` or even pyo3-ffi directly please tell me
+/// If you know how to do this with `extern` or even pyo3-ffi directly please tell me.
+///
+/// sys_executable is the monotrail runner since otherwise we don't get dependencies in
+/// subprocesses.
 ///
 /// Returns the exit code from python
 pub fn inject_and_run_python(
     python_home: &Path,
     python_version: (u8, u8),
+    sys_executable: &Path,
     args: &[String],
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
@@ -103,9 +108,7 @@ pub fn inject_and_run_python(
         // To set sys.executable
         let set_program_name: libloading::Symbol<unsafe extern "C" fn(*const wchar_t) -> c_void> =
             lib.get(b"Py_SetProgramName")?;
-        let sys_executable =
-            WideCString::from_str(python_home.join("bin").join("python3").to_string_lossy())
-                .unwrap();
+        let sys_executable = WideCString::from_str(sys_executable.to_string_lossy()).unwrap();
         set_program_name(sys_executable.as_ptr() as *const wchar_t);
 
         trace!("Py_Initialize");
@@ -230,9 +233,18 @@ pub fn run_python_args(
         .chain(args)
         .collect();
 
+    let scripts = find_scripts(
+        &finder_data.sprawl_packages,
+        Path::new(&finder_data.sprawl_root),
+    )
+    .context("Failed to collect scripts")?;
+    let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
+    let sys_executable =
+        prepare_execve_environment(&scripts, root, scripts_tmp.path(), python_context.version)?;
     let exit_code = inject_and_run_python(
         &python_home,
         python_context.version,
+        &sys_executable,
         &args,
         &serde_json::to_string(&finder_data).unwrap(),
     )
@@ -314,17 +326,25 @@ mod tests {
 /// such as jupyter depend on scripts being in path instead of using the python api. It also adds
 /// monotrail as python so execve with other scripts works (required e.g. by jupyter)
 ///
-/// You have to pass a tempdir to control its lifetime
+/// You have to pass a tempdir to control its lifetime.
+///
+/// Returns the sys_executable value that is monotrail moonlighting as python
 pub fn prepare_execve_environment(
     scripts: &BTreeMap<String, PathBuf>,
-    root: &Path,
+    root: Option<&Path>,
     tempdir: &Path,
     python_version: (u8, u8),
-) -> anyhow::Result<()> {
-    let execve_root_var = format!("{}_EXECVE_ROOT", env!("CARGO_PKG_NAME").to_uppercase());
-    if env::var_os(&execve_root_var).is_some() {
-        debug!("Already in an execve environment");
-        return Ok(());
+) -> anyhow::Result<PathBuf> {
+    // We could nest that, but there's no point to do that. In normal venv programs also only
+    // get one activated set. The only exception would be the poetry lock subprocess but that one
+    // we control and don't prepare with this function
+    let execve_path_var = format!("{}_EXECVE_PATH", env!("CARGO_PKG_NAME").to_uppercase());
+    if let Some(path_dir) = env::var_os(&execve_path_var) {
+        debug!(
+            "Already an execve environment in {}",
+            path_dir.to_string_lossy()
+        );
+        return Ok(Path::new(&path_dir).join("python"));
     }
     let path_dir = tempdir.join(format!("{}-scripts-links", env!("CARGO_PKG_NAME")));
     debug!("Preparing execve environment in {}", path_dir.display());
@@ -360,10 +380,11 @@ pub fn prepare_execve_environment(
                 .context("Failed to create symlink for current exe")?;
         }
     }
+    let sys_executable = path_dir.join("python");
 
     // venv/bin/activate also puts venv scripts first. Our python launcher we have to put first
     // anyway to overwrite system python
-    let mut path = path_dir.into_os_string();
+    let mut path = path_dir.as_os_str().to_owned();
     path.push(":");
     path.push(env::var_os("PATH").unwrap_or_default());
     env::set_var("PATH", path);
@@ -371,11 +392,17 @@ pub fn prepare_execve_environment(
     // Make a execve-spawned monotrail find the configuration we originally read again
     // TODO: Does the subprocess know about the fullpath of the link through which it was called
     //       and can we use that to read those from a file instead which would be more stable
-    env::set_var(execve_root_var, root);
+    env::set_var(execve_path_var, path_dir);
+    if let Some(root) = root {
+        env::set_var(
+            format!("{}_EXECVE_ROOT", env!("CARGO_PKG_NAME").to_uppercase()),
+            root,
+        );
+    }
     env::set_var(
         format!("{}_PYTHON_VERSION", env!("CARGO_PKG_NAME").to_uppercase()),
         format!("{}.{}", python_version.0, python_version.1),
     );
 
-    Ok(())
+    Ok(sys_executable)
 }

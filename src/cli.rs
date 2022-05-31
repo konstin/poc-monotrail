@@ -503,7 +503,12 @@ fn run_command_finder_data(
     )
     .context("Failed to collect scripts")?;
     let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
-    prepare_execve_environment(&scripts, &root, scripts_tmp.path(), python_context.version)?;
+    let sys_executable = prepare_execve_environment(
+        &scripts,
+        Some(&root),
+        scripts_tmp.path(),
+        python_context.version,
+    )?;
 
     let script_path = scripts.get(&script.to_string()).with_context(|| {
         format_err!(
@@ -525,6 +530,7 @@ fn run_command_finder_data(
         let exit_code = inject_and_run_python(
             &python_home,
             python_context.version,
+            &sys_executable,
             &args,
             &serde_json::to_string(&finder_data).unwrap(),
         )?;

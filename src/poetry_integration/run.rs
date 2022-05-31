@@ -46,6 +46,9 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
     let exit_code = inject_and_run_python(
         &python_home,
         python_version,
+        // poetry doesn't need monotrail-moonlighting-as-python subprocesses
+        // (at least i never encountered that)
+        &python_context.sys_executable,
         &poetry_args,
         &serde_json::to_string(&finder_data)?,
     )
