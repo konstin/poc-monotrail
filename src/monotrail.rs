@@ -504,9 +504,16 @@ pub fn install_specs_to_finder(
             .join("jupyter")
             .into_os_string();
         if let Some(existing_jupyter_path) = env::var_os("JUPYTER_PATH") {
-            jupyter_path.push(":");
-            jupyter_path.push(existing_jupyter_path);
+            // With execve this might already be set
+            if existing_jupyter_path != jupyter_path {
+                jupyter_path.push(":");
+                jupyter_path.push(existing_jupyter_path);
+            }
         }
+        debug!(
+            "Detected ipykernel, setting JUPYTER_PATH to {}",
+            jupyter_path.to_string_lossy()
+        );
         env::set_var("JUPYTER_PATH", jupyter_path);
     }
 

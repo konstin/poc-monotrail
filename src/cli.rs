@@ -347,7 +347,7 @@ fn run_script(
     let finder_data =
         install_specs_to_finder(&specs, wrong_scripts, lockfile, None, &python_context)?;
 
-    let exit_code = run_script_finder_data(
+    let exit_code = run_command_finder_data(
         &script,
         &args,
         &python_context,
@@ -358,6 +358,9 @@ fn run_script(
     Ok(exit_code)
 }
 
+/// Simple pipx reimplementation
+///
+/// Resolves one package, saving it in .local and runs one command from it
 fn ppipx(
     package: Option<&str>,
     python_version: Option<&str>,
@@ -476,7 +479,7 @@ fn ppipx(
         install_specs_to_finder(&specs, BTreeMap::new(), lockfile, None, &python_context)
             .context("Couldn't install packages")?;
 
-    run_script_finder_data(
+    run_command_finder_data(
         &command,
         &args,
         &python_context,
@@ -486,7 +489,7 @@ fn ppipx(
     )
 }
 
-fn run_script_finder_data(
+fn run_command_finder_data(
     script: &str,
     args: &[String],
     python_context: &PythonContext,

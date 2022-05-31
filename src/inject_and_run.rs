@@ -321,7 +321,13 @@ pub fn prepare_execve_environment(
     tempdir: &Path,
     python_version: (u8, u8),
 ) -> anyhow::Result<()> {
+    let execve_root_var = format!("{}_EXECVE_ROOT", env!("CARGO_PKG_NAME").to_uppercase());
+    if env::var_os(&execve_root_var).is_some() {
+        debug!("Already in an execve environment");
+        return Ok(());
+    }
     let path_dir = tempdir.join(format!("{}-scripts-links", env!("CARGO_PKG_NAME")));
+    debug!("Preparing execve environment in {}", path_dir.display());
     fs::create_dir_all(&path_dir).context("Failed to create scripts PATH dir")?;
     for (script_name, script_path) in scripts {
         #[cfg(unix)]
@@ -365,10 +371,7 @@ pub fn prepare_execve_environment(
     // Make a execve-spawned monotrail find the configuration we originally read again
     // TODO: Does the subprocess know about the fullpath of the link through which it was called
     //       and can we use that to read those from a file instead which would be more stable
-    env::set_var(
-        format!("{}_EXECVE_ROOT", env!("CARGO_PKG_NAME").to_uppercase()),
-        root,
-    );
+    env::set_var(execve_root_var, root);
     env::set_var(
         format!("{}_PYTHON_VERSION", env!("CARGO_PKG_NAME").to_uppercase()),
         format!("{}.{}", python_version.0, python_version.1),
