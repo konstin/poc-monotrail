@@ -138,11 +138,17 @@ pub fn download_distribution_cached(
     let target_file = target_dir.join(&filename);
 
     if target_file.is_file() {
-        debug!("Using cached download at {}", target_file.display());
+        debug!(
+            "Found {} {} cached at {}",
+            name,
+            version,
+            target_file.display()
+        );
         return Ok(target_file);
     }
 
-    debug!("Downloading (or getting from cache) {} {}", name, version);
+    // TODO: Lookup size and show it somewhere if it's large
+    debug!("Downloading {} {}", name, version);
     download_distribution(url, &target_dir, &target_file)?;
 
     Ok(target_file)
@@ -378,7 +384,7 @@ fn ppipx(
         .join(&package_extras)
         .join(version.unwrap_or("latest"));
 
-    if !resolution_dir.is_dir() {
+    if !resolution_dir.join("poetry.lock").is_file() {
         info!(
             "Generating ppipx entry for {}@{}",
             package_extras,

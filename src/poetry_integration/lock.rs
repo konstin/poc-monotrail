@@ -103,6 +103,7 @@ pub fn poetry_resolve_from_dir(
     // mechanism.
     // Maybe it would more elegant to do this through pyo3, not sure.
     let bootstrapping_span = span!(Level::DEBUG, "bootstrapping_poetry");
+    let plus_version = format!("+{}.{}", python_context.version.0, python_context.version.1);
     let poetry_boostrap_lock = cache_dir()?.join("poetry_boostrap_lock");
     fs::create_dir_all(&poetry_boostrap_lock)?;
     fs::write(
@@ -131,30 +132,37 @@ pub fn poetry_resolve_from_dir(
     .context("Failed to bootstrap poetry")?;
     drop(bootstrapping_span);
 
+    // If poetry creates venv (which it shouldn't, but sometimes does anyway), which want it to do
+    // that inside the tempdir we empty later
+    // TODO: Do we need to scope this?
+    env::set_var("POETRY_VIRTUALENVS_IN_PROJECT", "1");
+
     let resolve_span = span!(Level::DEBUG, "resolving_with_poetry");
     let start = Instant::now();
-    let result = match python_context.launch_type {
+    let (result, command, args) = match python_context.launch_type {
         LaunchType::Binary => {
             debug!("resolving with poetry (binary)");
-            let plus_version =
-                format!("+{}.{}", python_context.version.0, python_context.version.1);
             // First argument must always be the program itself
-            Command::new(env::current_exe()?)
-                .args(&["poetry", &plus_version, "lock", "--no-update"])
+            let current_exe = env::current_exe()?;
+            let args = vec!["poetry", &plus_version, "lock", "--no-update"];
+            let result = Command::new(&current_exe)
+                .args(&args)
                 // This will make poetry-resolve find the pyproject.toml we want to resolve
                 .current_dir(&resolve_dir)
-                .status()
+                .status();
+            (result, current_exe, args)
         }
         LaunchType::PythonBindings => {
             debug!("resolving with poetry (python bindings)");
-            Command::new(&python_context.sys_executable)
-                .args([
-                    "-m",
-                    "monotrail.run_script",
-                    "poetry",
-                    "lock",
-                    "--no-update",
-                ])
+            let args = vec![
+                "-m",
+                "monotrail.run_script",
+                "poetry",
+                "lock",
+                "--no-update",
+            ];
+            let result = Command::new(&python_context.sys_executable)
+                .args(&args)
                 // This will make the monotrail python part find the poetry lock for poetry itself
                 .env(
                     format!("{}_CWD", env!("CARGO_PKG_NAME")).to_uppercase(),
@@ -162,7 +170,8 @@ pub fn poetry_resolve_from_dir(
                 )
                 // This will make poetry lock the right deps
                 .current_dir(&resolve_dir)
-                .status()
+                .status();
+            (result, python_context.sys_executable.clone(), args)
         }
     };
     drop(resolve_span);
@@ -177,19 +186,24 @@ pub fn poetry_resolve_from_dir(
             Ok(())
         }
         Ok(status) => {
-            match python_context.launch_type {
-                LaunchType::Binary => Err(format_err!("Recursive invocation to resolve dependencies failed: {}. Please check the log above", status)),
-                LaunchType::PythonBindings => Err(format_err!(
-                    "Poetry's dependency resolution errored: {}. Please check the log above",
-                    status
-                )),
-            }
+            Err(format_err!(
+                "Failed to run poetry in {}: `{} {}`",
+                resolve_dir.path().display(),
+                command.display(),
+                args.join(" "),
+            )).context(format!(
+                "Recursive invocation to resolve dependencies failed with {}. Please check the log above.",
+                status,
+            ))
         }
         Err(err) if err.kind() == io::ErrorKind::NotFound && python_context.launch_type == LaunchType::PythonBindings => {
             Err(format_err!("Could not find poetry. Is it installed and in PATH? https://python-poetry.org/docs/#installation"))
         }
         Err(err) => {
-            Err(err).context("Failed to run poetry to resolve dependencies")
+            Err(err).context(format!(
+                "Failed to run poetry to resolve dependencies in {}: {} {}", 
+                resolve_dir.path().display(), command.display(), args.join(" ")
+            ))
         }
     }
 }

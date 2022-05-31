@@ -333,11 +333,6 @@ fn download_and_install(
             }
         }
         FileOrUrl::Url { url, filename } => {
-            // TODO: Lookup size
-            debug!(
-                "Downloading (or getting from cache) {} {}",
-                spec.name, spec.unique_version
-            );
             let wheel_path =
                 download_distribution_cached(&spec.name, &spec.unique_version, &filename, &url)
                     .with_context(|| format!("Failed to download {} from pypi", spec.requested))?;

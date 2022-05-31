@@ -16,7 +16,7 @@ use anyhow::{bail, Context};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
-use std::collections::{BTreeMap};
+use std::collections::BTreeMap;
 use std::env;
 use std::path::PathBuf;
 use tracing::{debug, trace};

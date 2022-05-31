@@ -84,11 +84,31 @@ pub fn inject_and_run_python(
     trace!("Initializing libpython");
     unsafe {
         // initialize python
-        // otherwise we get an error that it can't find encoding that tells us to set PYTHONHOME
-        env::set_var("PYTHONHOME", python_home);
         // TODO: Do this via python c api instead
         env::set_var("PYTHONNOUSERSITE", "1");
         env::set_var("PYTHONUTF8", "1");
+
+        trace!("Py_SetPythonHome");
+        // https://docs.python.org/3/c-api/init.html#c.Py_SetPythonHome
+        // void Py_SetPythonHome(const wchar_t *name)
+        // Otherwise we get an error that it can't find encoding that tells us to set PYTHONHOME
+        let set_python_home: libloading::Symbol<unsafe extern "C" fn(*const wchar_t) -> c_void> =
+            lib.get(b"Py_SetPythonHome")?;
+        let python_home_wchat_t = WideCString::from_str(python_home.to_string_lossy()).unwrap();
+        set_python_home(python_home_wchat_t.as_ptr() as *const wchar_t);
+
+        trace!("Py_SetProgramName");
+        // https://docs.python.org/3/c-api/init.html#c.Py_SetProgramName
+        // void Py_SetProgramName(const wchar_t *name)
+        // To set sys.executable
+        let set_program_name: libloading::Symbol<unsafe extern "C" fn(*const wchar_t) -> c_void> =
+            lib.get(b"Py_SetProgramName")?;
+        let sys_executable =
+            WideCString::from_str(python_home.join("bin").join("python3").to_string_lossy())
+                .unwrap();
+        set_program_name(sys_executable.as_ptr() as *const wchar_t);
+
+        trace!("Py_Initialize");
         // https://docs.python.org/3/c-api/init.html?highlight=py_initialize#c.Py_Initialize
         // void Py_Initialize()
         let initialize: libloading::Symbol<unsafe extern "C" fn() -> c_void> =

@@ -10,6 +10,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
+use tracing::trace;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WheelFilename {
@@ -165,9 +166,10 @@ pub enum Os {
 impl Os {
     fn detect_linux_libc() -> Result<Self, WheelInstallerError> {
         let libc = find_libc()?;
-        if let Ok(Some((major, minor))) = get_musl_version(&libc) {
-            Ok(Os::Musllinux { major, minor })
+        let linux = if let Ok(Some((major, minor))) = get_musl_version(&libc) {
+            Os::Musllinux { major, minor }
         } else if let Ok(glibc_ld) = fs::read_link(&libc) {
+            // Try reading the link first as it's faster
             let filename = glibc_ld
                 .file_name()
                 .ok_or_else(|| {
@@ -178,18 +180,29 @@ impl Os {
                 .to_string_lossy();
             let expr = Regex::new(r"ld-(\d{1,3})\.(\d{1,3})\.so").unwrap();
 
-            let capture = expr.captures(&filename).ok_or_else(|| {
-                WheelInstallerError::OsVersionDetectionError(format!(
-                    "Invalid glibc ld filename: {}",
-                    filename
-                ))
-            })?;
-            let major = capture.get(1).unwrap().as_str().parse::<u16>().unwrap();
-            let minor = capture.get(2).unwrap().as_str().parse::<u16>().unwrap();
-            Ok(Os::Manylinux { major, minor })
+            if let Some(capture) = expr.captures(&filename) {
+                let major = capture.get(1).unwrap().as_str().parse::<u16>().unwrap();
+                let minor = capture.get(2).unwrap().as_str().parse::<u16>().unwrap();
+                Os::Manylinux { major, minor }
+            } else {
+                trace!("Couldn't use ld filename, using `ldd --version`");
+                // runs `ldd --version`
+                let version = glibc_version::get_version().map_err(|err| {
+                    WheelInstallerError::OsVersionDetectionError(format!(
+                        "Failed to determine glibc version with `ldd --version`: {}",
+                        err
+                    ))
+                })?;
+                Os::Manylinux {
+                    major: version.major as u16,
+                    minor: version.minor as u16,
+                }
+            }
         } else {
-            Err(WheelInstallerError::OsVersionDetectionError("Couldn't detect neither glibc version nor musl libc version, at least one of which is required".to_string()))
-        }
+            return Err(WheelInstallerError::OsVersionDetectionError("Couldn't detect neither glibc version nor musl libc version, at least one of which is required".to_string()));
+        };
+        trace!("libc: {}", linux);
+        Ok(linux)
     }
 
     pub fn current() -> Result<Self, WheelInstallerError> {
