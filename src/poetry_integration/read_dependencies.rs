@@ -1,6 +1,5 @@
 //! Parsing of pyproject.toml and poetry.lock
 
-use crate::cache_dir;
 use crate::install::repo_at_revision;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{specs_from_requirements_txt_resolved, PythonContext};
@@ -9,6 +8,7 @@ use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection}
 use crate::poetry_integration::run::poetry_run;
 use crate::poetry_integration::{poetry_lock, poetry_toml};
 use crate::spec::{DistributionType, RequestedSpec, SpecSource};
+use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};

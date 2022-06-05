@@ -15,7 +15,7 @@ use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::str::FromStr;
-use std::{env, io};
+use std::{env, io, iter};
 use tempfile::{tempdir, TempDir};
 use tracing::{debug, span, warn, Level};
 use walkdir::WalkDir;
@@ -32,11 +32,11 @@ pub const MONOTRAIL_SCRIPT_SHEBANG: &str = "#!/usr/bin/env python";
 /// tqdm-4.62.3.dist-info/RECORD,,
 /// ```
 #[derive(Deserialize, Serialize, PartialOrd, PartialEq, Ord, Eq)]
-struct RecordEntry {
-    path: String,
-    hash: Option<String>,
+pub struct RecordEntry {
+    pub path: String,
+    pub hash: Option<String>,
     #[allow(dead_code)]
-    size: Option<usize>,
+    pub size: Option<usize>,
 }
 
 /// Minimal direct_url.json schema
@@ -261,8 +261,9 @@ fn unpack_wheel_files(
             .and_then(|entry| entry.hash.as_ref())
             .ok_or_else(|| {
                 WheelInstallerError::RecordFileError(format!(
-                    "Missing hash for {}",
-                    relative.display()
+                    "Missing hash for {} (expected {})",
+                    relative.display(),
+                    encoded_hash
                 ))
             })?;
         if recorded_hash != &encoded_hash {
@@ -474,6 +475,7 @@ fn bytecode_compile_inner(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
+        .current_dir(&site_packages)
         .spawn()
         .map_err(WheelInstallerError::PythonSubcommandError)?;
 
@@ -488,7 +490,7 @@ fn bytecode_compile_inner(
         debug!("bytecode compiling {}", path.display());
         // There is no OsStr -> Bytes conversion on windows :o
         // https://stackoverflow.com/questions/43083544/how-can-i-convert-osstr-to-u8-vecu8-on-windows
-        writeln!(&mut child_stdin, "{}", site_packages.join(path).display())
+        writeln!(&mut child_stdin, "{}", path.display())
             .map_err(WheelInstallerError::PythonSubcommandError)?;
     }
     // Close stdin to finish and avoid indefinite blocking
@@ -513,6 +515,39 @@ fn bytecode_compile_inner(
     Ok((output.status, lines))
 }
 
+/// Give the path relative to the base directory
+///
+/// lib/python/site-packages/foo/__init__.py and lib/python/site-packages -> foo/__init__.py
+/// lib/marker.txt and lib/python/site-packages -> ../../marker.txt
+/// bin/foo_launcher and lib/python/site-packages -> ../../../bin/foo_launcher
+pub fn relative_to(path: &Path, base: &Path) -> Result<PathBuf, WheelInstallerError> {
+    // Find the longest common prefix, and also return the path stripped from that prefix
+    let (stripped, common_prefix) = base
+        .ancestors()
+        .filter_map(|ancestor| {
+            path.strip_prefix(ancestor)
+                .ok()
+                .map(|stripped| (stripped, ancestor))
+        })
+        .next()
+        .ok_or_else(|| {
+            WheelInstallerError::IOError(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "trivial strip case should have worked: {} vs {}",
+                    path.display(),
+                    base.display()
+                ),
+            ))
+        })?;
+
+    // go as many levels up as required
+    let levels_up = base.components().count() - common_prefix.components().count();
+    let up = iter::repeat("..").take(levels_up).collect::<PathBuf>();
+
+    Ok(up.join(stripped))
+}
+
 /// Moves the files and folders in src to dest, updating the RECORD in the process
 fn move_folder_recorded(
     src_dir: &Path,
@@ -527,7 +562,7 @@ fn move_folder_recorded(
         let entry = entry.map_err(WheelInstallerError::WalkDirError)?;
         let src = entry.path();
         // This is the base path for moving to the actual target for the data
-        // e.g. for data it's without .data/data/
+        // e.g. for data it's without <..>.data/data/
         let relative_to_data = src.strip_prefix(&src_dir).expect("Prefix must no change");
         // This is the path stored in RECORD
         // e.g. for data it's with .data/data/
@@ -551,7 +586,7 @@ fn move_folder_recorded(
                         src.display()
                     ))
                 })?;
-            entry.path = target.display().to_string();
+            entry.path = relative_to(&target, &site_packages)?.display().to_string();
         }
     }
     Ok(())
@@ -769,7 +804,7 @@ fn extra_dist_info(
 
 /// Reads the record file
 /// https://www.python.org/dev/peps/pep-0376/#record
-fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelInstallerError> {
+pub fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelInstallerError> {
     csv::ReaderBuilder::new()
         .has_headers(false)
         .escape(Some(b'"'))
@@ -992,9 +1027,12 @@ pub fn install_wheel(
 #[cfg(test)]
 mod test {
     use super::parse_wheel_version;
-    use crate::parse_key_value_file;
-    use crate::wheel::read_record_file;
+    use crate::wheel::{read_record_file, relative_to};
+    use crate::{install_wheel, parse_key_value_file, InstallLocation};
+    use fs_err as fs;
     use indoc::{formatdoc, indoc};
+    use std::path::{Path, PathBuf};
+    use tempfile::TempDir;
 
     #[test]
     fn test_parse_key_value_file() {
@@ -1049,5 +1087,67 @@ mod test {
             .map(|entry| entry.path)
             .collect::<Vec<String>>();
         assert_eq!(expected, actual);
+    }
+
+    /// Previously `__pycache__` paths were erroneously absolute
+    #[test]
+    fn installed_paths_relative() {
+        println!("{}", std::env::current_dir().unwrap().display());
+        let wheel = Path::new("../test-data/wheels/colander-0.9.9-py2.py3-none-any.whl");
+        let temp_dir = TempDir::new().unwrap();
+        // TODO: Would be nicer to pick the default python here, but i don't want to launch a
+        // subprocess
+        let python = PathBuf::from("python3.8");
+        let install_location = InstallLocation::<PathBuf>::Monotrail {
+            monotrail_root: temp_dir.path().to_path_buf(),
+            python: python.clone(),
+            python_version: (3, 8),
+        }
+        .acquire_lock()
+        .unwrap();
+        install_wheel(&install_location, wheel, true, &[], "0.9.9", &python).unwrap();
+
+        let record = temp_dir
+            .path()
+            .join("colander")
+            .join("0.9.9")
+            .join("py2.py3-none-any")
+            .join("lib")
+            .join("python")
+            .join("site-packages")
+            .join("colander-0.9.9.dist-info")
+            .join("RECORD");
+        let record = fs::read_to_string(&record).unwrap();
+        for line in record.lines() {
+            assert!(!line.starts_with('/'), "{}", line);
+        }
+    }
+
+    #[test]
+    fn test_relative_to() {
+        assert_eq!(
+            relative_to(
+                Path::new("/home/ferris/carcinization/lib/python/site-packages/foo/__init__.py"),
+                Path::new("/home/ferris/carcinization/lib/python/site-packages")
+            )
+            .unwrap(),
+            Path::new("foo/__init__.py")
+        );
+        assert_eq!(
+            relative_to(
+                Path::new("/home/ferris/carcinization/lib/marker.txt"),
+                Path::new("/home/ferris/carcinization/lib/python/site-packages")
+            )
+            .unwrap(),
+            Path::new("../../marker.txt")
+        );
+        assert_eq!(
+            relative_to(
+                Path::new("/home/ferris/carcinization/bin/foo_launcher"),
+                Path::new("/home/ferris/carcinization/lib/python/site-packages")
+            )
+            .unwrap(),
+            Path::new("../../../bin/foo_launcher")
+        );
     }
 }

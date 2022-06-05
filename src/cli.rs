@@ -16,10 +16,12 @@ use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_
 use crate::poetry_integration::run::poetry_run;
 use crate::spec::RequestedSpec;
 use crate::standalone_python::provision_python;
+use crate::utils::{cache_dir, data_local_dir};
 use crate::venv_parser::get_venv_python_version;
-use crate::{data_local_dir, get_specs, install_specs, DEFAULT_PYTHON_VERSION};
+use crate::verify_installation::verify_installation;
+use crate::{get_specs, install_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::{bail, format_err, Context};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use fs_err as fs;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
 use nix::unistd;
@@ -50,6 +52,27 @@ pub struct PoetryOptions {
     no_compile: bool,
 }
 
+/// Hack around clap's insufficiencies about "do not parse those argument
+/// https://github.com/clap-rs/clap/discussions/3766
+#[derive(Subcommand, Clone, Debug)]
+pub enum ExternalArgs {
+    #[clap(external_subcommand)]
+    Args(Vec<String>),
+}
+
+impl Default for ExternalArgs {
+    fn default() -> Self {
+        Self::Args(vec![])
+    }
+}
+
+impl ExternalArgs {
+    fn args(&self) -> &[String] {
+        let Self::Args(args) = &self;
+        &args
+    }
+}
+
 #[derive(clap::Subcommand)]
 pub enum RunSubcommand {
     /// Like `python <args...>`, but installs and injects the dependencies before.
@@ -61,12 +84,18 @@ pub enum RunSubcommand {
     /// You can use the same arguments as for python main (they will be passed on), so you can do
     /// e.g. `monotrail run -p 3.9 python -OO -m http.server` instead of
     /// `python3.9 -OO -m http.server`.
-    #[clap(trailing_var_arg = true)]
-    Python { args: Vec<String> },
+    Python {
+        #[clap(subcommand)]
+        args: Option<ExternalArgs>,
+    },
     /// Similar to the python command, but it starts an installed script such as e.g. `pytest` or
     /// `black`, not a .py file or a module
     #[clap(trailing_var_arg = true)]
-    Command { command: String, args: Vec<String> },
+    Command {
+        command: String,
+        #[clap(subcommand)]
+        args: Option<ExternalArgs>,
+    },
 }
 
 #[derive(Parser)]
@@ -105,7 +134,13 @@ pub enum Cli {
         /// command to run (e.g. `black` or `pytest`), will also be used as package name unless
         /// --package is set
         command: String,
-        args: Vec<String>,
+        #[clap(subcommand)]
+        args: Option<ExternalArgs>,
+    },
+    VerifyInstallation {
+        /// Print all offending paths
+        #[clap(long, short)]
+        verbose: bool,
     },
     /// Run the poetry bundled with monotrail. You can use the same command line options as with
     /// normally installed poetry, e.g. `monotrail poetry update` instead of `poetry update`
@@ -131,10 +166,7 @@ pub fn download_distribution_cached(
     filename: &str,
     url: &str,
 ) -> anyhow::Result<PathBuf> {
-    let target_dir = crate::cache_dir()?
-        .join("artifacts")
-        .join(name)
-        .join(version);
+    let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
     let target_file = target_dir.join(&filename);
 
     if target_file.is_file() {
@@ -216,9 +248,12 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             action,
         } => {
             let args = match &action {
-                RunSubcommand::Python { args } => args,
-                RunSubcommand::Command { args, .. } => args,
-            };
+                RunSubcommand::Python { args } => args.clone(),
+                RunSubcommand::Command { args, .. } => args.clone(),
+            }
+            .unwrap_or_default()
+            .args()
+            .to_vec();
             if python_version.len() <= 1 {
                 let exit_code = match &action {
                     RunSubcommand::Python { .. } => run_python_args(
@@ -250,7 +285,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                     // Would be nicer to use a fork wrapper here
                     let status = Command::new(env::current_exe()?)
                         .args(&["run", "-p", &version, "python"])
-                        .args(args)
+                        .args(&args)
                         .status()
                         .context("Failed to start child process for python version")?;
                     if !status.success() {
@@ -273,8 +308,35 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             version.as_deref(),
             &extras,
             &command,
-            &args,
+            args.unwrap_or_default().args(),
         )?)),
+        Cli::VerifyInstallation { verbose } => {
+            let root = monotrail_root().context("Couldn't determine root")?;
+
+            let paths = verify_installation(&root)?;
+            if paths.is_empty() {
+                println!("✔ All good. Packages verified in {}", root.display());
+            } else {
+                eprintln!("❌ Verification failed! Offending paths:");
+                if verbose {
+                    for path in paths {
+                        eprintln!("{}", path)
+                    }
+                } else {
+                    let max_paths = 10;
+                    for path in paths.iter().take(max_paths) {
+                        eprintln!("{}", path)
+                    }
+                    if paths.len() > max_paths {
+                        eprintln!(
+                            "... and {} more (use --verbose to see all)",
+                            paths.len() - max_paths
+                        );
+                    }
+                }
+            }
+            Ok(None)
+        }
         Cli::Poetry { args } => Ok(Some(poetry_run(&args, None)?)),
         Cli::VenvInstall {
             targets,

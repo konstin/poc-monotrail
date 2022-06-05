@@ -1,12 +1,12 @@
 //! calls to poetry to resolve a set of requirements
 
-use crate::cache_dir;
 use crate::monotrail::{install_requested, LaunchType, PythonContext};
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection};
 use crate::poetry_integration::read_dependencies::read_toml_files;
 use crate::read_poetry_specs;
+use crate::utils::cache_dir;
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
 use std::collections::BTreeMap;

@@ -1,3 +1,4 @@
+use crate::utils::cache_dir;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
@@ -14,10 +15,7 @@ pub fn build_source_distribution_to_wheel_cached(
     sdist: &Path,
     compatible_tags: &[(String, String, String)],
 ) -> Result<PathBuf> {
-    let target_dir = crate::cache_dir()?
-        .join("artifacts")
-        .join(name)
-        .join(version);
+    let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
 
     let cache_hit = fs::read_dir(&target_dir).ok().and_then(|dir| {
         for entry in dir.flatten() {

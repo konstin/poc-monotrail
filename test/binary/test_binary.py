@@ -93,13 +93,23 @@ def test_tox(pytestconfig):
 
 
 def test_pipx_black(pytestconfig):
+    """This test conveniently also runs the autoformatter ;)"""
     subprocess.check_call(
-        [get_bin(), "ppipx", "--extras", "jupyter", "black", pytestconfig.rootpath]
+        [
+            get_bin(),
+            "ppipx",
+            "--extras",
+            "jupyter",
+            "--version",
+            "22.3.0",
+            "black",
+            pytestconfig.rootpath,
+        ]
     )
 
 
-@pytest.mark.skip(reason="Broken on clap")
 def test_pipx_black_version(pytestconfig):
+    """There's some trickery involved (`ExternalArgs`) in making clap ignore the first argument"""
     output = subprocess.check_output(
         [
             get_bin(),
@@ -108,10 +118,9 @@ def test_pipx_black_version(pytestconfig):
             "jupyter",
             "--version",
             "22.3.0",
-            "--python-version",
-            "3.9",
             "black",
             "--version",
-        ]
+        ],
+        text=True,
     )
-    assert output.splitlines()[-1] == "HI"
+    assert output.splitlines()[-1].startswith("black, 22.3.0")

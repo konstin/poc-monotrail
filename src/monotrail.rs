@@ -1,10 +1,11 @@
-use crate::cache_dir;
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
+use crate::utils::cache_dir;
+use crate::utils::get_dir_content;
 use crate::{install_specs, read_poetry_specs};
 use anyhow::{bail, Context};
 use fs_err as fs;
@@ -98,7 +99,8 @@ impl FinderData {
 }
 
 pub fn monotrail_root() -> anyhow::Result<PathBuf> {
-    if let Some(env_root) = env::var_os("MONOTRAIL_ROOT") {
+    // TODO: Make an cli arg everywhere to set this
+    if let Some(env_root) = env::var_os(format!("{}_ROOT", env!("CARGO_PKG_NAME").to_uppercase())) {
         Ok(PathBuf::from(env_root))
     } else {
         Ok(cache_dir()?.join("installed"))
@@ -121,35 +123,33 @@ fn find_dep_file(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
     None
 }
 
-/// Returns all subdirs in a directory
-fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
-    let read_dir = fs::read_dir(Path::new(&dir))
-        .with_context(|| format!("Failed to load {} directory", env!("CARGO_PKG_NAME")))?;
-    Ok(read_dir
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.path().is_dir())
-        .collect())
-}
-
-pub fn filter_installed_monotrail(
-    specs: &[RequestedSpec],
-    monotrail_root: &Path,
-    compatible_tags: &[(String, String, String)],
-) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
+/// Returns the list of installed packages, optionally filtering for compatible tags.
+///
+/// This filtering is only done here to avoid messing with split/unsplit tags later
+pub fn list_installed(
+    root: &Path,
+    compatible_tags: Option<&[(String, String, String)]>,
+) -> anyhow::Result<Vec<(String, String, String)>> {
     // Behold my monstrous iterator
     // name -> version -> compatible tag
     let mut compatible: Vec<(String, String, String)> = Vec::new();
     // No monotrail dir, no packages
-    for name_dir in get_dir_content(monotrail_root).unwrap_or_default() {
+    for name_dir in get_dir_content(root).unwrap_or_default() {
         for version_dir in get_dir_content(&name_dir.path())? {
             for tag_dir in get_dir_content(&version_dir.path())? {
                 let tag = tag_dir.file_name().to_string_lossy().to_string();
                 let is_compatible = match tag.split('-').collect::<Vec<_>>()[..] {
-                    [python_tag, abi_tag, platform_tag] => compatible_tags.iter().any(|ok_tag| {
-                        python_tag.contains(&ok_tag.0)
-                            && abi_tag.contains(&ok_tag.1)
-                            && platform_tag.contains(&ok_tag.2)
-                    }),
+                    [python_tag, abi_tag, platform_tag] => {
+                        if let Some(compatible_tags) = compatible_tags {
+                            compatible_tags.iter().any(|ok_tag| {
+                                python_tag.contains(&ok_tag.0)
+                                    && abi_tag.contains(&ok_tag.1)
+                                    && platform_tag.contains(&ok_tag.2)
+                            })
+                        } else {
+                            true
+                        }
+                    }
                     _ => {
                         warn!(
                             "Invalid tag {} in {}, skipping",
@@ -170,7 +170,15 @@ pub fn filter_installed_monotrail(
             }
         }
     }
+    Ok(compatible)
+}
 
+pub fn filter_installed_monotrail(
+    specs: &[RequestedSpec],
+    monotrail_root: &Path,
+    compatible_tags: &[(String, String, String)],
+) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
+    let compatible = list_installed(&monotrail_root, Some(compatible_tags))?;
     let mut installed = Vec::new();
     let mut not_installed = Vec::new();
     for spec in specs {

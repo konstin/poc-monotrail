@@ -1,5 +1,3 @@
-import platform
-
 import nbformat
 import pytest
 from nbconvert.preprocessors import (
@@ -17,7 +15,7 @@ def test_interactive(notebook, pytestconfig):
     with notebook_dir.joinpath(notebook).open() as f:
         nb = nbformat.read(f, as_version=4)
 
-    ep = ExecutePreprocessor(timeout=60*5)
+    ep = ExecutePreprocessor(timeout=60 * 5)
     ep.preprocess(
         nb,
         {
