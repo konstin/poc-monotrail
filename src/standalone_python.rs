@@ -9,11 +9,18 @@ use std::path::{Path, PathBuf};
 use tempfile::tempdir_in;
 use tracing::{debug, info};
 
-const PYTHON_STANDALONE_LATEST_RELEASE: &str =
-    "https://api.github.com/repos/indygreg/python-build-standalone/releases/latest";
+const PYTHON_STANDALONE_LATEST_RELEASE: (&str, &str) = (
+    // api url
+    "https://api.github.com/repos/indygreg/python-build-standalone/releases/latest",
+    // web url. doesn't help to much showing the api url, i just hope github has their stuff
+    // together enough that these always match
+    "https://github.com/indygreg/python-build-standalone/releases/latest",
+);
 
-const PYTHON_STANDALONE_KNOWN_GOOD_RELEASE: &str =
-    "https://api.github.com/repos/indygreg/python-build-standalone/releases/65881217";
+const PYTHON_STANDALONE_KNOWN_GOOD_RELEASE: (&str, &str) = (
+    "https://api.github.com/repos/indygreg/python-build-standalone/releases/65881217",
+    "https://github.com/indygreg/python-build-standalone/releases/tag/20220502",
+);
 
 #[derive(Deserialize)]
 struct GitHubRelease {
@@ -30,7 +37,7 @@ struct GitHubAsset {
 /// indygreg/python-build-standalone, then fall back to a known good release in case a more recent
 /// release broke compatibility
 fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
-    let latest_release: GitHubRelease = ureq::get(PYTHON_STANDALONE_LATEST_RELEASE)
+    let latest_release: GitHubRelease = ureq::get(PYTHON_STANDALONE_LATEST_RELEASE.0)
         .call()?
         .into_json()?;
 
@@ -44,7 +51,7 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
         return Ok(asset.browser_download_url);
     }
 
-    let latest_release: GitHubRelease = ureq::get(PYTHON_STANDALONE_KNOWN_GOOD_RELEASE)
+    let latest_release: GitHubRelease = ureq::get(PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0)
         .call()?
         .into_json()?;
 
@@ -60,8 +67,8 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
             format!(
                 "Failed to find a matching python-build-standalone download: /{}/. Searched in {} and {}", 
                 version_re,
-                PYTHON_STANDALONE_LATEST_RELEASE.replace("api.", "").replace("repo/", ""),
-                PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.replace("api.", "").replace("repo/", ""),
+                PYTHON_STANDALONE_LATEST_RELEASE.1,
+                PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.1,
             )
         })?;
     Ok(asset.browser_download_url)
@@ -215,7 +222,7 @@ mod test {
         let err = provision_python((3, 0)).unwrap_err();
         let expected = vec![
             r"Couldn't find a matching python 3.0 to download",
-            r"Failed to find a matching python-build-standalone download: /^cpython-3\.0\.(\d+)\+(\d+)-x86_64\-unknown\-linux\-gnu-pgo\+lto-full\.tar\.zst$/. Searched in https://github.com/repos/indygreg/python-build-standalone/releases/latest and https://github.com/repos/indygreg/python-build-standalone/releases/65881217",
+            r"Failed to find a matching python-build-standalone download: /^cpython-3\.0\.(\d+)\+(\d+)-x86_64\-unknown\-linux\-gnu-pgo\+lto-full\.tar\.zst$/. Searched in https://github.com/indygreg/python-build-standalone/releases/latest and https://github.com/indygreg/python-build-standalone/releases/tag/20220502",
         ];
         let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
         assert_eq!(actual, expected);

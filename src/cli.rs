@@ -275,7 +275,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                     )?,
                     RunSubcommand::Command {
                         command: script, ..
-                    } => run_script(
+                    } => run_command(
                         &extras,
                         python_version.first().map(|x| x.as_str()),
                         &script,
@@ -408,10 +408,11 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
     }
 }
 
-fn run_script(
+/// Run an installed command
+fn run_command(
     extras: &[String],
     python_version: Option<&str>,
-    script: &str,
+    command: &str,
     args: &[String],
 ) -> anyhow::Result<i32> {
     let (args, python_version) = determine_python_version(args, python_version)?;
@@ -422,7 +423,7 @@ fn run_script(
         install_specs_to_finder(&specs, wrong_scripts, lockfile, None, &python_context)?;
 
     let exit_code = run_command_finder_data(
-        &script,
+        &command,
         &args,
         &python_context,
         &python_home,
