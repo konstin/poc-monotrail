@@ -13,14 +13,16 @@ use tracing::debug;
 fn run() -> anyhow::Result<Option<i32>> {
     // Notably, we can't use env::current_exe() here because it resolves the symlink
     let args: Vec<String> = args().into_iter().collect();
-    let name = Path::new(
+    let filename = Path::new(
         args.first()
             .context("No first argument, this should always be set 🤨")?,
     )
     .file_name()
-    .context("Expected first argument to have a filename")?
-    .to_string_lossy()
-    .to_string();
+    .context("Expected first argument to have a filename")?;
+    let name = filename
+        .to_str()
+        .with_context(|| format!("First argument filename isn't utf-8: {:?}", filename))?
+        .to_string();
     if let Some(version) = name.strip_prefix("python") {
         let root = env::var_os(format!(
             "{}_EXECVE_ROOT",
@@ -40,7 +42,7 @@ fn run() -> anyhow::Result<Option<i32>> {
         } else {
             parse_major_minor(&version).with_context(|| {
                 format!(
-                    "Can't launch as {}, couldn't parse {} as python x.y version",
+                    "Can't launch as {}, couldn't parse {} as `python`, `python3` or `pythonx.y`",
                     name, version
                 )
             })?;
@@ -80,7 +82,9 @@ fn main() {
             std::process::exit(1);
         }
         Ok(None) => {}
+        // If python gave us an exit code, return that to the user
         Ok(Some(exit_code)) => {
+            debug!("Exit code: {}", exit_code);
             std::process::exit(exit_code);
         }
     }

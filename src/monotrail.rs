@@ -173,12 +173,14 @@ pub fn list_installed(
     Ok(compatible)
 }
 
+/// Splits the given spec set into installed and to-be-installed
 pub fn filter_installed_monotrail(
     specs: &[RequestedSpec],
     monotrail_root: &Path,
     compatible_tags: &[(String, String, String)],
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
-    let compatible = list_installed(&monotrail_root, Some(compatible_tags))?;
+    let compatible = list_installed(&monotrail_root, Some(compatible_tags))
+        .context("Failed to collect installed packages")?;
     let mut installed = Vec::new();
     let mut not_installed = Vec::new();
     for spec in specs {

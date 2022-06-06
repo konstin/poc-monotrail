@@ -44,6 +44,9 @@ pub struct PoetryOptions {
     /// Whether to install in a venv or the monotrail cache
     #[clap(long)]
     monotrail: bool,
+    /// Directory with the pyproject.toml, defaults to the current directory
+    #[clap(long)]
+    root: Option<PathBuf>,
     /// Only relevant for venv install
     #[clap(long)]
     skip_existing: bool,
@@ -110,7 +113,7 @@ pub enum Cli {
         /// the other, just like tox
         #[clap(long, short)]
         python_version: Vec<String>,
-        /// Directory with the pyproject.toml
+        /// Directory with the pyproject.toml, defaults to the current directory
         #[clap(long)]
         root: Option<PathBuf>,
         #[clap(subcommand)]
@@ -199,14 +202,20 @@ fn install_location_specs(
     )?;
     // TODO: don't parse this from a subprocess but do it like maturin
     let pep508_env = Pep508Environment::from_python(Path::new("python"));
-    let (poetry_section, poetry_lock, _lockfile) = read_toml_files(&env::current_dir()?)?;
+    let dir = if let Some(root) = &options.root {
+        root.clone()
+    } else {
+        env::current_dir()?
+    };
+    let (poetry_section, poetry_lock, _lockfile) = read_toml_files(&dir)?;
     let specs = read_poetry_specs(
         &poetry_section,
         poetry_lock,
         options.no_dev,
         &options.extras,
         &pep508_env,
-    )?;
+    )
+    .context("Failed to read poetry files")?;
 
     let location = if options.monotrail {
         let monotrail_root = monotrail_root()?;
@@ -216,7 +225,9 @@ fn install_location_specs(
             python_version,
         }
     } else {
-        let venv_base = venv.canonicalize()?;
+        let venv_base = venv
+            .canonicalize()
+            .context("Couldn't canonicalize venv location")?;
         InstallLocation::Venv {
             venv_base,
             python_version,
@@ -390,7 +401,8 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             };
             let python_version = get_venv_python_version(&venv)?;
             let venv_canon = venv.canonicalize()?;
-            install_location_specs(&venv, python_version, &venv_canon, &options)?;
+            install_location_specs(&venv, python_version, &venv_canon, &options)
+                .context("Failed to download and install")?;
             Ok(None)
         }
     }
@@ -611,8 +623,8 @@ fn run_command_finder_data(
 
         debug!("launching (execv) {}", script_path.display());
         // We replace the current process with the new process is it's like actually just running
-        // the real thing
-        // note the that this may launch a python script, a native binary or anything else
+        // the real thing.
+        // Note the that this may launch a python script, a native binary or anything else
         unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
         unreachable!()
     };

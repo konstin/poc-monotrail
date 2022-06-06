@@ -1,5 +1,8 @@
-"""Manually reimplementing some bridging code. This could be much more elegant by exporting type from the rust binary
-to python"""
+"""
+Manually reimplementing some bridging code. This could be much more elegant by exporting the types from the rust binary
+to python, which would require getting pyo3-ffi to work with libloading.
+"""
+
 import json
 import os
 from dataclasses import dataclass

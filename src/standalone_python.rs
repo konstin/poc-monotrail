@@ -1,4 +1,5 @@
 use crate::monotrail::{LaunchType, PythonContext};
+use crate::utils::cache_dir;
 use crate::Pep508Environment;
 use anyhow::{bail, Context};
 use fs_err as fs;
@@ -57,8 +58,10 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
         })
         .with_context(|| {
             format!(
-                "Failed to find a matching python-build-standalone download: {}",
-                version_re
+                "Failed to find a matching python-build-standalone download: /{}/. Searched in {} and {}", 
+                version_re,
+                PYTHON_STANDALONE_LATEST_RELEASE.replace("api.", "").replace("repo/", ""),
+                PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.replace("api.", "").replace("repo/", ""),
             )
         })?;
     Ok(asset.browser_download_url)
@@ -79,11 +82,7 @@ fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()
 /// If a downloaded python version exists, return this, otherwise download and unpack a matching one
 /// from indygreg/python-build-standalone
 pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonContext, PathBuf)> {
-    // TODO: use monotrail mechanism
-    let python_parent_dir = dirs::cache_dir()
-        .context("Cache dir not found")?
-        .join("monotrail")
-        .join("python-build-standalone");
+    let python_parent_dir = cache_dir()?.join("python-build-standalone");
     let unpack_dir =
         python_parent_dir.join(format!("cpython-{}.{}", python_version.0, python_version.1));
 
@@ -95,7 +94,11 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
             "libpython3.so".to_string()
         };
         if !lib_dir.join(lib).is_file() {
-            bail!("broken python installation in {}", unpack_dir.display())
+            bail!(
+                "broken python installation in {}. \
+                Try deleting the directory and running again",
+                unpack_dir.display()
+            )
         }
         // Good installation, reuse
         debug!("Python {}.{} ready", python_version.0, python_version.1);
@@ -105,13 +108,18 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
             python_version.0, python_version.1
         );
         fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
-        let url = find_python(python_version.0, python_version.1)?;
+        let url = find_python(python_version.0, python_version.1).with_context(|| {
+            format!(
+                "Couldn't find a matching python {}.{} to download",
+                python_version.0, python_version.1,
+            )
+        })?;
         // atomic installation by tempdir & rename
         let temp_dir = tempdir_in(&python_parent_dir)
             .context("Failed to create temporary directory for unpacking")?;
         download_and_unpack_python(&url, temp_dir.path())?;
         // we can use fs::rename here because we stay in the same directory
-        fs::rename(temp_dir, &unpack_dir)?;
+        fs::rename(temp_dir, &unpack_dir).context("Failed to move installed python into place")?;
         debug!("Installed python {}.{}", python_version.0, python_version.1);
     }
     let python_binary = unpack_dir
@@ -166,8 +174,9 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
 
 #[cfg(test)]
 mod test {
-    use crate::standalone_python::{filename_regex, GitHubRelease};
-    use std::fs;
+    use fs_err as fs;
+
+    use crate::standalone_python::{filename_regex, provision_python, GitHubRelease};
 
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -197,5 +206,18 @@ mod test {
             .into_iter()
             .find(|asset| version_re.is_match(&asset.name))
             .unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[ignore] // needs network
+    fn test_provision_nonexistent_version() {
+        let err = provision_python((3, 0)).unwrap_err();
+        let expected = vec![
+            r"Couldn't find a matching python 3.0 to download",
+            r"Failed to find a matching python-build-standalone download: /^cpython-3\.0\.(\d+)\+(\d+)-x86_64\-unknown\-linux\-gnu-pgo\+lto-full\.tar\.zst$/. Searched in https://github.com/repos/indygreg/python-build-standalone/releases/latest and https://github.com/repos/indygreg/python-build-standalone/releases/65881217",
+        ];
+        let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
+        assert_eq!(actual, expected);
     }
 }

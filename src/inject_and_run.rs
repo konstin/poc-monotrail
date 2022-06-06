@@ -4,30 +4,109 @@ use crate::{get_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
 use libc::{c_int, c_void, wchar_t};
+use libloading::Library;
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::CString;
+use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tracing::{debug, trace};
 use widestring::WideCString;
+
+/// <https://docs.python.org/3/c-api/init_config.html#preinitialize-python-with-pypreconfig>
+///
+/// <https://docs.rs/pyo3/0.16.5/pyo3/ffi/struct.PyPreConfig.html>
+#[repr(C)]
+struct PyPreConfig {
+    _config_init: i32,
+    parse_argv: i32,
+    isolated: i32,
+    use_environment: i32,
+    configure_locale: i32,
+    coerce_c_locale: i32,
+    coerce_c_locale_warn: i32,
+    utf8_mode: i32,
+    dev_mode: i32,
+    allocator: i32,
+}
+
+/// <https://docs.rs/pyo3/0.16.5/pyo3/ffi/enum._PyStatus_TYPE.html>
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[allow(non_camel_case_types, clippy::enum_variant_names)]
+pub enum _PyStatus_TYPE {
+    _PyStatus_TYPE_OK,
+    _PyStatus_TYPE_ERROR,
+    _PyStatus_TYPE_EXIT,
+}
+
+/// <https://docs.python.org/3/c-api/init_config.html#pystatus>
+///
+/// <https://docs.rs/pyo3/0.16.5/pyo3/ffi/struct.PyStatus.html>
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct PyStatus {
+    pub _type: _PyStatus_TYPE,
+    pub func: *const i8,
+    pub err_msg: *const i8,
+    pub exitcode: i32,
+}
+
+//noinspection RsUnreachableCode
+/// Set utf-8 mode through pre-init
+///
+/// <https://docs.python.org/3/c-api/init_config.html#preinitialize-python-with-pypreconfig>
+unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
+    trace!("libpython pre-init");
+    let py_pre_config_init_python_config: libloading::Symbol<
+        unsafe extern "C" fn(*mut PyPreConfig) -> c_void,
+    > = lib.get(b"PyPreConfig_InitPythonConfig")?;
+    // It's all pretty much the c example code translated to rust
+    let mut preconfig: MaybeUninit<PyPreConfig> = MaybeUninit::uninit();
+    py_pre_config_init_python_config(preconfig.as_mut_ptr());
+    let mut preconfig = preconfig.assume_init();
+    // same as PYTHONUTF8=1
+    preconfig.utf8_mode = 1;
+
+    let py_pre_initialize: libloading::Symbol<unsafe extern "C" fn(*mut PyPreConfig) -> PyStatus> =
+        lib.get(b"Py_PreInitialize")?;
+    let py_status_exception: libloading::Symbol<unsafe extern "C" fn(PyStatus) -> c_int> =
+        lib.get(b"PyStatus_Exception")?;
+    let py_exit_status_exception: libloading::Symbol<unsafe extern "C" fn(PyStatus) -> !> =
+        lib.get(b"Py_ExitStatusException")?;
+
+    // This is again from the example
+    let status = py_pre_initialize(&mut preconfig as *mut PyPreConfig);
+    #[allow(unreachable_code)]
+    if py_status_exception(status) != 0 {
+        // This should never error, but who knows
+        py_exit_status_exception(status);
+        // I don't trust cpython
+        unreachable!();
+    }
+    Ok(())
+}
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own.
 /// Takes args without the first-is-current-program (i.e. python) convention.
 ///
 /// `usage: python [option] ... [-c cmd | -m mod | file | -] [arg] ...`
 pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<String>, String> {
-    let bool_opts = [
+    // These are hand collected from `python --help`
+    // See also https://docs.python.org/3/using/cmdline.html#command-line
+    let no_value_opts = [
         "-b", "-B", "-d", "-E", "-h", "-i", "-I", "-O", "-OO", "-q", "-s", "-S", "-u", "-v", "-V",
-        "-x",
+        "-x", "-?",
     ];
-    let arg_opts = ["--check-hash-based-pycs", "-W", "-X"];
+    let value_opts = ["--check-hash-based-pycs", "-W", "-X"];
     let mut arg_iter = args.iter();
     loop {
         if let Some(arg) = arg_iter.next() {
-            if bool_opts.contains(&arg.as_ref()) {
+            if no_value_opts.contains(&arg.as_ref()) {
                 continue;
-            } else if arg_opts.contains(&arg.as_ref()) {
+            } else if value_opts.contains(&arg.as_ref()) {
+                // consume the value belonging to the options
                 let value = arg_iter.next();
                 if value.is_none() {
                     return Err(format!("Missing argument for {}", arg.as_ref()));
@@ -73,6 +152,7 @@ pub fn inject_and_run_python(
         python_home.join("lib").join("libpython3.so")
     };
     let lib = {
+        // platform switch because we need to set RTLD_GLOBAL so extension modules work later
         #[cfg(unix)]
         {
             let flags = libloading::os::unix::RTLD_LAZY | libloading::os::unix::RTLD_GLOBAL;
@@ -91,7 +171,8 @@ pub fn inject_and_run_python(
         // initialize python
         // TODO: Do this via python c api instead
         env::set_var("PYTHONNOUSERSITE", "1");
-        env::set_var("PYTHONUTF8", "1");
+
+        pre_init(&lib)?;
 
         trace!("Py_SetPythonHome");
         // https://docs.python.org/3/c-api/init.html#c.Py_SetPythonHome
@@ -127,17 +208,27 @@ pub fn inject_and_run_python(
 
         // This is a really horrible way to inject that information and it should be done with
         // PyRun_StringFlags instead
+        let finder_data_json = format!(
+            "finder_data_str=r'{}'",
+            finder_data.replace('\'', r"\u0027")
+        );
         let read_json = "finder_data = FinderData.from_json(finder_data_str)";
         let update_and_activate =
             "MonotrailFinder.get_singleton().update_and_activate(finder_data)";
+        // First, we inject our Finder class. Next we add the conversion code that's specific to
+        // coming from rust without haying pyo3. Third, we serialize the information for the finder
+        // as one long json line. We read that data using the python types and
+        // deserializer we had injected, then activate it. Finally, we wait connect to the debugger
+        // if `PYCHARM_REMOTE_DEBUG` is set with a port.
+        // I again wish i knew how to just invoke pyo3 to get this done.
         let command_str = format!(
-            "{}\n{}\nfinder_data_str=r'{}'\n{}\n{}\nmaybe_debug()\n",
+            "{}\n{}\n{}\n{}\n{}\nmaybe_debug()\n",
             include_str!("../python/monotrail/monotrail_finder.py"),
-            include_str!("../python/monotrail/convert_finder_data.py"),
+            include_str!("convert_finder_data.py"),
             // TODO: actual encoding strings
             // This just hopefully works because json uses double quotes so there shouldn't
             // be any escaped single quotes in there
-            finder_data.replace('\'', r"\u0027"),
+            finder_data_json,
             read_json,
             update_and_activate
         );
@@ -177,7 +268,7 @@ pub fn inject_and_run_python(
     }
 }
 
-/// Allows doing `monotrail_python +3.10 -m say.hello`
+/// Allows linking monotrail as python and then doing `python +3.10 -m say.hello`
 #[allow(clippy::type_complexity)]
 pub fn parse_plus_arg(python_args: &[String]) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
     if let Some(first_arg) = python_args.get(0) {

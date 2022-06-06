@@ -143,11 +143,10 @@ pub fn filter_installed(
             "Failed to filter packages installed in the venv at {}",
             venv_base.display()
         )),
-        InstallLocation::Monotrail { monotrail_root, .. } => Ok(filter_installed_monotrail(
-            specs,
-            monotrail_root,
-            &compatible_tags,
-        )?),
+        InstallLocation::Monotrail { monotrail_root, .. } => {
+            filter_installed_monotrail(specs, monotrail_root, &compatible_tags)
+                .context("Failed to filter installed packages")
+        }
     }
 }
 
@@ -166,7 +165,7 @@ pub fn install_specs(
     let location = location.acquire_lock()?;
 
     match specs {
-        // silent with we do python preload and have nothing to do
+        // If everything is already installed, return silently
         [] if background => Ok(vec![]),
         [spec] => {
             if let Some(source) = &spec.source {

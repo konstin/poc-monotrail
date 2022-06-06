@@ -7,8 +7,7 @@ use std::path::{Path, PathBuf};
 
 /// Returns all subdirs in a directory
 pub fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
-    let read_dir = fs::read_dir(Path::new(&dir))
-        .with_context(|| format!("Failed to load {} directory", env!("CARGO_PKG_NAME")))?;
+    let read_dir = fs::read_dir(Path::new(&dir)).context("Failed to read package directory")?;
     Ok(read_dir
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.path().is_dir())
