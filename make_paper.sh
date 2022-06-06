@@ -18,4 +18,4 @@ echo "Installed"
 .venv/bin/monotrail_python data_science_project/make_paper.py
 MONOTRAIL_CWD="data_science_project" .venv/bin/monotrail_script numpy_identity_3
 # .venv/bin/monotrail_python flipstring/flip.py "hello world!"
-.venv/bin/pytest test/python
+# .venv/bin/pytest test/python
