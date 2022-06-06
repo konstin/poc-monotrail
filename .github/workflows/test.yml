@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: test-data/popular-wheels
-          key: cache-popular-wheels-${{ hashFiles('test-data/popular.txt') }}
+          key: cache-popular-wheels-${{ runner.os }}-${{ hashFiles('test-data/popular.txt') }}
 
       - name: Download popular wheels
         if: steps.cache-popular-wheels.outputs.cache-hit != 'true'
