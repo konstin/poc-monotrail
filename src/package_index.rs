@@ -11,6 +11,8 @@ use std::path::Path;
 use std::str::FromStr;
 use tracing::debug;
 
+const PYPI_DOMAIN: &str = "https://pypi.org";
+
 /// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
 #[derive(Deserialize, Clone, Debug)]
 struct PypiProject {
@@ -86,7 +88,7 @@ pub fn search_release(
     compatible_tags: &[(String, String, String)],
 ) -> Result<(PypiRelease, DistributionType, String)> {
     debug!("Getting Releases");
-    let url = format!("https://pypi.org/pypi/{}/json", name);
+    let url = format!("{}/pypi/{}/json", PYPI_DOMAIN, name);
     let pypi_project: PypiProject = ureq::get(&url)
         .set("User-Agent", "monotrail (konstin@mailbox.org)")
         .call()

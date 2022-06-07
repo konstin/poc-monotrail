@@ -9,16 +9,19 @@ use std::path::{Path, PathBuf};
 use tempfile::tempdir_in;
 use tracing::{debug, info};
 
+#[cfg_attr(test, allow(dead_code))]
+const GITHUB_API: &str = "https://api.github.com";
+
 const PYTHON_STANDALONE_LATEST_RELEASE: (&str, &str) = (
     // api url
-    "https://api.github.com/repos/indygreg/python-build-standalone/releases/latest",
+    "/repos/indygreg/python-build-standalone/releases/latest",
     // web url. doesn't help to much showing the api url, i just hope github has their stuff
     // together enough that these always match
     "https://github.com/indygreg/python-build-standalone/releases/latest",
 );
 
 const PYTHON_STANDALONE_KNOWN_GOOD_RELEASE: (&str, &str) = (
-    "https://api.github.com/repos/indygreg/python-build-standalone/releases/65881217",
+    "/repos/indygreg/python-build-standalone/releases/65881217",
     "https://github.com/indygreg/python-build-standalone/releases/tag/20220502",
 );
 
@@ -37,9 +40,16 @@ struct GitHubAsset {
 /// indygreg/python-build-standalone, then fall back to a known good release in case a more recent
 /// release broke compatibility
 fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
-    let latest_release: GitHubRelease = ureq::get(PYTHON_STANDALONE_LATEST_RELEASE.0)
-        .call()?
-        .into_json()?;
+    #[cfg(not(test))]
+    let host = GITHUB_API;
+
+    #[cfg(test)]
+    let host = &mockito::server_url();
+
+    let latest_release: GitHubRelease =
+        ureq::get(&format!("{}{}", host, PYTHON_STANDALONE_LATEST_RELEASE.0))
+            .call()?
+            .into_json()?;
 
     let version_re = filename_regex(major, minor);
     let asset = latest_release.assets.into_iter().find(|asset| {
@@ -51,11 +61,14 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
         return Ok(asset.browser_download_url);
     }
 
-    let latest_release: GitHubRelease = ureq::get(PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0)
-        .call()?
-        .into_json()?;
+    let good_release: GitHubRelease = ureq::get(&format!(
+        "{}{}",
+        host, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0
+    ))
+    .call()?
+    .into_json()?;
 
-    let asset = latest_release
+    let asset = good_release
         .assets
         .into_iter()
         .find(|asset| {
@@ -181,44 +194,55 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
 
 #[cfg(test)]
 mod test {
-    use fs_err as fs;
+    use fs_err::File;
+    use mockito::Mock;
 
-    use crate::standalone_python::{filename_regex, provision_python, GitHubRelease};
+    use crate::standalone_python::{
+        find_python, provision_python, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE,
+        PYTHON_STANDALONE_LATEST_RELEASE,
+    };
+
+    fn mock() -> (Mock, Mock) {
+        let latest_mock = mockito::mock("GET", PYTHON_STANDALONE_LATEST_RELEASE.0)
+            .with_header("content-type", "application/json")
+            .with_body(
+                zstd::stream::decode_all(
+                    File::open("test-data/standalone_python_github_release.json.zstd").unwrap(),
+                )
+                .unwrap(),
+            )
+            .create();
+        let known_good_mock = mockito::mock("GET", PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0)
+            .with_body(
+                zstd::stream::decode_all(
+                    File::open("test-data/standalone_python_known_good_release.json.zstd").unwrap(),
+                )
+                .unwrap(),
+            )
+            .create();
+        (latest_mock, known_good_mock)
+    }
 
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn test_download_url_from_release_20220502() {
-        let data_20220502: GitHubRelease = serde_json::from_str(
-            &fs::read_to_string("test-data/standalone_python_github_release.json").unwrap(),
-        )
-        .unwrap();
-        let version_re = filename_regex(3, 9);
-        let asset = data_20220502
-            .assets
-            .into_iter()
-            .find(|asset| version_re.is_match(&asset.name))
-            .unwrap();
-        assert_eq!(asset.browser_download_url, "https://github.com/indygreg/python-build-standalone/releases/download/20220502/cpython-3.9.12%2B20220502-x86_64_v3-unknown-linux-gnu-pgo%2Blto-full.tar.zst")
+        let _mocks = mock();
+
+        let url = find_python(3, 9).unwrap();
+        assert_eq!(url, "https://github.com/indygreg/python-build-standalone/releases/download/20220502/cpython-3.9.12%2B20220502-x86_64_v3-unknown-linux-gnu-pgo%2Blto-full.tar.zst")
     }
 
     #[test]
     fn test_download_url_from_release_20220502_any() {
-        let data_20220502: GitHubRelease = serde_json::from_str(
-            &fs::read_to_string("test-data/standalone_python_github_release.json").unwrap(),
-        )
-        .unwrap();
-        let version_re = filename_regex(3, 9);
-        data_20220502
-            .assets
-            .into_iter()
-            .find(|asset| version_re.is_match(&asset.name))
-            .unwrap();
+        let _mocks = mock();
+
+        assert!(find_python(3, 9).is_ok());
     }
 
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    #[ignore] // needs network
     fn test_provision_nonexistent_version() {
+        let _mocks = mock();
         let err = provision_python((3, 0)).unwrap_err();
         let expected = vec![
             r"Couldn't find a matching python 3.0 to download",

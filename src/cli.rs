@@ -278,6 +278,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                     } => run_command(
                         &extras,
                         python_version.first().map(|x| x.as_str()),
+                        root.as_deref(),
                         &script,
                         &args,
                     )?,
@@ -412,13 +413,20 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
 fn run_command(
     extras: &[String],
     python_version: Option<&str>,
+    root: Option<&Path>,
     command: &str,
     args: &[String],
 ) -> anyhow::Result<i32> {
     let (args, python_version) = determine_python_version(args, python_version)?;
     let (python_context, python_home) = provision_python(python_version)?;
 
-    let (specs, wrong_scripts, lockfile) = get_specs(None, extras, &python_context)?;
+    let root = if let Some(root) = root {
+        root.to_path_buf()
+    } else {
+        env::current_dir()?
+    };
+
+    let (specs, wrong_scripts, lockfile) = get_specs(Some(&root), extras, &python_context)?;
     let finder_data =
         install_specs_to_finder(&specs, wrong_scripts, lockfile, None, &python_context)?;
 
@@ -427,7 +435,7 @@ fn run_command(
         &args,
         &python_context,
         &python_home,
-        &env::current_dir()?,
+        &root,
         &finder_data,
     )?;
     Ok(exit_code)

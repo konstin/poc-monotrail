@@ -67,4 +67,5 @@ python-source = "python"
 opt-level = 3
 
 [dev-dependencies]
+mockito = "0.31.0"
 tempfile = "3.3.0"
