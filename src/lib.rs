@@ -5,7 +5,10 @@ pub use crate::markers::Pep508Environment;
 pub use crate::monotrail::get_specs;
 pub use cli::{run_cli, Cli};
 pub use inject_and_run::{parse_major_minor, run_python_args};
+pub use poetry_integration::read_dependencies::poetry_spec_from_dir;
 use poetry_integration::read_dependencies::read_poetry_specs;
+#[doc(hidden)]
+pub use utils::assert_cli_error;
 
 mod cli;
 mod inject_and_run;

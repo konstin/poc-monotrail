@@ -48,6 +48,7 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
 
     let latest_release: GitHubRelease =
         ureq::get(&format!("{}{}", host, PYTHON_STANDALONE_LATEST_RELEASE.0))
+            .set("User-Agent", "monotrail (konstin@mailbox.org)")
             .call()?
             .into_json()?;
 
@@ -65,6 +66,7 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
         "{}{}",
         host, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0
     ))
+    .set("User-Agent", "monotrail (konstin@mailbox.org)")
     .call()?
     .into_json()?;
 
@@ -91,7 +93,10 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
 fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()> {
     // TODO: Add MB from API
     info!("Downloading {}", url);
-    let tar_zstd = ureq::get(url).call()?.into_reader();
+    let tar_zstd = ureq::get(url)
+        .set("User-Agent", "monotrail (konstin@mailbox.org)")
+        .call()?
+        .into_reader();
     let tar = zstd::Decoder::new(tar_zstd)?;
     let mut archive = tar::Archive::new(tar);
     fs::create_dir_all(&target_dir)?;
@@ -194,32 +199,23 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
 
 #[cfg(test)]
 mod test {
-    use fs_err::File;
     use mockito::Mock;
 
     use crate::standalone_python::{
         find_python, provision_python, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE,
         PYTHON_STANDALONE_LATEST_RELEASE,
     };
+    use crate::utils::zstd_json_mock;
 
     fn mock() -> (Mock, Mock) {
-        let latest_mock = mockito::mock("GET", PYTHON_STANDALONE_LATEST_RELEASE.0)
-            .with_header("content-type", "application/json")
-            .with_body(
-                zstd::stream::decode_all(
-                    File::open("test-data/standalone_python_github_release.json.zstd").unwrap(),
-                )
-                .unwrap(),
-            )
-            .create();
-        let known_good_mock = mockito::mock("GET", PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0)
-            .with_body(
-                zstd::stream::decode_all(
-                    File::open("test-data/standalone_python_known_good_release.json.zstd").unwrap(),
-                )
-                .unwrap(),
-            )
-            .create();
+        let latest_mock = zstd_json_mock(
+            PYTHON_STANDALONE_LATEST_RELEASE.0,
+            "test-data/standalone_python_github_release.json.zstd",
+        );
+        let known_good_mock = zstd_json_mock(
+            PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0,
+            "test-data/standalone_python_known_good_release.json.zstd",
+        );
         (latest_mock, known_good_mock)
     }
 

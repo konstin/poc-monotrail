@@ -1,7 +1,10 @@
-use anyhow::Context;
+use crate::cli::{run_cli, Cli};
+use anyhow::{Context, Error};
 use fs_err as fs;
 use fs_err::DirEntry;
 use install_wheel_rs::WheelInstallerError;
+#[cfg(test)]
+use mockito::Mock;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -36,4 +39,27 @@ pub(crate) fn data_local_dir() -> Result<PathBuf, WheelInstallerError> {
             ))
         })?
         .join(env!("CARGO_PKG_NAME")))
+}
+
+/// This is used by several places for testing
+#[doc(hidden)]
+pub fn assert_cli_error(cli: Cli, venv: Option<&Path>, expected: &[&str]) {
+    if let Err(err) = run_cli(cli, venv) {
+        let err: Error = err;
+        let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
+        assert_eq!(expected, actual);
+    } else {
+        panic!("Should have errored");
+    }
+}
+
+/// Adds the mock response for a prerecorded .json.zstd response
+#[cfg(test)]
+pub fn zstd_json_mock(url: &str, fixture: impl Into<PathBuf>) -> Mock {
+    use fs_err::File;
+
+    mockito::mock("GET", url)
+        .with_header("content-type", "application/json")
+        .with_body(zstd::stream::decode_all(File::open(fixture).unwrap()).unwrap())
+        .create()
 }

@@ -461,7 +461,8 @@ mod test {
     }
 }
 
-/// Reads `poetry.toml` and `poetry.lock` from `dep_file_location`
+/// Reads `poetry.toml` and `poetry.lock` from `dep_file_location`, returns specs, scripts and
+/// the lockfile string
 pub fn poetry_spec_from_dir(
     dep_file_location: &Path,
     extras: &[String],

@@ -1,8 +1,8 @@
 //! Tests the error messages for broken wheels
 
-use anyhow::{bail, Error, Result};
+use anyhow::Result;
 use clap::Parser;
-use monotrail::{run_cli, Cli};
+use monotrail::{assert_cli_error, run_cli, Cli};
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
@@ -14,13 +14,7 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let wheel = Path::new("test-data/pip-test-packages").join(name);
     let cli: Cli =
         Cli::try_parse_from(&["monotrail", "venv-install", &wheel.display().to_string()])?;
-    if let Err(err) = run_cli(cli, Some(&venv)) {
-        let err: Error = err;
-        let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
-        assert_eq!(expected, actual);
-    } else {
-        bail!("Should have errored");
-    }
+    assert_cli_error(cli, Some(&venv), expected);
     Ok(())
 }
 
@@ -65,4 +59,21 @@ fn test_priority() -> Result<()> {
             "invalid Zip archive: Invalid zip header",
         ],
     )
+}
+
+/// Checks that having a hyphen in the python invocation works. Not really an error test,
+/// but we load python so i'm not putting this into a unit test
+#[test]
+fn test_cli_python_hyphen() {
+    let cli = Cli::try_parse_from(&[
+        "monotrail",
+        "run",
+        "--root",
+        "data_science_project",
+        "python",
+        "-c",
+        "fail()",
+    ])
+    .unwrap();
+    assert_eq!(run_cli(cli, None).unwrap(), Some(1));
 }

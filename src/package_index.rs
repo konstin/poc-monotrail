@@ -4,6 +4,8 @@ use crate::spec::DistributionType;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
+#[cfg(test)]
+use mockito;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io;
@@ -11,6 +13,7 @@ use std::path::Path;
 use std::str::FromStr;
 use tracing::debug;
 
+#[cfg_attr(test, allow(dead_code))]
 const PYPI_DOMAIN: &str = "https://pypi.org";
 
 /// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
@@ -88,7 +91,11 @@ pub fn search_release(
     compatible_tags: &[(String, String, String)],
 ) -> Result<(PypiRelease, DistributionType, String)> {
     debug!("Getting Releases");
-    let url = format!("{}/pypi/{}/json", PYPI_DOMAIN, name);
+    #[cfg(not(test))]
+    let host = PYPI_DOMAIN;
+    #[cfg(test)]
+    let host = &mockito::server_url();
+    let url = format!("{}/pypi/{}/json", host, name);
     let pypi_project: PypiProject = ureq::get(&url)
         .set("User-Agent", "monotrail (konstin@mailbox.org)")
         .call()

@@ -76,9 +76,23 @@ impl ExternalArgs {
     }
 }
 
-#[derive(clap::Subcommand)]
+/// Either `python ...` or `command ...`
+#[derive(clap::Subcommand, Debug, Clone)]
 pub enum RunSubcommand {
-    /// Like `python <args...>`, but installs and injects the dependencies before.
+    /// Either `python ...` or `command ...`
+    #[clap(external_subcommand)]
+    Args(Vec<String>),
+}
+
+#[derive(Parser)]
+pub enum Cli {
+    /// This features two subcommands that we unfortunately can't have as proper subcommands
+    /// due to a clap bug (https://github.com/clap-rs/clap/discussions/3766)
+    ///
+    /// ### python
+    ///
+    /// Run a python file, module or script. Like `python <args...>`, but installs and injects the
+    /// dependencies first.
     ///
     /// If you run python with a script, e.g. `python my/files/script.py`, monotrail will look for
     /// dependency specification (pyproject.toml or requirements.txt) next to script.py and up
@@ -87,24 +101,11 @@ pub enum RunSubcommand {
     /// You can use the same arguments as for python main (they will be passed on), so you can do
     /// e.g. `monotrail run -p 3.9 python -OO -m http.server` instead of
     /// `python3.9 -OO -m http.server`.
-    Python {
-        #[clap(subcommand)]
-        args: Option<ExternalArgs>,
-    },
+    ///
+    /// ### command
+    ///
     /// Similar to the python command, but it starts an installed script such as e.g. `pytest` or
     /// `black`, not a .py file or a module
-    #[clap(trailing_var_arg = true)]
-    Command {
-        command: String,
-        #[clap(subcommand)]
-        args: Option<ExternalArgs>,
-    },
-}
-
-#[derive(Parser)]
-pub enum Cli {
-    /// Run a python file, module or script. Works like `python <args...>`, but installs and injects
-    /// the dependencies before.
     Run {
         /// Install those extras from pyproject.toml
         #[clap(long, short = 'E')]
@@ -116,6 +117,7 @@ pub enum Cli {
         /// Directory with the pyproject.toml, defaults to the current directory
         #[clap(long)]
         root: Option<PathBuf>,
+        /// Either `python ...` or `command ...`
         #[clap(subcommand)]
         action: RunSubcommand,
     },
@@ -258,30 +260,26 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             root,
             action,
         } => {
-            let args = match &action {
-                RunSubcommand::Python { args } => args.clone(),
-                RunSubcommand::Command { args, .. } => args.clone(),
-            }
-            .unwrap_or_default()
-            .args()
-            .to_vec();
+            let RunSubcommand::Args(args) = action;
+            let trail_args = args[1..].to_vec();
+
             if python_version.len() <= 1 {
-                let exit_code = match &action {
-                    RunSubcommand::Python { .. } => run_python_args(
-                        &args,
+                let exit_code = match args[0].as_str() {
+                    "python" => run_python_args(
+                        &trail_args,
                         python_version.first().map(|x| x.as_str()),
                         root.as_deref(),
                         &extras,
                     )?,
-                    RunSubcommand::Command {
-                        command: script, ..
-                    } => run_command(
+                    "command" => run_command(
                         &extras,
                         python_version.first().map(|x| x.as_str()),
                         root.as_deref(),
-                        &script,
-                        &args,
+                        // If there's no command this will show an error downstream
+                        &args.get(1).unwrap_or(&"".to_string()),
+                        &trail_args,
                     )?,
+                    other => bail!("invalid command `{}`, must be 'python' or 'command'", other),
                 };
                 Ok(Some(exit_code))
             } else {
@@ -297,7 +295,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                     // Would be nicer to use a fork wrapper here
                     let status = Command::new(env::current_exe()?)
                         .args(&["run", "-p", &version, "python"])
-                        .args(&args)
+                        .args(&trail_args)
                         .status()
                         .context("Failed to start child process for python version")?;
                     if !status.success() {
@@ -640,4 +638,17 @@ fn run_command_finder_data(
     // just to assert it lives until here
     drop(scripts_tmp);
     Ok(exit_code)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{assert_cli_error, Cli};
+    use clap::Parser;
+
+    #[test]
+    fn test_neither_command_nor_python() {
+        let cli = Cli::try_parse_from(&["monotrail", "run", "bogus"]).unwrap();
+        let expected = &["invalid command `bogus`, must be 'python' or 'command'"];
+        assert_cli_error(cli, None, expected);
+    }
 }

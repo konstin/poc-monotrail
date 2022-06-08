@@ -189,3 +189,62 @@ pub struct ResolvedSpec {
     pub location: FileOrUrl,
     pub distribution_type: DistributionType,
 }
+
+#[cfg(test)]
+mod test {
+    use crate::spec::{FileOrUrl, ResolvedSpec};
+    use crate::utils::zstd_json_mock;
+    use crate::{poetry_spec_from_dir, Pep508Environment};
+    use install_wheel_rs::{compatible_tags, Arch, Os};
+    use std::path::Path;
+
+    fn manylinux_url(package: &str) -> anyhow::Result<ResolvedSpec> {
+        let os = Os::Manylinux {
+            major: 2,
+            minor: 27,
+        };
+        let arch = Arch::X86_64;
+        let python_version = (3, 7);
+        let compatible_tags = compatible_tags(python_version, &os, &arch).unwrap();
+        let pep508_env = Pep508Environment::from_json_str(
+            r##"{"implementation_name": "cpython", "implementation_version": "3.7.13", "os_name": "posix", "platform_machine": "x86_64", "platform_python_implementation": "CPython", "platform_release": "5.4.188+", "platform_system": "Linux", "platform_version": "#1 SMP Sun Apr 24 10:03:06 PDT 2022", "python_full_version": "3.7.13", "python_version": "3.7", "sys_platform": "linux"}"##,
+        );
+
+        let (specs, _, _) = poetry_spec_from_dir(
+            Path::new("src/poetry_integration/poetry_boostrap_lock"),
+            &[],
+            &pep508_env,
+        )
+        .unwrap();
+        specs
+            .iter()
+            .find(|spec| spec.name == package)
+            .unwrap()
+            .resolve(&compatible_tags)
+    }
+
+    #[test]
+    fn test_manylinux_url() {
+        let _mock = zstd_json_mock("/pypi/cffi/json", "test-data/pypi/cffi.json.zstd");
+        assert_eq!(
+            manylinux_url("cffi").unwrap().location,
+            FileOrUrl::Url {
+                url: "https://files.pythonhosted.org/packages/44/6b/5edf93698ef1dc745774e47e26f5995040dd3604562dd63f5959fcd3a49e/cffi-1.15.0-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl".to_string(),
+                filename: "cffi-1.15.0-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl".to_string()
+            },
+        )
+    }
+
+    #[test]
+    fn test_pypi_no_internet() {
+        // We must use a different package here or we race with the other mock
+        let err = manylinux_url("certifi").unwrap_err();
+        let errors = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
+        // the second message has the mockito url in it
+        assert_eq!(
+            errors[0],
+            "Failed to contact pypi. Is your internet connection working?"
+        );
+        assert_eq!(errors.len(), 2);
+    }
+}
