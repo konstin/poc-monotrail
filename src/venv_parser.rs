@@ -1,3 +1,5 @@
+//! Reads pyvenv.cfg
+
 use fs_err as fs;
 use install_wheel_rs::WheelInstallerError;
 use std::collections::HashMap;

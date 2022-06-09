@@ -1,3 +1,5 @@
+//! Read requirements.txt badly
+
 use crate::poetry_integration::poetry_toml;
 use anyhow::{bail, format_err, Context};
 use requirements::enums::Comparison;

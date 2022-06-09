@@ -1,3 +1,6 @@
+//! Download and install standalone python builds (PyOxy) from
+//! <https://github.com/indygreg/python-build-standalone>
+
 use crate::monotrail::{LaunchType, PythonContext};
 use crate::utils::cache_dir;
 use crate::Pep508Environment;
@@ -20,6 +23,8 @@ const PYTHON_STANDALONE_LATEST_RELEASE: (&str, &str) = (
     "https://github.com/indygreg/python-build-standalone/releases/latest",
 );
 
+/// i've manually confirmed that this release has python 3.8, 3.9 and 3.10 for all major
+/// platforms and a naming convention monotrail can read
 const PYTHON_STANDALONE_KNOWN_GOOD_RELEASE: (&str, &str) = (
     "/repos/indygreg/python-build-standalone/releases/65881217",
     "https://github.com/indygreg/python-build-standalone/releases/tag/20220502",
@@ -168,7 +173,7 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
 /// Returns a regex matching a compatible optimized build from the indygreg/python-build-standalone
 /// release page.
 ///
-/// https://python-build-standalone.readthedocs.io/en/latest/running.html
+/// <https://python-build-standalone.readthedocs.io/en/latest/running.html>
 pub fn filename_regex(major: u8, minor: u8) -> Regex {
     let target_triple = target_lexicon::HOST.to_string();
     let target_triple = if target_triple.starts_with("x86_64-unknown-linux") {

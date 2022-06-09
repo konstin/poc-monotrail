@@ -4,8 +4,6 @@ use crate::spec::DistributionType;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
-#[cfg(test)]
-use mockito;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io;
@@ -16,13 +14,13 @@ use tracing::debug;
 #[cfg_attr(test, allow(dead_code))]
 const PYPI_DOMAIN: &str = "https://pypi.org";
 
-/// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
+/// <https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json>
 #[derive(Deserialize, Clone, Debug)]
 struct PypiProject {
     releases: HashMap<String, Vec<PypiRelease>>,
 }
 
-/// https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json
+/// <https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json>
 #[derive(Deserialize, Clone, Debug)]
 #[allow(dead_code)]
 pub struct PypiRelease {
@@ -33,7 +31,7 @@ pub struct PypiRelease {
     pub url: String,
 }
 
-/// https://github.com/pypa/warehouse/blob/4d4c7940063db51e8ee03de78afdff6d4e9140ae/warehouse/filters.py#L33-L41
+/// <https://github.com/pypa/warehouse/blob/4d4c7940063db51e8ee03de78afdff6d4e9140ae/warehouse/filters.py#L33-L41>
 #[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PackageType {
@@ -82,9 +80,9 @@ fn matching_package_for_version(
     }
 }
 
-/// Finds a matching wheel from pages like https://pypi.org/pypi/tqdm/json
+/// Finds a matching wheel from pages like <https://pypi.org/pypi/tqdm/json>
 ///
-/// https://warehouse.pypa.io/api-reference/json.html
+/// <https://warehouse.pypa.io/api-reference/json.html>
 pub fn search_release(
     name: &str,
     version: Option<String>,

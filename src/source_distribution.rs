@@ -1,3 +1,5 @@
+//! Build a wheel from a source distribution
+
 use crate::utils::cache_dir;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
@@ -9,6 +11,8 @@ use std::process::Command;
 use std::str::FromStr;
 use tempfile::TempDir;
 
+/// Takes a source distribution, checks whether we have already built a matching wheel, and if
+/// not, builds a wheels from the source distribution by invoking `pip wheel --no-deps`
 pub fn build_source_distribution_to_wheel_cached(
     name: &str,
     version: &str,
@@ -45,7 +49,7 @@ pub fn build_source_distribution_to_wheel_cached(
     }
 }
 
-/// Builds a wheel from an source distribution or a repo checkout using pip
+/// Builds a wheel from an source distribution or a repo checkout using `pip wheel --no-deps`
 pub fn build_to_wheel(
     sdist_or_dir: &Path,
     // needs to be passed in or the tempdir will be deleted to early

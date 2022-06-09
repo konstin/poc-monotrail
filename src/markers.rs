@@ -1,3 +1,5 @@
+//! PEP 508 marker parser
+//!
 //! i have no idea how to write parsers and didn't want to learn it just for this,
 //! so if you want to replace this with something proper feel free to :)
 //! i really wouldn't have written this in the first place if it wasn't absolutely required
@@ -500,7 +502,7 @@ mod test {
         assert!(!marker3.evaluate(&env37).unwrap());
     }
 
-    /// Copied from https://github.com/pypa/packaging/blob/85ff971a250dc01db188ef9775499c15553a8c95/tests/test_markers.py#L175-L221
+    /// Copied from <https://github.com/pypa/packaging/blob/85ff971a250dc01db188ef9775499c15553a8c95/tests/test_markers.py#L175-L221>
     #[test]
     fn test_marker_equivalence() {
         let values = [

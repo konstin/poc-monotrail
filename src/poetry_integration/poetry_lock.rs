@@ -1,3 +1,5 @@
+//! Types for poetry.lock
+
 use crate::markers::{parse_markers, Pep508Environment};
 use regex::Regex;
 use serde::Deserialize;

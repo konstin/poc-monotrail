@@ -1,36 +1,22 @@
-use crate::inject_and_run::{
-    determine_python_version, inject_and_run_python, parse_major_minor, parse_plus_arg,
-    prepare_execve_environment, run_python_args,
-};
-use crate::install::{filter_installed, InstalledPackage};
+use crate::inject_and_run::{determine_python_version, parse_plus_arg, run_python_args};
+use crate::install::{filter_installed, install_all, InstalledPackage};
 use crate::markers::Pep508Environment;
-use crate::monotrail::{
-    find_scripts, install_specs_to_finder, is_python_script, monotrail_root, FinderData,
-    PythonContext,
-};
+use crate::monotrail::{get_specs, install, monotrail_root};
 use crate::package_index::download_distribution;
-use crate::poetry_integration::lock::poetry_resolve_from_dir;
-use crate::poetry_integration::poetry_toml;
-use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
 use crate::spec::RequestedSpec;
 use crate::standalone_python::provision_python;
-use crate::utils::{cache_dir, data_local_dir};
+use crate::utils::cache_dir;
 use crate::venv_parser::get_venv_python_version;
 use crate::verify_installation::verify_installation;
-use crate::{get_specs, install_specs, DEFAULT_PYTHON_VERSION};
-use anyhow::{bail, format_err, Context};
+use crate::{monotrail, ppipx};
+use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
-use fs_err as fs;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
-use nix::unistd;
-use std::collections::BTreeMap;
 use std::env;
-use std::ffi::CString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tempfile::TempDir;
 use tracing::{debug, info};
 
 #[derive(Parser)]
@@ -56,7 +42,7 @@ pub struct PoetryOptions {
 }
 
 /// Hack around clap's insufficiencies about "do not parse those argument
-/// https://github.com/clap-rs/clap/discussions/3766
+/// <https://github.com/clap-rs/clap/discussions/3766>
 #[derive(Subcommand, Clone, Debug)]
 pub enum ExternalArgs {
     #[clap(external_subcommand)]
@@ -87,7 +73,7 @@ pub enum RunSubcommand {
 #[derive(Parser)]
 pub enum Cli {
     /// This features two subcommands that we unfortunately can't have as proper subcommands
-    /// due to a clap bug (https://github.com/clap-rs/clap/discussions/3766)
+    /// due to a clap bug (<https://github.com/clap-rs/clap/discussions/3766>)
     ///
     /// ### python
     ///
@@ -142,6 +128,7 @@ pub enum Cli {
         #[clap(subcommand)]
         args: Option<ExternalArgs>,
     },
+    /// Check all installed packages against their RECORD files
     VerifyInstallation {
         /// Print all offending paths
         #[clap(long, short)]
@@ -191,7 +178,8 @@ pub fn download_distribution_cached(
     Ok(target_file)
 }
 
-fn install_location_specs(
+/// `poetry install` reimplementation that supports both venv and monotrail
+fn poetry_install(
     venv: &Path,
     python_version: (u8, u8),
     venv_canon: &Path,
@@ -241,7 +229,7 @@ fn install_location_specs(
     } else {
         (specs, Vec::new())
     };
-    let mut installed_new = install_specs(
+    let mut installed_new = install_all(
         &to_install,
         &location,
         &compatible_tags,
@@ -312,7 +300,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             extras,
             command,
             args,
-        } => Ok(Some(ppipx(
+        } => Ok(Some(ppipx::ppipx(
             package.as_deref(),
             python_version.as_deref(),
             version.as_deref(),
@@ -376,7 +364,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                 python_version,
             };
 
-            install_specs(
+            install_all(
                 &specs,
                 &installation_location,
                 &compatible_tags,
@@ -400,7 +388,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             };
             let python_version = get_venv_python_version(&venv)?;
             let venv_canon = venv.canonicalize()?;
-            install_location_specs(&venv, python_version, &venv_canon, &options)
+            poetry_install(&venv, python_version, &venv_canon, &options)
                 .context("Failed to download and install")?;
             Ok(None)
         }
@@ -425,219 +413,16 @@ fn run_command(
     };
 
     let (specs, wrong_scripts, lockfile) = get_specs(Some(&root), extras, &python_context)?;
-    let finder_data =
-        install_specs_to_finder(&specs, wrong_scripts, lockfile, None, &python_context)?;
+    let finder_data = install(&specs, wrong_scripts, lockfile, None, &python_context)?;
 
-    let exit_code = run_command_finder_data(
+    monotrail::run_command_finder_data(
         &command,
         &args,
         &python_context,
         &python_home,
         &root,
         &finder_data,
-    )?;
-    Ok(exit_code)
-}
-
-/// Simple pipx reimplementation
-///
-/// Resolves one package, saving it in .local and runs one command from it
-fn ppipx(
-    package: Option<&str>,
-    python_version: Option<&str>,
-    version: Option<&str>,
-    extras: &[String],
-    command: &str,
-    args: &[String],
-) -> anyhow::Result<i32> {
-    let python_version = python_version
-        .map(parse_major_minor)
-        .transpose()?
-        .unwrap_or(DEFAULT_PYTHON_VERSION);
-
-    let (python_context, python_home) = provision_python(python_version)?;
-    let package = package.unwrap_or(command);
-    let package_extras = if extras.is_empty() {
-        package.to_string()
-    } else {
-        format!("{}[{}]", package, extras.join(","))
-    };
-
-    let resolution_dir = data_local_dir()?
-        .join("ppipx")
-        .join(&package_extras)
-        .join(version.unwrap_or("latest"));
-
-    if !resolution_dir.join("poetry.lock").is_file() {
-        info!(
-            "Generating ppipx entry for {}@{}",
-            package_extras,
-            version.unwrap_or("latest")
-        );
-        let mut dependencies = BTreeMap::new();
-        // Add python entry with current version; resolving will otherwise fail with complaints
-        dependencies.insert(
-            "python".to_string(),
-            // For some reason on github actions 3.8.12 is not 3.8 compatible, so we name the range explicitly
-            poetry_toml::Dependency::Compact(format!(
-                ">={}.{},<{}.{}",
-                python_version.0,
-                python_version.1,
-                python_version.0,
-                python_version.1 + 1
-            )),
-        );
-        if extras.is_empty() {
-            dependencies.insert(
-                package.to_string(),
-                poetry_toml::Dependency::Compact(version.unwrap_or("*").to_string()),
-            );
-        } else {
-            dependencies.insert(
-                package.to_string(),
-                poetry_toml::Dependency::Expanded {
-                    version: Some(version.unwrap_or("*").to_string()),
-                    optional: None,
-                    extras: Some(extras.to_vec()),
-                    git: None,
-                    branch: None,
-                },
-            );
-        }
-        let pyproject_toml = PoetryPyprojectToml {
-            tool: Some(poetry_toml::ToolSection {
-                poetry: Some(poetry_toml::PoetrySection {
-                    name: format!("{}_launcher", package),
-                    version: "0.0.1".to_string(),
-                    description: format!(
-                        "Launcher for {}@{}",
-                        package,
-                        version.unwrap_or("latest")
-                    ),
-                    authors: vec!["monotrail".to_string()],
-                    dependencies,
-                    dev_dependencies: Default::default(),
-                    extras: None,
-                    scripts: None,
-                }),
-            }),
-            build_system: None,
-        };
-
-        fs::create_dir_all(&resolution_dir).context("Failed to create ppipx resolution dir")?;
-        let resolve_dir = TempDir::new()?;
-        fs::write(
-            resolve_dir.path().join("pyproject.toml"),
-            toml::to_vec(&pyproject_toml)
-                .context("Failed to serialize pyproject.toml for ppipx")?,
-        )?;
-        poetry_resolve_from_dir(&resolve_dir, &python_context)?;
-        fs::copy(
-            resolve_dir.path().join("pyproject.toml"),
-            resolution_dir.join("pyproject.toml"),
-        )
-        .context("Failed to copy ppipx pyproject.toml")?;
-        fs::copy(
-            resolve_dir.path().join("poetry.lock"),
-            resolution_dir.join("poetry.lock"),
-        )
-        .context("Poetry didn't generate a poetry.lock")?;
-    } else {
-        debug!("ppipx entry already present")
-    }
-
-    let (poetry_section, poetry_lock, lockfile) = read_toml_files(&resolution_dir)
-        .with_context(|| format!("Invalid ppipx entry at {}", resolution_dir.display()))?;
-    let specs = read_poetry_specs(
-        &poetry_section,
-        poetry_lock,
-        true,
-        &[],
-        &python_context.pep508_env,
-    )?;
-
-    let finder_data =
-        install_specs_to_finder(&specs, BTreeMap::new(), lockfile, None, &python_context)
-            .context("Couldn't install packages")?;
-
-    run_command_finder_data(
-        &command,
-        &args,
-        &python_context,
-        &python_home,
-        &resolution_dir,
-        &finder_data,
     )
-}
-
-fn run_command_finder_data(
-    script: &str,
-    args: &[String],
-    python_context: &PythonContext,
-    python_home: &Path,
-    root: &Path,
-    finder_data: &FinderData,
-) -> anyhow::Result<i32> {
-    let scripts = find_scripts(
-        &finder_data.sprawl_packages,
-        Path::new(&finder_data.sprawl_root),
-    )
-    .context("Failed to collect scripts")?;
-    let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
-    let sys_executable = prepare_execve_environment(
-        &scripts,
-        Some(&root),
-        scripts_tmp.path(),
-        python_context.version,
-    )?;
-
-    let script_path = scripts.get(&script.to_string()).with_context(|| {
-        format_err!(
-            "Couldn't find command {} in installed packages.\nInstalled scripts: {:?}",
-            script,
-            scripts.keys()
-        )
-    })?;
-    let exit_code = if is_python_script(&script_path)? {
-        debug!("launching (python) {}", script_path.display());
-        let args: Vec<String> = [
-            python_context.sys_executable.to_string_lossy().to_string(),
-            script_path.to_string_lossy().to_string(),
-        ]
-        .iter()
-        .chain(args)
-        .map(ToString::to_string)
-        .collect();
-        let exit_code = inject_and_run_python(
-            &python_home,
-            python_context.version,
-            &sys_executable,
-            &args,
-            &serde_json::to_string(&finder_data).unwrap(),
-        )?;
-        exit_code as i32
-    } else {
-        // Sorry for the to_string_lossy all over the place
-        // https://stackoverflow.com/a/38948854/3549270
-        let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
-            .context("Failed to convert executable path")?;
-        let args_c_string = args
-            .iter()
-            .map(|arg| {
-                CString::new(arg.as_bytes()).context("Failed to convert executable argument")
-            })
-            .collect::<anyhow::Result<Vec<CString>>>()?;
-
-        debug!("launching (execv) {}", script_path.display());
-        // We replace the current process with the new process is it's like actually just running
-        // the real thing.
-        // Note the that this may launch a python script, a native binary or anything else
-        unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
-        unreachable!()
-    };
-    // just to assert it lives until here
-    drop(scripts_tmp);
-    Ok(exit_code)
 }
 
 #[cfg(test)]

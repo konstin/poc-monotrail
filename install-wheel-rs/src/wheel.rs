@@ -25,7 +25,7 @@ use zip::ZipArchive;
 pub const MONOTRAIL_SCRIPT_SHEBANG: &str = "#!/usr/bin/env python";
 
 /// Line in a RECORD file
-/// https://www.python.org/dev/peps/pep-0376/#record
+/// <https://www.python.org/dev/peps/pep-0376/#record>
 ///
 /// ```csv
 /// tqdm/cli.py,sha256=x_c8nmc4Huc-lKEsAXj78ZiyqSJ9hJ71j7vltY67icw,10509
@@ -41,8 +41,8 @@ pub struct RecordEntry {
 
 /// Minimal direct_url.json schema
 ///
-/// https://packaging.python.org/en/latest/specifications/direct-url/
-/// https://www.python.org/dev/peps/pep-0610/
+/// <https://packaging.python.org/en/latest/specifications/direct-url/>
+/// <https://www.python.org/dev/peps/pep-0610/>
 #[derive(Serialize)]
 struct DirectUrl {
     archive_info: HashMap<(), ()>,
@@ -58,7 +58,7 @@ struct Script {
 
 /// Wrapper script template function
 ///
-/// https://github.com/pypa/pip/blob/7f8a6844037fb7255cfd0d34ff8e8cf44f2598d4/src/pip/_vendor/distlib/scripts.py#L41-L48
+/// <https://github.com/pypa/pip/blob/7f8a6844037fb7255cfd0d34ff8e8cf44f2598d4/src/pip/_vendor/distlib/scripts.py#L41-L48>
 fn get_script_launcher(module: &str, import_name: &str, shebang: &str) -> String {
     format!(
         r##"{shebang}
@@ -158,9 +158,9 @@ fn parse_scripts(
 }
 
 /// Shamelessly stolen (and updated for recent sha2)
-/// https://github.com/richo/hashing-copy/blob/d8dd2fdb63c6faf198de0c9e5713d6249cbb5323/src/lib.rs#L10-L52
+/// <https://github.com/richo/hashing-copy/blob/d8dd2fdb63c6faf198de0c9e5713d6249cbb5323/src/lib.rs#L10-L52>
 /// which in turn got it from std
-/// https://doc.rust-lang.org/1.58.0/src/std/io/copy.rs.html#128-156
+/// <https://doc.rust-lang.org/1.58.0/src/std/io/copy.rs.html#128-156>
 pub fn copy_and_hash(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<(u64, String)> {
     // TODO: Do we need to support anything besides sha256?
     let mut hasher = Sha256::new();
@@ -803,7 +803,7 @@ fn extra_dist_info(
 }
 
 /// Reads the record file
-/// https://www.python.org/dev/peps/pep-0376/#record
+/// <https://www.python.org/dev/peps/pep-0376/#record>
 pub fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelInstallerError> {
     csv::ReaderBuilder::new()
         .has_headers(false)

@@ -1,3 +1,5 @@
+//! Exports rust functions for the monotrail python package
+//!
 //! I'm trying to keep the interface simple and reusable for the rust main binary case
 //! by shipping all information through `FinderData`.
 //!
@@ -6,8 +8,7 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{
-    self, get_specs, install_specs_to_finder, spec_paths, FinderData, LaunchType, PythonContext,
-    SpecPaths,
+    self, get_specs, install, spec_paths, FinderData, LaunchType, PythonContext, SpecPaths,
 };
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
@@ -75,8 +76,7 @@ pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<FinderData
 
     let (specs, scripts, lockfile) =
         get_specs(script.as_deref(), &extras, &python_context).map_err(format_monotrail_error)?;
-    install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)
-        .map_err(format_monotrail_error)
+    install(&specs, scripts, lockfile, None, &python_context).map_err(format_monotrail_error)
 }
 
 /// User gives a `[tool.poetry.dependencies]`
@@ -99,7 +99,7 @@ pub fn monotrail_from_requested(
     let specs = read_poetry_specs(&poetry_section, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(&specs, BTreeMap::new(), lockfile, None, &python_context)
+    install(&specs, BTreeMap::new(), lockfile, None, &python_context)
         .map_err(format_monotrail_error)
 }
 
@@ -125,7 +125,7 @@ pub fn monotrail_from_git(
     )
     .map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(
+    install(
         &specs,
         BTreeMap::new(),
         lockfile,
@@ -146,8 +146,7 @@ pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyRe
     let (specs, scripts, lockfile) =
         get_specs(Some(&dir), &extras, &python_context).map_err(format_monotrail_error)?;
 
-    install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)
-        .map_err(format_monotrail_error)
+    install(&specs, scripts, lockfile, None, &python_context).map_err(format_monotrail_error)
 }
 
 /// The installed packages are all lies and rumors, we can only find the actually importable

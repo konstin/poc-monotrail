@@ -1,6 +1,6 @@
 //! calls to poetry to resolve a set of requirements
 
-use crate::monotrail::{install_requested, LaunchType, PythonContext};
+use crate::monotrail::{install_missing, LaunchType, PythonContext};
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection};
@@ -124,7 +124,7 @@ pub fn poetry_resolve_from_dir(
         &[],
         &python_context.pep508_env,
     )?;
-    install_requested(
+    install_missing(
         &specs,
         &python_context.sys_executable,
         python_context.version,

@@ -1,3 +1,5 @@
+//! Filter and install python packages with install-wheel-rs
+
 use crate::cli::download_distribution_cached;
 use crate::monotrail::filter_installed_monotrail;
 use crate::source_distribution::build_source_distribution_to_wheel_cached;
@@ -150,9 +152,8 @@ pub fn filter_installed(
     }
 }
 
-/// Naively returns name and version which is sufficient for the current system
-/// Returns name, python version, unique version
-pub fn install_specs(
+/// Installs all given specs
+pub fn install_all(
     specs: &[RequestedSpec],
     location: &InstallLocation<PathBuf>,
     compatible_tags: &[(String, String, String)],
@@ -248,7 +249,7 @@ pub fn install_specs(
     }
 }
 
-/// https://stackoverflow.com/a/67240436/3549270
+/// <https://stackoverflow.com/a/67240436/3549270>
 fn checkout_revision(revision: &str, repo: Repository) -> Result<(), git2::Error> {
     let (object, reference) = repo.revparse_ext(revision)?;
 

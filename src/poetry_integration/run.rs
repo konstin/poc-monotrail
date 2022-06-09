@@ -1,5 +1,7 @@
+//! Runs poetry after installing it from a bundle lockfile
+
 use crate::inject_and_run::{determine_python_version, inject_and_run_python};
-use crate::monotrail::install_specs_to_finder;
+use crate::monotrail::install;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::read_poetry_specs;
@@ -28,9 +30,8 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
     )?;
     let scripts = poetry_section.scripts.unwrap_or_default();
 
-    let finder_data =
-        install_specs_to_finder(&specs, scripts, lockfile.to_string(), None, &python_context)
-            .context("Failed to bootstrap poetry")?;
+    let finder_data = install(&specs, scripts, lockfile.to_string(), None, &python_context)
+        .context("Failed to bootstrap poetry")?;
 
     let temp_dir = tempdir()?;
     let main_file = temp_dir.path().join("poetry_launcher.py");

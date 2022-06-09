@@ -1,22 +1,25 @@
-use crate::install::InstalledPackage;
+use crate::inject_and_run::{inject_and_run_python, prepare_execve_environment};
+use crate::install::{install_all, InstalledPackage};
 use crate::markers::Pep508Environment;
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
+use crate::read_poetry_specs;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
-use crate::utils::cache_dir;
-use crate::utils::get_dir_content;
-use crate::{install_specs, read_poetry_specs};
+use crate::utils::{cache_dir, get_dir_content};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, MONOTRAIL_SCRIPT_SHEBANG};
+use nix::unistd;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env::current_dir;
+use std::ffi::CString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::{env, io};
+use tempfile::TempDir;
 use tracing::{debug, trace, warn};
 
 enum LockfileType {
@@ -237,7 +240,7 @@ pub fn filter_installed_monotrail(
 /// script can be a manually set working directory or the python script we're running.
 /// Returns a list name, python version, unique version
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn install_requested(
+pub fn install_missing(
     specs: &[RequestedSpec],
     python: &Path,
     python_version: (u8, u8),
@@ -248,7 +251,7 @@ pub fn install_requested(
     let (to_install_specs, installed_done) =
         filter_installed_monotrail(specs, Path::new(&monotrail_root), &compatible_tags)?;
 
-    let mut installed = install_specs(
+    let mut installed = install_all(
         &to_install_specs,
         &InstallLocation::Monotrail {
             monotrail_root: PathBuf::from(&monotrail_root),
@@ -295,7 +298,7 @@ pub fn install_requested(
 /// locations. This functions finds those locations be scanning all installed packages for which
 /// modules they contain.
 ///
-/// https://docs.python.org/3/library/importlib.html#importlib.machinery.ModuleSpec
+/// <https://docs.python.org/3/library/importlib.html#importlib.machinery.ModuleSpec>
 ///
 /// Returns the name, the main file to import for the spec and the submodule_search_locations
 /// as well as a list of .pth files that need to be executed
@@ -488,14 +491,14 @@ pub fn specs_from_requirements_txt_resolved(
 }
 
 /// Convenience wrapper around `install_requested` and `spec_paths`
-pub fn install_specs_to_finder(
+pub fn install(
     specs: &[RequestedSpec],
     scripts: BTreeMap<String, String>,
     lockfile: String,
     repo_dir: Option<PathBuf>,
     python_context: &PythonContext,
 ) -> anyhow::Result<FinderData> {
-    let (sprawl_root, sprawl_packages) = install_requested(
+    let (sprawl_root, sprawl_packages) = install_missing(
         specs,
         &python_context.sys_executable,
         python_context.version,
@@ -588,4 +591,74 @@ pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
     executable_file.read_exact(&mut start)?;
     let is_python_script = start == MONOTRAIL_SCRIPT_SHEBANG.as_bytes();
     Ok(is_python_script)
+}
+
+pub fn run_command_finder_data(
+    script: &str,
+    args: &[String],
+    python_context: &PythonContext,
+    python_home: &Path,
+    root: &Path,
+    finder_data: &FinderData,
+) -> anyhow::Result<i32> {
+    let scripts = find_scripts(
+        &finder_data.sprawl_packages,
+        Path::new(&finder_data.sprawl_root),
+    )
+    .context("Failed to collect scripts")?;
+    let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
+    let sys_executable = prepare_execve_environment(
+        &scripts,
+        Some(&root),
+        scripts_tmp.path(),
+        python_context.version,
+    )?;
+
+    let script_path = scripts.get(&script.to_string()).with_context(|| {
+        format_err!(
+            "Couldn't find command {} in installed packages.\nInstalled scripts: {:?}",
+            script,
+            scripts.keys()
+        )
+    })?;
+    let exit_code = if is_python_script(&script_path)? {
+        debug!("launching (python) {}", script_path.display());
+        let args: Vec<String> = [
+            python_context.sys_executable.to_string_lossy().to_string(),
+            script_path.to_string_lossy().to_string(),
+        ]
+        .iter()
+        .chain(args)
+        .map(ToString::to_string)
+        .collect();
+        let exit_code = inject_and_run_python(
+            &python_home,
+            python_context.version,
+            &sys_executable,
+            &args,
+            &serde_json::to_string(&finder_data).unwrap(),
+        )?;
+        exit_code as i32
+    } else {
+        // Sorry for the to_string_lossy all over the place
+        // https://stackoverflow.com/a/38948854/3549270
+        let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
+            .context("Failed to convert executable path")?;
+        let args_c_string = args
+            .iter()
+            .map(|arg| {
+                CString::new(arg.as_bytes()).context("Failed to convert executable argument")
+            })
+            .collect::<anyhow::Result<Vec<CString>>>()?;
+
+        debug!("launching (execv) {}", script_path.display());
+        // We replace the current process with the new process is it's like actually just running
+        // the real thing.
+        // Note the that this may launch a python script, a native binary or anything else
+        unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
+        unreachable!()
+    };
+    // just to assert it lives until here
+    drop(scripts_tmp);
+    Ok(exit_code)
 }

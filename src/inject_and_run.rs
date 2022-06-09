@@ -1,6 +1,8 @@
-use crate::monotrail::{find_scripts, install_specs_to_finder};
+//! Communication with libpython
+
+use crate::monotrail::{find_scripts, get_specs, install};
 use crate::standalone_python::provision_python;
-use crate::{get_specs, DEFAULT_PYTHON_VERSION};
+use crate::DEFAULT_PYTHON_VERSION;
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
 use libc::{c_int, c_void, wchar_t};
@@ -322,7 +324,7 @@ pub fn run_python_args(
     let (python_context, python_home) = provision_python(python_version)?;
 
     let (specs, scripts, lockfile) = get_specs(script.as_deref(), extras, &python_context)?;
-    let finder_data = install_specs_to_finder(&specs, scripts, lockfile, None, &python_context)?;
+    let finder_data = install(&specs, scripts, lockfile, None, &python_context)?;
 
     let args: Vec<_> = [python_context.sys_executable.to_string_lossy().to_string()]
         .into_iter()

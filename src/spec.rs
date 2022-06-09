@@ -1,3 +1,6 @@
+//! Descriptions of user requests ([RequestedSpec]) and a fully resolved installable
+//! ([ResolvedSpec]).
+
 use crate::package_index::search_release;
 use install_wheel_rs::{WheelFilename, WheelInstallerError};
 use regex::Regex;
@@ -164,6 +167,8 @@ impl RequestedSpec {
     }
 }
 
+/// The three places we can install something from: A file (wheel or sdist), a url which offers a
+/// file (i.e. the pypi servers) or a git repository.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum FileOrUrl {
     File(PathBuf),
@@ -172,7 +177,7 @@ pub enum FileOrUrl {
 }
 
 /// An installation request for a specific source, that unlike [RequestedSpec] definitely
-/// has a version
+/// has a version and a location
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ResolvedSpec {
     pub requested: String,
@@ -192,9 +197,10 @@ pub struct ResolvedSpec {
 
 #[cfg(test)]
 mod test {
+    use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
     use crate::spec::{FileOrUrl, ResolvedSpec};
     use crate::utils::zstd_json_mock;
-    use crate::{poetry_spec_from_dir, Pep508Environment};
+    use crate::Pep508Environment;
     use install_wheel_rs::{compatible_tags, Arch, Os};
     use std::path::Path;
 

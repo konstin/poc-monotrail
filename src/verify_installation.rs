@@ -1,3 +1,5 @@
+//! Subcommand to check the monotrail installations against their records
+
 use crate::monotrail::list_installed;
 use crate::utils::get_dir_content;
 use anyhow::{bail, format_err, Context};
