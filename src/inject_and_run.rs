@@ -135,6 +135,7 @@ pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<Strin
 /// subprocesses.
 ///
 /// Returns the exit code from python
+#[cfg_attr(test, allow(unreachable_code), allow(unused_variables))]
 pub fn inject_and_run_python(
     python_home: &Path,
     python_version: (u8, u8),
@@ -143,6 +144,10 @@ pub fn inject_and_run_python(
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
     trace!("Loading libpython");
+
+    #[cfg(test)]
+    panic!("Must not load libpython in test");
+
     let libpython3_so = if cfg!(target_os = "macos") {
         python_home.join("lib").join(format!(
             "libpython{}.{}.dylib",
