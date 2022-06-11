@@ -1,15 +1,17 @@
-use crate::monotrail::{install, PythonContext};
+use crate::monotrail::{install, run_command_finder_data, PythonContext};
 use crate::poetry_integration::lock::poetry_resolve_from_dir;
 use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::poetry_integration::read_dependencies::read_toml_files;
 use crate::standalone_python::provision_python;
 use crate::utils::data_local_dir;
-use crate::{cli, parse_major_minor, read_poetry_specs, DEFAULT_PYTHON_VERSION};
+use crate::{parse_major_minor, read_poetry_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::Context;
+use fs_err as fs;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
+use tracing::{debug, info};
 
 /// Simple pipx reimplementation
 ///
@@ -71,7 +73,7 @@ pub fn ppipx(
     let finder_data = install(&specs, BTreeMap::new(), lockfile, None, &python_context)
         .context("Couldn't install packages")?;
 
-    cli::run_command_finder_data(
+    run_command_finder_data(
         &command,
         &args,
         &python_context,

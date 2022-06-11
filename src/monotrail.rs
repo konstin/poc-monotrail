@@ -7,7 +7,7 @@ use crate::read_poetry_specs;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
 use crate::utils::{cache_dir, get_dir_content};
-use anyhow::{bail, Context};
+use anyhow::{bail, format_err, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, MONOTRAIL_SCRIPT_SHEBANG};

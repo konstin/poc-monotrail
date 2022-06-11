@@ -306,8 +306,7 @@ pub fn read_poetry_specs(
         }
     }
 
-    let specs = resolution_to_specs(packages, deps_with_extras)?;
-    Ok(specs)
+    resolution_to_specs(packages, deps_with_extras)
 }
 
 /// Checkouts the specified revision to the cache dir, if not present
@@ -387,13 +386,42 @@ pub fn specs_from_git(
     bail!("Neither poetry.lock nor pyproject.toml with [tool.poetry] section nor requirements.txt found");
 }
 
+/// Reads `poetry.toml` and `poetry.lock` from `dep_file_location`, returns specs, scripts and
+/// the lockfile string
+pub fn poetry_spec_from_dir(
+    dep_file_location: &Path,
+    extras: &[String],
+    pep508_env: &Pep508Environment,
+) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, String>, String)> {
+    let (poetry_section, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
+    let scripts = poetry_section.scripts.clone().unwrap_or_default();
+    let specs = read_poetry_specs(&poetry_section, poetry_lock, false, extras, pep508_env)?;
+    Ok((specs, scripts, lockfile))
+}
+
 #[cfg(test)]
 mod test {
+    use super::{parse_dep_extra, poetry_spec_from_dir, read_toml_files};
     use crate::markers::Pep508Environment;
-    use crate::poetry_integration::read_dependencies::{parse_dep_extra, read_toml_files};
     use crate::read_poetry_specs;
     use std::collections::HashSet;
     use std::path::Path;
+
+    fn test_pep508_env() -> Pep508Environment {
+        Pep508Environment {
+            implementation_name: "cpython".to_string(),
+            implementation_version: "3.8.10".to_string(),
+            os_name: "posix".to_string(),
+            platform_machine: "x86_64".to_string(),
+            platform_python_implementation: "CPython".to_string(),
+            platform_release: "5.13.0-39-generic".to_string(),
+            platform_system: "Linux".to_string(),
+            platform_version: "#44~20.04.1-Ubuntu SMP Thu Mar 24 16:43:35 UTC 2022".to_string(),
+            python_full_version: "3.8.10".to_string(),
+            python_version: "3.8".to_string(),
+            sys_platform: "linux".to_string(),
+        }
+    }
 
     #[test]
     fn test_parse_extra_deps() {
@@ -424,19 +452,6 @@ mod test {
 
     #[test]
     fn test_read_poetry_specs() {
-        let pep508_env = Pep508Environment {
-            implementation_name: "cpython".to_string(),
-            implementation_version: "3.8.10".to_string(),
-            os_name: "posix".to_string(),
-            platform_machine: "x86_64".to_string(),
-            platform_python_implementation: "CPython".to_string(),
-            platform_release: "5.13.0-39-generic".to_string(),
-            platform_system: "Linux".to_string(),
-            platform_version: "#44~20.04.1-Ubuntu SMP Thu Mar 24 16:43:35 UTC 2022".to_string(),
-            python_full_version: "3.8.10".to_string(),
-            python_version: "3.8".to_string(),
-            sys_platform: "linux".to_string(),
-        };
         let mst = Path::new("test-data/poetry/mst");
         let data_science = Path::new("test-data/poetry/data-science");
 
@@ -453,23 +468,30 @@ mod test {
 
         for (toml_dir, no_dev, extras, specs_count) in expected {
             let (poetry_section, poetry_lock, _lockfile) = read_toml_files(toml_dir).unwrap();
-            let specs =
-                read_poetry_specs(&poetry_section, poetry_lock, no_dev, &extras, &pep508_env)
-                    .unwrap();
+            let specs = read_poetry_specs(
+                &poetry_section,
+                poetry_lock,
+                no_dev,
+                &extras,
+                &test_pep508_env(),
+            )
+            .unwrap();
             assert_eq!(specs.len(), specs_count);
         }
     }
-}
 
-/// Reads `poetry.toml` and `poetry.lock` from `dep_file_location`, returns specs, scripts and
-/// the lockfile string
-pub fn poetry_spec_from_dir(
-    dep_file_location: &Path,
-    extras: &[String],
-    pep508_env: &Pep508Environment,
-) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, String>, String)> {
-    let (poetry_section, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
-    let scripts = poetry_section.scripts.clone().unwrap_or_default();
-    let specs = read_poetry_specs(&poetry_section, poetry_lock, false, extras, pep508_env)?;
-    Ok((specs, scripts, lockfile))
+    #[test]
+    fn test_outdated_lockfile() {
+        let err = poetry_spec_from_dir(
+            Path::new("test-data/lockfile-outdated"),
+            &[],
+            &test_pep508_env(),
+        )
+        .unwrap_err();
+        let errors = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            errors,
+            vec!["Lockfile outdated (run `poetry update`): boltons is missing"]
+        );
+    }
 }

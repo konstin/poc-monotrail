@@ -5,8 +5,8 @@ description = "A resolved lockfile for installing poetry itself, since want to u
 authors = ["konstin <schuetze@rostlab.org>"]
 
 [tool.poetry.dependencies]
-python = ">=3.6"
-poetry = "^1.1.13"
+python = ">=3.7,<4.0"
+poetry = "1.2.0b2"
 
 [tool.poetry.dev-dependencies]
 
