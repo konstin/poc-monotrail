@@ -9,14 +9,15 @@ use fs_err as fs;
 use fs_err::{DirEntry, File};
 use git2::{Direction, Repository};
 use indicatif::{ProgressBar, ProgressStyle};
-use install_wheel_rs::{install_wheel, parse_key_value_file};
-use install_wheel_rs::{InstallLocation, LockedDir};
+use install_wheel_rs::{install_wheel, parse_key_value_file, InstallLocation, LockedDir};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
 use std::io;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
+use std::time::Duration;
 use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
 
@@ -301,7 +302,28 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
     } else {
         // We need to first clone the entire thing and then checkout the revision we want
         // https://stackoverflow.com/q/3489173/3549270
-        Repository::clone(url, &repo_dir).with_context(|| format!("Failed to clone {}", url))?
+        let mut tries = 3;
+        loop {
+            let result = Repository::clone(url, &repo_dir);
+            let backoff = Duration::from_secs(1);
+            tries -= 1;
+            match result {
+                Ok(repository) => break repository,
+                Err(err) if tries > 0 => {
+                    warn!(
+                        "Failed to clone {}: {}. Sleeping {}s and retrying",
+                        url,
+                        err,
+                        backoff.as_secs()
+                    );
+                    sleep(backoff);
+                    continue;
+                }
+                Err(err) => {
+                    return Err(err).with_context(|| format!("Failed to clone {} to often", url));
+                }
+            };
+        }
     };
     checkout_revision(revision, repo)
         .with_context(|| format!("failed to checkout revision {} for {}", revision, url))?;

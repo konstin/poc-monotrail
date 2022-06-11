@@ -18,6 +18,11 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tracing::debug;
 
+/// The list is empty in poetry 1.2, but lockfiles may have been created by old versions
+///
+/// https://github.com/python-poetry/poetry/blame/0eaf9430da1ffa02dfdf88a07c7a1f9a1f24bd85/poetry/puzzle/provider.py#L57
+const UNSAFE_DEPS: &[&str] = &["setuptools", "distribute", "pip", "wheel"];
+
 /// Resolves a single package's filename and url inside a poetry lockfile
 ///
 /// doesn't work because the pypi api wants a different python version than the one in the wheel
@@ -128,15 +133,19 @@ fn resolution_to_specs(
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     let mut specs = Vec::new();
     for (dep_name, dep_extras) in deps_with_extras {
-        // search by normalized name
-        let package = packages
+        let package = if let Some(package) = packages
+            // search by normalized name
             .get(&dep_name.to_lowercase().replace('-', "_"))
-            .with_context(|| {
-                format!(
-                    "Lockfile outdated (run `poetry update`): {} is missing",
-                    dep_name
-                )
-            })?;
+        {
+            package
+        } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
+            continue;
+        } else {
+            bail!(
+                "Lockfile outdated (run `poetry update`): {} is missing",
+                dep_name
+            )
+        };
         let spec = RequestedSpec {
             requested: format!("{} {}", package.name, package.version),
             name: package.name.clone(),
@@ -265,14 +274,19 @@ pub fn read_poetry_specs(
     // resolve the dependencies-extras tree
     // (dep, dep->extra)
     while let Some((dep_name, self_extras)) = queue.pop_front() {
-        let package = packages
+        let package = if let Some(package) = packages
+            // search by normalized name
             .get(&dep_name.to_lowercase().replace('-', "_"))
-            .with_context(|| {
-                format!(
-                    "Lockfile outdated (run `poetry update`): {} is missing",
-                    dep_name
-                )
-            })?;
+        {
+            package
+        } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
+            continue;
+        } else {
+            bail!(
+                "Lockfile outdated (run `poetry update`): {} is missing",
+                dep_name
+            )
+        };
         // descend one level into the dep tree
         for (new_dep_name, new_dep) in package.dependencies.clone().unwrap_or_default() {
             let new_dep_name_norm = new_dep_name.to_lowercase().replace('-', "_");
