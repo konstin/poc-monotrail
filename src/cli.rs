@@ -1,16 +1,16 @@
 use crate::inject_and_run::{determine_python_version, parse_plus_arg, run_python_args};
 use crate::install::{filter_installed, install_all, InstalledPackage};
 use crate::markers::Pep508Environment;
-use crate::monotrail::{get_specs, install, monotrail_root};
+use crate::monotrail::{install, load_specs, monotrail_root, run_command_finder_data};
 use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
+use crate::ppipx;
 use crate::spec::RequestedSpec;
 use crate::standalone_python::provision_python;
 use crate::utils::cache_dir;
 use crate::venv_parser::get_venv_python_version;
 use crate::verify_installation::verify_installation;
-use crate::{monotrail, ppipx};
 use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
@@ -405,17 +405,16 @@ fn run_command(
 ) -> anyhow::Result<i32> {
     let (args, python_version) = determine_python_version(args, python_version)?;
     let (python_context, python_home) = provision_python(python_version)?;
+    let (specs, root_scripts, lockfile, root) = load_specs(root, extras, &python_context)?;
+    let finder_data = install(
+        &specs,
+        root_scripts,
+        lockfile,
+        Some(root.clone()),
+        &python_context,
+    )?;
 
-    let root = if let Some(root) = root {
-        root.to_path_buf()
-    } else {
-        env::current_dir()?
-    };
-
-    let (specs, wrong_scripts, lockfile) = get_specs(Some(&root), extras, &python_context)?;
-    let finder_data = install(&specs, wrong_scripts, lockfile, None, &python_context)?;
-
-    monotrail::run_command_finder_data(
+    run_command_finder_data(
         &command,
         &args,
         &python_context,

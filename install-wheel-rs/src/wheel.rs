@@ -17,7 +17,7 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::str::FromStr;
 use std::{env, io, iter};
 use tempfile::{tempdir, TempDir};
-use tracing::{debug, span, warn, Level};
+use tracing::{debug, error, span, warn, Level};
 use walkdir::WalkDir;
 use zip::result::ZipError;
 use zip::ZipArchive;
@@ -49,17 +49,64 @@ struct DirectUrl {
     url: String,
 }
 
-#[derive(Debug)]
-struct Script {
-    script_name: String,
-    module: String,
-    function: String,
+/// A script from pyproject.toml
+#[cfg(feature = "python_bindings")]
+#[pyo3::pyclass(dict)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct Script {
+    #[pyo3(get)]
+    pub script_name: String,
+    #[pyo3(get)]
+    pub module: String,
+    #[pyo3(get)]
+    pub function: String,
+}
+
+#[cfg(not(feature = "python_bindings"))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct Script {
+    pub script_name: String,
+    pub module: String,
+    pub function: String,
+}
+
+impl Script {
+    /// Parses a script definition like `foo.bar:main` or `foomod:main_bar [bar,baz]`
+    ///
+    /// <https://packaging.python.org/en/latest/specifications/entry-points/>
+    pub fn from_value(
+        script_name: &str,
+        value: &str,
+        extras: &[String],
+    ) -> Result<Option<Script>, WheelInstallerError> {
+        let script_regex = Regex::new(r"^(?P<module>[\w\d_\-.]+):(?P<function>[\w\d_\-.]+)(?:\s+\[(?P<extras>(?:[^,]+,?\s*)+)\])?$").unwrap();
+
+        let captures = script_regex.captures(value).ok_or_else(|| {
+            WheelInstallerError::InvalidWheel(format!("invalid console script: '{}'", value))
+        })?;
+        if let Some(script_extras) = captures.name("extras") {
+            let script_extras = script_extras
+                .as_str()
+                .split(',')
+                .map(|extra| extra.trim().to_string())
+                .collect::<HashSet<String>>();
+            if !script_extras.is_subset(&extras.iter().cloned().collect()) {
+                return Ok(None);
+            }
+        }
+
+        Ok(Some(Script {
+            script_name: script_name.to_string(),
+            module: captures.name("module").unwrap().as_str().to_string(),
+            function: captures.name("function").unwrap().as_str().to_string(),
+        }))
+    }
 }
 
 /// Wrapper script template function
 ///
 /// <https://github.com/pypa/pip/blob/7f8a6844037fb7255cfd0d34ff8e8cf44f2598d4/src/pip/_vendor/distlib/scripts.py#L41-L48>
-fn get_script_launcher(module: &str, import_name: &str, shebang: &str) -> String {
+pub fn get_script_launcher(module: &str, import_name: &str, shebang: &str) -> String {
     format!(
         r##"{shebang}
 # -*- coding: utf-8 -*-
@@ -82,33 +129,13 @@ fn read_scripts_from_section(
     section_name: &str,
     extras: &[String],
 ) -> Result<Vec<Script>, WheelInstallerError> {
-    let script_regex = Regex::new(r"^(?P<module>[\w\d_\-.]+):(?P<function>[\w\d_\-.]+)(?:\s+\[(?P<extras>(?:[^,]+,?\s*)+)\])?$").unwrap();
     let mut scripts = Vec::new();
     for (script_name, python_location) in scripts_section.iter() {
         match python_location {
             Some(value) => {
-                let captures = script_regex.captures(value).ok_or_else(|| {
-                    WheelInstallerError::InvalidWheel(format!(
-                        "invalid console script: '{}'",
-                        value
-                    ))
-                })?;
-                if let Some(script_extras) = captures.name("extras") {
-                    let script_extras = script_extras
-                        .as_str()
-                        .split(',')
-                        .map(|extra| extra.trim().to_string())
-                        .collect::<HashSet<String>>();
-                    if !script_extras.is_subset(&extras.iter().cloned().collect()) {
-                        continue;
-                    }
+                if let Some(script) = Script::from_value(script_name, value, extras)? {
+                    scripts.push(script);
                 }
-
-                scripts.push(Script {
-                    script_name: script_name.to_string(),
-                    module: captures.name("module").unwrap().as_str().to_string(),
-                    function: captures.name("function").unwrap().as_str().to_string(),
-                });
             }
             None => {
                 return Err(WheelInstallerError::InvalidWheel(format!(
@@ -267,6 +294,19 @@ fn unpack_wheel_files(
                 ))
             })?;
         if recorded_hash != &encoded_hash {
+            if relative.as_os_str().to_string_lossy().starts_with("torch-") {
+                error!(
+                    "Hash mismatch for {}. Recorded: {}, Actual: {}",
+                    relative.display(),
+                    recorded_hash,
+                    encoded_hash,
+                );
+                error!(
+                    "Torch isn't capable of producing correct hashes 🙄 Ignoring. \
+                    https://github.com/pytorch/pytorch/issues/47916"
+                );
+                continue;
+            }
             return Err(WheelInstallerError::RecordFileError(format!(
                 "Hash mismatch for {}. Recorded: {}, Actual: {}",
                 relative.display(),

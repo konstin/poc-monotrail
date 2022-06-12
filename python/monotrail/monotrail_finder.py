@@ -4,7 +4,7 @@ import site
 import sys
 import typing
 from importlib.abc import MetaPathFinder
-from importlib.machinery import PathFinder
+from importlib.machinery import PathFinder, ModuleSpec
 from importlib.metadata import (
     DistributionFinder,
     PackageNotFoundError,
@@ -37,7 +37,7 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
     # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]
     # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
-    repo_dir: Optional[str]
+    root_dir: Optional[str]
     # The contents of the last poetry.lock, used a basis for the next resolution when requirements
     # change at runtime, both for faster resolution and in hopes the exact version stay the same
     # so the user doesn't need to reload python
@@ -48,7 +48,7 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         # TODO: This dummy is unsound typing-wise. First init should always also set path and packages
         self.sprawl_packages = {}
         self.spec_paths = {}
-        self.repo_dir = None
+        self.root_dir = None
         self.lockfile = None
 
     @staticmethod
@@ -67,7 +67,18 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         self.sprawl_packages = {
             package.name: package for package in finder_data.sprawl_packages
         }
-        self.repo_dir = finder_data.repo_dir
+
+        # python adds this be default to make the current directory importable, but we don't want that,
+        # instead we want the root from the rust code
+        if "" in sys.path:
+            sys.path.remove("")
+        # Support "" as value for "current directory"
+        if self.root_dir is not None and self.root_dir in sys.path:
+            sys.path.remove(self.root_dir)
+        if finder_data.root_dir is not None:
+            sys.path.insert(0, finder_data.root_dir)
+        self.root_dir = finder_data.root_dir
+
         self.spec_paths = finder_data.spec_paths
         # hackery hack hack
         # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
@@ -124,13 +135,16 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
 
         if fullname in self.spec_paths:
             location, submodule_search_locations = self.spec_paths[fullname]
-        elif self.repo_dir:
-            # Maybe we can find it in the repository we checked out
-            # It would make more sense to only add the poetry known modules, but this behaviour is most likely what
-            # users expect
-            return super().find_spec(fullname, [self.repo_dir])
         else:
             return None
+
+        # namespace packages, i.e. directory modules without an __init__.py. We don't actually no whether these
+        # are python modules or just random folders, but just like vanilla python we're just treating them like it.
+        # ModuleSpec construction is what importlib's FileFinder.find_spec() also does
+        if not location:
+            spec = ModuleSpec(fullname, loader=None)
+            spec.submodule_search_locations = submodule_search_locations
+            return spec
 
         if len(submodule_search_locations) <= 1:
             # We must set submodule_search_locations in the base case otherwise we can't launch single file modules

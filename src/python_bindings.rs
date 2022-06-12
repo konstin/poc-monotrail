@@ -8,12 +8,13 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{
-    self, get_specs, install, spec_paths, FinderData, LaunchType, PythonContext, SpecPaths,
+    self, install, load_specs, spec_paths, FinderData, LaunchType, PythonContext, SpecPaths,
 };
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
 use crate::{inject_and_run, read_poetry_specs, PEP508_QUERY_ENV};
 use anyhow::{bail, Context};
+use install_wheel_rs::Script;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
@@ -74,9 +75,10 @@ pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<FinderData
     let extras = parse_extras().map_err(format_monotrail_error)?;
     debug!("extras: {:?}", extras);
 
-    let (specs, scripts, lockfile) =
-        get_specs(script.as_deref(), &extras, &python_context).map_err(format_monotrail_error)?;
-    install(&specs, scripts, lockfile, None, &python_context).map_err(format_monotrail_error)
+    let (specs, scripts, lockfile, root_dir) =
+        load_specs(script.as_deref(), &extras, &python_context).map_err(format_monotrail_error)?;
+    install(&specs, scripts, lockfile, Some(root_dir), &python_context)
+        .map_err(format_monotrail_error)
 }
 
 /// User gives a `[tool.poetry.dependencies]`
@@ -143,10 +145,10 @@ pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyRe
     let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
 
-    let (specs, scripts, lockfile) =
-        get_specs(Some(&dir), &extras, &python_context).map_err(format_monotrail_error)?;
-
-    install(&specs, scripts, lockfile, None, &python_context).map_err(format_monotrail_error)
+    let (specs, scripts, lockfile, root_dir) =
+        load_specs(Some(&dir), &extras, &python_context).map_err(format_monotrail_error)?;
+    install(&specs, scripts, lockfile, Some(root_dir), &python_context)
+        .map_err(format_monotrail_error)
 }
 
 /// The installed packages are all lies and rumors, we can only find the actually importable
@@ -224,6 +226,7 @@ pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(monotrail_find_scripts, m)?)?;
     m.add("project_name", env!("CARGO_PKG_NAME"))?;
     m.add_class::<InstalledPackage>()?;
+    m.add_class::<Script>()?;
     m.add_class::<FinderData>()?;
     Ok(())
 }

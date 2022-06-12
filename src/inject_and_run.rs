@@ -1,10 +1,11 @@
 //! Communication with libpython
 
-use crate::monotrail::{find_scripts, get_specs, install};
+use crate::monotrail::{find_scripts, install, load_specs};
 use crate::standalone_python::provision_python;
 use crate::DEFAULT_PYTHON_VERSION;
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
+use install_wheel_rs::{get_script_launcher, Script, MONOTRAIL_SCRIPT_SHEBANG};
 use libc::{c_int, c_void, wchar_t};
 use libloading::Library;
 use std::collections::BTreeMap;
@@ -94,6 +95,8 @@ unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
 /// Takes args without the first-is-current-program (i.e. python) convention.
 ///
 /// `usage: python [option] ... [-c cmd | -m mod | file | -] [arg] ...`
+///
+/// Returns the script, if any
 pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<String>, String> {
     // These are hand collected from `python --help`
     // See also https://docs.python.org/3/using/cmdline.html#command-line
@@ -311,6 +314,7 @@ pub fn run_python_args(
     extras: &[String],
 ) -> anyhow::Result<i32> {
     let (args, python_version) = determine_python_version(args, python_version)?;
+    let (python_context, python_home) = provision_python(python_version)?;
 
     let script = if let Some(root) = root {
         Some(root.to_path_buf())
@@ -321,10 +325,9 @@ pub fn run_python_args(
     };
     debug!("run_python_args: {:?}, `{}`", script, args.join(" "));
 
-    let (python_context, python_home) = provision_python(python_version)?;
-
-    let (specs, scripts, lockfile) = get_specs(script.as_deref(), extras, &python_context)?;
-    let finder_data = install(&specs, scripts, lockfile, None, &python_context)?;
+    let (specs, scripts, lockfile, root_dir) =
+        load_specs(script.as_deref(), extras, &python_context)?;
+    let finder_data = install(&specs, scripts, lockfile, Some(root_dir), &python_context)?;
 
     let args: Vec<_> = [python_context.sys_executable.to_string_lossy().to_string()]
         .into_iter()
@@ -337,8 +340,13 @@ pub fn run_python_args(
     )
     .context("Failed to collect scripts")?;
     let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
-    let sys_executable =
-        prepare_execve_environment(&scripts, root, scripts_tmp.path(), python_context.version)?;
+    let (sys_executable, _) = prepare_execve_environment(
+        &scripts,
+        &finder_data.root_scripts,
+        root,
+        scripts_tmp.path(),
+        python_context.version,
+    )?;
     let exit_code = inject_and_run_python(
         &python_home,
         python_context.version,
@@ -395,44 +403,21 @@ pub fn determine_python_version(
     Ok((args, python_version))
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::inject_and_run::naive_python_arg_parser;
-
-    #[test]
-    fn test_naive_python_arg_parser() {
-        let cases: &[(&[&str], _)] = &[
-            (
-                &["-v", "-m", "mymod", "--first_arg", "second_arg"],
-                Ok(None),
-            ),
-            (
-                &["-v", "my_script.py", "--first_arg", "second_arg"],
-                Ok(Some("my_script.py".to_string())),
-            ),
-            (&["-v"], Ok(None)),
-            (&[], Ok(None)),
-            (&["-m"], Err("Missing argument for -m".to_string())),
-        ];
-        for (args, parsing) in cases {
-            assert_eq!(&naive_python_arg_parser(args), parsing);
-        }
-    }
-}
-
 /// Extends PATH with a directory containing all the scripts we found. This is because many tools
 /// such as jupyter depend on scripts being in path instead of using the python api. It also adds
 /// monotrail as python so execve with other scripts works (required e.g. by jupyter)
 ///
 /// You have to pass a tempdir to control its lifetime.
 ///
-/// Returns the sys_executable value that is monotrail moonlighting as python
+/// Returns the sys_executable value that is monotrail moonlighting as python and the path
+/// with all the scripts and links
 pub fn prepare_execve_environment(
     scripts: &BTreeMap<String, PathBuf>,
+    root_scripts: &BTreeMap<String, Script>,
     root: Option<&Path>,
     tempdir: &Path,
     python_version: (u8, u8),
-) -> anyhow::Result<PathBuf> {
+) -> anyhow::Result<(PathBuf, PathBuf)> {
     // We could nest that, but there's no point to do that. In normal venv programs also only
     // get one activated set. The only exception would be the poetry lock subprocess but that one
     // we control and don't prepare with this function
@@ -442,7 +427,10 @@ pub fn prepare_execve_environment(
             "Already an execve environment in {}",
             path_dir.to_string_lossy()
         );
-        return Ok(Path::new(&path_dir).join("python"));
+        return Ok((
+            Path::new(&path_dir).join("python"),
+            PathBuf::from(&path_dir),
+        ));
     }
     let path_dir = tempdir.join(format!("{}-scripts-links", env!("CARGO_PKG_NAME")));
     debug!("Preparing execve environment in {}", path_dir.display());
@@ -458,6 +446,16 @@ pub fn prepare_execve_environment(
             os::windows::fs::symlink_file(&script_path, path_dir.join(script_name))
                 .context("Failed to create symlink for scripts PATH")?;
         }
+    }
+
+    // The scripts of the root project, i.e. those in the current pyproject.toml. Since we don't
+    // install the root project, we also didn't install the root scripts and never generated the
+    // wrapper scripts. We add them here instead.
+    for (script_name, script) in root_scripts {
+        let launcher =
+            get_script_launcher(&script.module, &script.function, MONOTRAIL_SCRIPT_SHEBANG);
+        fs::write(path_dir.join(script_name), &launcher)
+            .with_context(|| format!("Failed to write launcher for {}", script_name))?;
     }
 
     #[cfg(unix)]
@@ -490,7 +488,7 @@ pub fn prepare_execve_environment(
     // Make a execve-spawned monotrail find the configuration we originally read again
     // TODO: Does the subprocess know about the fullpath of the link through which it was called
     //       and can we use that to read those from a file instead which would be more stable
-    env::set_var(execve_path_var, path_dir);
+    env::set_var(execve_path_var, &path_dir);
     if let Some(root) = root {
         env::set_var(
             format!("{}_EXECVE_ROOT", env!("CARGO_PKG_NAME").to_uppercase()),
@@ -502,5 +500,39 @@ pub fn prepare_execve_environment(
         format!("{}.{}", python_version.0, python_version.1),
     );
 
-    Ok(sys_executable)
+    Ok((sys_executable, path_dir))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::inject_and_run::naive_python_arg_parser;
+    use crate::run_python_args;
+    use std::path::Path;
+
+    #[test]
+    fn test_naive_python_arg_parser() {
+        let cases: &[(&[&str], _)] = &[
+            (
+                &["-v", "-m", "mymod", "--first_arg", "second_arg"],
+                Ok(None),
+            ),
+            (
+                &["-v", "my_script.py", "--first_arg", "second_arg"],
+                Ok(Some("my_script.py".to_string())),
+            ),
+            (&["-v"], Ok(None)),
+            (&[], Ok(None)),
+            (&["-m"], Err("Missing argument for -m".to_string())),
+        ];
+        for (args, parsing) in cases {
+            assert_eq!(&naive_python_arg_parser(args), parsing);
+        }
+    }
+
+    #[test]
+    fn no_deps_specs_file() {
+        let err = run_python_args(&[], None, Some(Path::new("/")), &[]).unwrap_err();
+        let errors = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
+        assert_eq!(errors, ["neither pyproject.toml nor requirements.txt not found next to / nor in any parent directory"]);
+    }
 }

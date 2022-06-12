@@ -1,8 +1,12 @@
+//! Takes a wheel and installs it, either in a venv or for monotrail
+
+// The pub ones are reused by monotrail
 pub use install_location::{InstallLocation, LockedDir};
 use std::io;
 use thiserror::Error;
 pub use wheel::{
-    install_wheel, parse_key_value_file, read_record_file, relative_to, MONOTRAIL_SCRIPT_SHEBANG,
+    get_script_launcher, install_wheel, parse_key_value_file, read_record_file, relative_to,
+    Script, MONOTRAIL_SCRIPT_SHEBANG,
 };
 pub use wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
 use zip::result::ZipError;

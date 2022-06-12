@@ -7,10 +7,12 @@ use crate::read_poetry_specs;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
 use crate::utils::{cache_dir, get_dir_content};
-use anyhow::{bail, format_err, Context};
+use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
-use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, MONOTRAIL_SCRIPT_SHEBANG};
+use install_wheel_rs::{
+    compatible_tags, Arch, InstallLocation, Os, Script, MONOTRAIL_SCRIPT_SHEBANG,
+};
 use nix::unistd;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
@@ -44,7 +46,7 @@ pub struct PythonContext {
 }
 
 /// Name of the import -> (`__init__.py`, submodule import dirs)
-pub type SpecPaths = HashMap<String, (PathBuf, Vec<PathBuf>)>;
+pub type SpecPaths = BTreeMap<String, (Option<PathBuf>, Vec<PathBuf>)>;
 
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
 #[cfg(not(feature = "python_bindings"))]
@@ -57,16 +59,15 @@ pub struct FinderData {
     /// Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     pub spec_paths: SpecPaths,
     /// In from git mode where we check out a repository and make it available for import as if it was added to sys.path
-    pub repo_dir: Option<PathBuf>,
+    pub root_dir: Option<PathBuf>,
     /// We need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
     pub pth_files: Vec<PathBuf>,
     /// The contents of the last poetry.lock, used a basis for the next resolution when requirements
     /// change at runtime, both for faster resolution and in hopes the exact version stay the same
     /// so the user doesn't need to reload python
     pub lockfile: String,
-    /// The installed scripts indexed by name. They are in the bin folder of each project, coming
-    /// from entry_points.txt or data folder scripts
-    pub scripts: BTreeMap<String, String>,
+    /// The scripts in pyproject.toml
+    pub root_scripts: BTreeMap<String, Script>,
 }
 
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
@@ -83,13 +84,13 @@ pub struct FinderData {
     #[pyo3(get)]
     pub spec_paths: SpecPaths,
     #[pyo3(get)]
-    pub repo_dir: Option<PathBuf>,
+    pub root_dir: Option<PathBuf>,
     #[pyo3(get)]
     pub pth_files: Vec<PathBuf>,
     #[pyo3(get)]
     pub lockfile: String,
     #[pyo3(get)]
-    pub scripts: BTreeMap<String, String>,
+    pub root_scripts: BTreeMap<String, Script>,
 }
 
 #[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
@@ -325,7 +326,9 @@ pub fn spec_paths(
                 warn!("non-utf8 filename encountered in {}", package_dir.display());
                 continue;
             };
-            if entry.file_type()?.is_dir() && entry.path().join("__init__.py").is_file() {
+            // namespace modules grml hlf
+            if entry.file_type()?.is_dir() {
+                // && entry.path().join("__init__.py").is_file() {
                 dir_modules
                     .entry(filename.to_string())
                     .or_default()
@@ -358,7 +361,7 @@ pub fn spec_paths(
         value.sort_by_key(|package| package.name.clone());
     }
 
-    let mut spec_bases: HashMap<String, (PathBuf, Vec<PathBuf>)> = HashMap::new();
+    let mut spec_bases: SpecPaths = BTreeMap::new();
 
     // Merge single file modules in while performing conflict detection
     for (name, (_single_file_packages, filename)) in file_modules {
@@ -367,7 +370,7 @@ pub fn spec_paths(
             continue;
         }
 
-        spec_bases.insert(name, (filename, Vec::new()));
+        spec_bases.insert(name, (Some(filename), Vec::new()));
     }
 
     for (name, packages) in dir_modules {
@@ -379,14 +382,28 @@ pub fn spec_paths(
                     .join(&name)
             })
             .collect();
-        // This is effectively a random pick, if someone is relying on different __init__.py
-        // contents all is already cursed anyway.
+        // This is effectively a random pick (even though deterministic), if someone is relying
+        // on different __init__.py contents all is already cursed anyway.
         // TODO: Should we check __init__.py contents that they're all equal?
-        let first_init_py = packages[0]
-            .monotrail_site_packages(sprawl_root.to_path_buf(), python_version)
-            .join(&name)
-            .join("__init__.py");
-        spec_bases.insert(name, (first_init_py, submodule_search_locations));
+        let first_init_py = packages
+            .iter()
+            .map(|package| {
+                package
+                    .monotrail_site_packages(sprawl_root.to_path_buf(), python_version)
+                    .join(&name)
+                    .join("__init__.py")
+            })
+            .find(|init_py| init_py.is_file());
+
+        if let Some(first_init_py) = first_init_py {
+            spec_bases.insert(
+                name.clone(),
+                (Some(first_init_py), submodule_search_locations),
+            );
+        } else {
+            // If there's no __init__.py, we have a namespace module
+            spec_bases.insert(name.clone(), (None, submodule_search_locations));
+        }
     }
 
     Ok((spec_bases, pth_files))
@@ -397,15 +414,20 @@ pub fn spec_paths(
 /// set and returns it. `script` can be a file or a directory or will default to the current
 /// working directory.
 ///
-/// Returns the specs and the entrypoints of the root package (if poetry, empty for
-/// requirements.txt)
-#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
-pub fn get_specs(
+/// Returns the specs, the entrypoints of the root package (if poetry, empty for
+/// requirements.txt), the lockfile and the root dir
+#[allow(clippy::type_complexity)]
+pub fn load_specs(
     script: Option<&Path>,
     extras: &[String],
     python_context: &PythonContext,
-) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, String>, String)> {
-    let dir_running = match script {
+) -> anyhow::Result<(
+    Vec<RequestedSpec>,
+    BTreeMap<String, Script>,
+    String,
+    PathBuf,
+)> {
+    let root_dir = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(file) if file.is_file() => {
             let path = if let Some(parent) = file.parent() {
@@ -437,11 +459,11 @@ pub fn get_specs(
             )
         }
     };
-    debug!("python project dir: {}", dir_running.display());
+    debug!("python project dir: {}", root_dir.display());
 
-    let (dep_file_location, lockfile_type) = find_dep_file(&dir_running).with_context(|| {
+    let (dep_file_location, lockfile_type) = find_dep_file(&root_dir).with_context(|| {
         format!(
-            "pyproject.toml not found next to {} nor in any parent directory",
+            "neither pyproject.toml nor requirements.txt not found next to {} nor in any parent directory",
             script.map_or_else(
                 || "current directory".to_string(),
                 |file_running| file_running.display().to_string()
@@ -450,7 +472,9 @@ pub fn get_specs(
     })?;
     match lockfile_type {
         LockfileType::PyprojectToml => {
-            poetry_spec_from_dir(&dep_file_location, extras, &python_context.pep508_env)
+            let (specs, root_scripts, lockfile) =
+                poetry_spec_from_dir(&dep_file_location, extras, &python_context.pep508_env)?;
+            Ok((specs, root_scripts, lockfile, root_dir))
         }
         LockfileType::RequirementsTxt => {
             let (specs, lockfile) = specs_from_requirements_txt_resolved(
@@ -459,7 +483,7 @@ pub fn get_specs(
                 None,
                 python_context,
             )?;
-            Ok((specs, BTreeMap::new(), lockfile))
+            Ok((specs, BTreeMap::new(), lockfile, root_dir))
         }
     }
 }
@@ -493,9 +517,9 @@ pub fn specs_from_requirements_txt_resolved(
 /// Convenience wrapper around `install_requested` and `spec_paths`
 pub fn install(
     specs: &[RequestedSpec],
-    scripts: BTreeMap<String, String>,
+    root_scripts: BTreeMap<String, Script>,
     lockfile: String,
-    repo_dir: Option<PathBuf>,
+    root_dir: Option<PathBuf>,
     python_context: &PythonContext,
 ) -> anyhow::Result<FinderData> {
     let (sprawl_root, sprawl_packages) = install_missing(
@@ -538,10 +562,10 @@ pub fn install(
         sprawl_root,
         sprawl_packages,
         spec_paths,
-        repo_dir,
+        root_dir,
         pth_files,
         lockfile,
-        scripts,
+        root_scripts,
     };
 
     Ok(finder_data)
@@ -607,20 +631,35 @@ pub fn run_command_finder_data(
     )
     .context("Failed to collect scripts")?;
     let scripts_tmp = TempDir::new().context("Failed to create tempdir")?;
-    let sys_executable = prepare_execve_environment(
+    let (sys_executable, path_dir) = prepare_execve_environment(
         &scripts,
+        &finder_data.root_scripts,
         Some(&root),
         scripts_tmp.path(),
         python_context.version,
     )?;
 
-    let script_path = scripts.get(&script.to_string()).with_context(|| {
-        format_err!(
+    // There's two possible script sources: pyproject.toml of the root or the collected scripts
+    // of all dependencies
+    let script_path = if let Some(script) = finder_data.root_scripts.get(script) {
+        // prepare_execve_environment has created that wrapper script
+        path_dir.join(&script.script_name)
+    } else if let Some(script_path) = scripts.get(&script.to_string()) {
+        script_path.clone()
+    } else {
+        let mut all_scripts: Vec<&str> = scripts
+            .keys()
+            .chain(finder_data.root_scripts.keys())
+            .map(|x| x.as_str())
+            .collect();
+        all_scripts.sort_unstable();
+
+        bail!(
             "Couldn't find command {} in installed packages.\nInstalled scripts: {:?}",
             script,
-            scripts.keys()
+            all_scripts.join(" ")
         )
-    })?;
+    };
     let exit_code = if is_python_script(&script_path)? {
         debug!("launching (python) {}", script_path.display());
         let args: Vec<String> = [

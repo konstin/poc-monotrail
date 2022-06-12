@@ -11,7 +11,7 @@ use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
-use install_wheel_rs::{WheelFilename, WheelInstallerError};
+use install_wheel_rs::{Script, WheelFilename, WheelInstallerError};
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -406,9 +406,16 @@ pub fn poetry_spec_from_dir(
     dep_file_location: &Path,
     extras: &[String],
     pep508_env: &Pep508Environment,
-) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, String>, String)> {
+) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, Script>, String)> {
     let (poetry_section, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
-    let scripts = poetry_section.scripts.clone().unwrap_or_default();
+    let mut scripts = BTreeMap::new();
+    if let Some(script) = &poetry_section.scripts {
+        for (key, value) in script {
+            if let Some(script) = Script::from_value(&key, &value, extras)? {
+                scripts.insert(key.to_string(), script);
+            }
+        }
+    }
     let specs = read_poetry_specs(&poetry_section, poetry_lock, false, extras, pep508_env)?;
     Ok((specs, scripts, lockfile))
 }

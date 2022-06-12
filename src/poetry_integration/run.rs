@@ -7,7 +7,8 @@ use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::read_poetry_specs;
 use crate::standalone_python::provision_python;
 use anyhow::Context;
-use tempfile::tempdir;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 /// Use the libpython.so to run a poetry command on python 3.8, unless you give +x.y as first
 /// argument
@@ -28,17 +29,29 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
         &[],
         &python_context.pep508_env,
     )?;
-    let scripts = poetry_section.scripts.unwrap_or_default();
 
-    let finder_data = install(&specs, scripts, lockfile.to_string(), None, &python_context)
-        .context("Failed to bootstrap poetry")?;
+    let finder_data = install(
+        &specs,
+        BTreeMap::new(),
+        lockfile.to_string(),
+        None,
+        &python_context,
+    )
+    .context("Failed to bootstrap poetry")?;
 
-    let temp_dir = tempdir()?;
-    let main_file = temp_dir.path().join("poetry_launcher.py");
-    std::fs::write(&main_file, "from poetry.console import main\nmain()")?;
+    let poetry_package = finder_data
+        .sprawl_packages
+        .iter()
+        .find(|package| package.name == "poetry")
+        .context("poetry is missing 🤨")?;
+    let launcher = poetry_package
+        .monotrail_location(PathBuf::from(&finder_data.sprawl_root))
+        .join("bin")
+        .join("poetry");
+
     let poetry_args: Vec<_> = [
         python_context.sys_executable.to_string_lossy().to_string(),
-        main_file.to_string_lossy().to_string(),
+        launcher.to_string_lossy().to_string(),
     ]
     .into_iter()
     .chain(args)

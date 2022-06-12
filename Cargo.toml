@@ -50,7 +50,7 @@ zstd = "0.10.2"
 
 [features]
 default = ["vendored"]
-python_bindings = ["pyo3"]
+python_bindings = ["pyo3", "install-wheel-rs/python_bindings"]
 vendored = ["git2/vendored-libgit2", "git2/vendored-openssl", "git2/zlib-ng-compat"]
 
 # Otherwise we get pkg-config complaints

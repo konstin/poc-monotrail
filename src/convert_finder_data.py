@@ -7,7 +7,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, List, Optional, Dict, Union
+from typing import Tuple, List, Optional, Dict, Union, Any
 
 
 @dataclass
@@ -41,6 +41,13 @@ class InstalledPackage:
 
 
 @dataclass
+class Script:
+    script_name: str
+    module: str
+    function: str
+
+
+@dataclass
 class FinderData:
     """The packaging and import data that is resolved by the rust part and deployed by the finder"""
 
@@ -51,16 +58,15 @@ class FinderData:
     # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]
     # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
-    repo_dir: Optional[str]
+    root_dir: Optional[str]
     # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
     pth_files: List[str]
     # The contents of the last poetry.lock, used a basis for the next resolution when requirements
     # change at runtime, both for faster resolution and in hopes the exact version stay the same
     # so the user doesn't need to reload python
     lockfile: Optional[str]
-    # The installed scripts indexed by name. They are in the bin folder of each project, coming
-    # from entry_points.txt or data folder scripts
-    scripts: Dict[str, str]
+    # The scripts from pyproject.toml
+    root_scripts: Dict[str, Any]
 
     @classmethod
     def from_json(cls, data: str) -> "FinderData":
@@ -68,6 +74,9 @@ class FinderData:
         data["sprawl_packages"] = [
             InstalledPackage(**i) for i in data["sprawl_packages"]
         ]
+        data["root_scripts"] = {
+            name: Script(**value) for name, value in data["root_scripts"].items()
+        }
         return cls(**data)
 
 

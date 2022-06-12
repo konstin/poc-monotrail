@@ -22,7 +22,7 @@ def main():
     finder_data = monotrail_from_args([])
 
     # Search poetry scripts
-    if script_name in finder_data.scripts:
+    if script_name in finder_data.root_scripts:
         # Otherwise, imports from the current projects won't work
         if f"{project_name.upper()}_CWD" in os.environ:
             sys.path.append(os.environ[f"{project_name.upper()}_CWD"])
@@ -30,12 +30,11 @@ def main():
             sys.path.append(os.getcwd())
         # prepare execution environment
         MonotrailFinder.get_singleton().update_and_activate(finder_data)
-        object_ref = finder_data.scripts[script_name]
-        # code from https://packaging.python.org/en/latest/specifications/entry-points/#data-model
-        modname, qualname_separator, qualname = object_ref.partition(":")
-        obj = importlib.import_module(modname)
-        if qualname_separator:
-            for attr in qualname.split("."):
+        script = finder_data.root_scripts[script_name]
+        # See https://packaging.python.org/en/latest/specifications/entry-points/#data-model
+        obj = importlib.import_module(script.module)
+        if script.function:
+            for attr in script.function.split("."):
                 obj = getattr(obj, attr)
         # noinspection PyCallingNonCallable
         # it's required to be a callable module if no function name is provided, otherwise we error
