@@ -7,8 +7,8 @@ virtualenv -p 3.8 .venv
 .venv/bin/pip uninstall -y monotrail
 .venv/bin/pip install target-maturin/wheels/monotrail-*.whl
 
-#CARGO_TARGET_DIR=target-maturin maturin build --strip -i python --cargo-extra-args="--features=python_bindings"
-#CARGO_TARGET_DIR=target-maturin VIRTUAL_ENV=$(pwd)/.venv maturin develop --strip --cargo-extra-args="--features=python_bindings"
+#CARGO_TARGET_DIR=target-maturin maturin build --strip
+#CARGO_TARGET_DIR=target-maturin VIRTUAL_ENV=$(pwd)/.venv maturin develop --strip
 # Try to get the develop import first
 # this currently clashes with the jupyter setup
 #rm -rf .venv
