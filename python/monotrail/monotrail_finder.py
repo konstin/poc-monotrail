@@ -78,13 +78,32 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         if finder_data.root_dir is not None:
             sys.path.insert(0, finder_data.root_dir)
         self.root_dir = finder_data.root_dir
-
         self.spec_paths = finder_data.spec_paths
+
+        # patch pkg resources so it can also find the distributions
+        self._patch_pkg_resources(finder_data)
         # hackery hack hack
         # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
         for pth in finder_data.pth_files:
             pth = Path(pth)
             site.addpackage(pth.parent, pth.name, None)
+
+    def _patch_pkg_resources(self, finder_data: "FinderData"):
+        """pkg_resource is deprecated and you should stop using it.
+
+        https://setuptools.pypa.io/en/latest/pkg_resources.html#package-discovery-and-resource-access-using-pkg-resources
+
+        This functions patches pkg_resources so it can also find the distributions"""
+        # Lazy import because i want to avoid triggering pkg_resources if not required
+        import pkg_resources
+
+        for sprawl_package in finder_data.sprawl_packages:
+            site_packages = sprawl_package.monotrail_site_packages(
+                finder_data.sprawl_root,
+                (sys.version_info.major, sys.version_info.minor),
+            )
+            if site_packages not in pkg_resources.working_set.entries:
+                pkg_resources.working_set.entries.append(site_packages)
 
     @classmethod
     def warn_on_conflicts(

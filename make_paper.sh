@@ -2,7 +2,7 @@
 set -e
 
 rm -f target-maturin/wheels/monotrail-*.whl
-CARGO_TARGET_DIR=target-maturin maturin build --release --strip --no-sdist
+CARGO_TARGET_DIR=target-maturin maturin build --release --strip
 virtualenv -p 3.8 .venv
 .venv/bin/pip uninstall -y monotrail
 .venv/bin/pip install target-maturin/wheels/monotrail-*.whl
