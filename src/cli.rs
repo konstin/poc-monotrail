@@ -72,8 +72,9 @@ pub enum RunSubcommand {
 
 #[derive(Parser)]
 pub enum Cli {
-    /// This features two subcommands that we unfortunately can't have as proper subcommands
-    /// due to a clap bug (<https://github.com/clap-rs/clap/discussions/3766>)
+    /// Run with `python` or `command`. This features two subcommands that we unfortunately can't
+    /// have as proper subcommands due to a clap bug
+    /// (<https://github.com/clap-rs/clap/discussions/3766>)
     ///
     /// ### python
     ///

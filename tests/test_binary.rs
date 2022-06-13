@@ -1,3 +1,5 @@
+//! Test running the `monotrail` binary
+
 use anyhow::bail;
 use std::process::{Command, Output};
 use std::{io, str};
@@ -84,7 +86,8 @@ fn test_tox() {
     );
 }
 
-/// There's some trickery involved (`ExternalArgs`) in making clap ignore the first argument
+/// There's some trickery involved (`ExternalArgs`) in making clap ignore the first arguments, also
+/// tests ppipx
 #[test]
 fn test_pipx_black_version() {
     let output = Command::new(BIN)
@@ -103,4 +106,19 @@ fn test_pipx_black_version() {
         .last()
         .expect("Expected at least one line")
         .starts_with("black, 22.3.0"));
+}
+
+/// Test our poetry runner in general and specifically the in-project-venv setting that
+/// we need if poetry creates venv when it shouldn't so they stay in the tmp dir and get cleaned up
+#[test]
+fn test_poetry_config() {
+    let output = Command::new(BIN)
+        .args(["poetry", "config", "--list"])
+        .output();
+    let output = handle_output(output).unwrap();
+    let line = output
+        .iter()
+        .find(|line| line.starts_with("virtualenvs.in-project"))
+        .expect("Expected virtualenvs.in-project");
+    assert_eq!(line, "virtualenvs.in-project = true");
 }

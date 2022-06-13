@@ -15,6 +15,6 @@ virtualenv -q .venv
 (cd ../meine-stadt-transparent && ../monotrail/.venv/bin/monotrail_python -c "import django; print('hi django ' + django.__version__)")
 # Test manage.py script
 (cd ../meine-stadt-transparent && ../monotrail/.venv/bin/monotrail_python manage.py | wc -l)
-(cd ../meine-stadt-transparent && ../monotrail/target/debug/monotrail run --extras import-json python ./manage.py | wc -l)
+(cd ../meine-stadt-transparent && ../monotrail/target/release/monotrail run --extras import-json python ./manage.py | wc -l)
 #(cd ../meine-stadt-transparent && MONOTRAIL_EXTRAS="import-json" ../monotrail/.venv/bin/monotrail_python manage.py runserver)
 #(cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 ../monotrail/target/debug/monotrail run --extras import-json script pytest)
