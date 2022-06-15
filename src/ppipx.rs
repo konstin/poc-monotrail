@@ -73,14 +73,7 @@ pub fn ppipx(
     let finder_data = install(&specs, BTreeMap::new(), lockfile, None, &python_context)
         .context("Couldn't install packages")?;
 
-    run_command_finder_data(
-        &command,
-        &args,
-        &python_context,
-        &python_home,
-        &resolution_dir,
-        &finder_data,
-    )
+    run_command_finder_data(&command, &args, &python_context, &python_home, &finder_data)
 }
 
 /// Writes a pyproject.toml for the ppipx command and calls poetry to resolve it to a poetry.lock

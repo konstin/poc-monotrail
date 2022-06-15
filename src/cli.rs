@@ -1,13 +1,12 @@
-use crate::inject_and_run::{determine_python_version, parse_plus_arg, run_python_args};
+use crate::inject_and_run::{parse_plus_arg, run_python_args};
 use crate::install::{filter_installed, install_all, InstalledPackage};
 use crate::markers::Pep508Environment;
-use crate::monotrail::{install, load_specs, monotrail_root, run_command_finder_data};
+use crate::monotrail::{monotrail_root, run_command};
 use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
 use crate::ppipx;
 use crate::spec::RequestedSpec;
-use crate::standalone_python::provision_python;
 use crate::utils::cache_dir;
 use crate::venv_parser::get_venv_python_version;
 use crate::verify_installation::verify_installation;
@@ -394,35 +393,6 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             Ok(None)
         }
     }
-}
-
-/// Run an installed command
-fn run_command(
-    extras: &[String],
-    python_version: Option<&str>,
-    root: Option<&Path>,
-    command: &str,
-    args: &[String],
-) -> anyhow::Result<i32> {
-    let (args, python_version) = determine_python_version(args, python_version)?;
-    let (python_context, python_home) = provision_python(python_version)?;
-    let (specs, root_scripts, lockfile, root) = load_specs(root, extras, &python_context)?;
-    let finder_data = install(
-        &specs,
-        root_scripts,
-        lockfile,
-        Some(root.clone()),
-        &python_context,
-    )?;
-
-    run_command_finder_data(
-        &command,
-        &args,
-        &python_context,
-        &python_home,
-        &root,
-        &finder_data,
-    )
 }
 
 #[cfg(test)]

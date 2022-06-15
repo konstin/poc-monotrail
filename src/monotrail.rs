@@ -1,4 +1,6 @@
-use crate::inject_and_run::{inject_and_run_python, prepare_execve_environment};
+use crate::inject_and_run::{
+    determine_python_version, inject_and_run_python, prepare_execve_environment,
+};
 use crate::install::{install_all, InstalledPackage};
 use crate::markers::Pep508Environment;
 use crate::poetry_integration::lock::poetry_resolve;
@@ -6,6 +8,7 @@ use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
 use crate::read_poetry_specs;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
+use crate::standalone_python::provision_python;
 use crate::utils::{cache_dir, get_dir_content};
 use anyhow::{bail, Context};
 use fs_err as fs;
@@ -617,12 +620,33 @@ pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
     Ok(is_python_script)
 }
 
+/// Run an installed command
+pub fn run_command(
+    extras: &[String],
+    python_version: Option<&str>,
+    root: Option<&Path>,
+    command: &str,
+    args: &[String],
+) -> anyhow::Result<i32> {
+    let (args, python_version) = determine_python_version(args, python_version)?;
+    let (python_context, python_home) = provision_python(python_version)?;
+    let (specs, root_scripts, lockfile, root) = load_specs(root, extras, &python_context)?;
+    let finder_data = install(
+        &specs,
+        root_scripts,
+        lockfile,
+        Some(root.clone()),
+        &python_context,
+    )?;
+
+    run_command_finder_data(&command, &args, &python_context, &python_home, &finder_data)
+}
+
 pub fn run_command_finder_data(
     script: &str,
     args: &[String],
     python_context: &PythonContext,
     python_home: &Path,
-    root: &Path,
     finder_data: &FinderData,
 ) -> anyhow::Result<i32> {
     let scripts = find_scripts(
@@ -634,7 +658,7 @@ pub fn run_command_finder_data(
     let (sys_executable, path_dir) = prepare_execve_environment(
         &scripts,
         &finder_data.root_scripts,
-        Some(&root),
+        finder_data.root_dir.as_deref(),
         scripts_tmp.path(),
         python_context.version,
     )?;

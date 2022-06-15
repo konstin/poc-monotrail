@@ -11,8 +11,7 @@ hyperfine.json
 perf.data*
 requirements-benchmark.txt
 target
-target-maturin
-target-maturin-zig
+target-*
 test-data/popular-wheels
 test-venvs
 venv
