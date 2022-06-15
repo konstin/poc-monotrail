@@ -21,32 +21,26 @@ pub fn build_source_distribution_to_wheel_cached(
 ) -> Result<PathBuf> {
     let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
 
-    let cache_hit = fs::read_dir(&target_dir).ok().and_then(|dir| {
-        for entry in dir.flatten() {
+    if let Ok(target_dir) = fs::read_dir(&target_dir) {
+        for entry in target_dir.flatten() {
             if !entry.path().to_string_lossy().ends_with(".whl") {
                 continue;
             }
             if let Ok(true) = WheelFilename::from_str(entry.file_name().to_string_lossy().as_ref())
                 .map(|filename| filename.is_compatible(compatible_tags))
             {
-                return Some(entry.path());
+                return Ok(entry.path());
             }
         }
-        None
-    });
+    };
 
-    if let Some(cache_hit) = cache_hit {
-        Ok(cache_hit)
-    } else {
-        let build_dir = TempDir::new()?;
-
-        let wheel = build_to_wheel(sdist, build_dir.path(), compatible_tags)?;
-        fs::create_dir_all(&target_dir)?;
-        let wheel_in_cache = target_dir.join(wheel.file_name().unwrap_or(&OsString::new()));
-        // rename only work on the same device :/
-        fs::copy(wheel, &wheel_in_cache)?;
-        Ok(wheel_in_cache)
-    }
+    let build_dir = TempDir::new()?;
+    let wheel = build_to_wheel(sdist, build_dir.path(), compatible_tags)?;
+    fs::create_dir_all(&target_dir)?;
+    let wheel_in_cache = target_dir.join(wheel.file_name().unwrap_or(&OsString::new()));
+    // rename only work on the same device :/
+    fs::copy(wheel, &wheel_in_cache)?;
+    Ok(wheel_in_cache)
 }
 
 /// Builds a wheel from an source distribution or a repo checkout using `pip wheel --no-deps`
@@ -75,17 +69,20 @@ pub fn build_to_wheel(
             ),
         ))
         .into());
-    } else {
-        for path in fs::read_dir(build_dir)? {
-            let path = path?;
-            let filename = path.file_name().to_string_lossy().to_string();
-            if filename.ends_with(".whl") {
-                if !WheelFilename::from_str(&filename)?.is_compatible(compatible_tags) {
-                    bail!("pip wrote out an incompatible wheel (this is a bug)")
-                }
-                return Ok(path.path());
-            }
-        }
-        bail!("pip didn't write out a wheel (dubious)")
     }
+
+    for path in fs::read_dir(build_dir)? {
+        let path = path?;
+        let filename = path.file_name().to_string_lossy().to_string();
+        if filename.ends_with(".whl") {
+            if !WheelFilename::from_str(&filename)?.is_compatible(compatible_tags) {
+                bail!(
+                    "pip wrote out an incompatible wheel. \
+                    This is a bug, either in monotrail or in pip"
+                )
+            }
+            return Ok(path.path());
+        }
+    }
+    bail!("pip didn't write out a wheel (dubious)")
 }

@@ -8,7 +8,7 @@ monotrail run python my_script.py
 
 Every dependency is installed only once globally and hooked to your code. No venv directory, no explicit installation, no activate, no pyenv.
 
-This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux (and a bit of macos) is supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is slow, only the some requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, nbconvert doesn't work, first argument can't start with a hyphen, etc. 
+This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux (and a bit of macos) is supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is slow, only some requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, some pkg_resources usage doesn't work, etc. 
 
 monotrail means to show you can use python without the traditional "installing packages in an environment". It also integrates [PyOxy](https://github.com/indygreg/PyOxidizer/tree/main/pyoxy) so you don't need to install python anymore. 
 
@@ -74,6 +74,8 @@ As [tox](https://github.com/tox-dev/tox) replacement:
 ```shell
 monotrail run -p 3.8 -p 3.9 -p 3.10 command pytest
 ```
+
+You can symlink `monotrail` to a file called `python`, `python3` or `python3.x` and it'll work as python3.8 or the specified python version.
 
 Setting `RUST_LOG=debug` will give you details to track down bugs.
 
@@ -168,16 +170,16 @@ Hello world:
 ```
 $ hyperfine --warmup 2 "python hello.py" "../target/release/monotrail run python hello.py"
 Benchmark 1: python hello.py
-  Time (mean ± σ):      15.6 ms ±   0.8 ms    [User: 13.5 ms, System: 2.4 ms]
-  Range (min … max):    14.1 ms …  21.4 ms    167 runs
+  Time (mean ± σ):      17.3 ms ±   0.8 ms    [User: 14.5 ms, System: 2.9 ms]
+  Range (min … max):    16.3 ms …  20.5 ms    159 runs
  
 Benchmark 2: ../target/release/monotrail run python hello.py
-  Time (mean ± σ):     141.7 ms ±   2.0 ms    [User: 92.4 ms, System: 49.6 ms]
-  Range (min … max):   137.6 ms … 144.7 ms    21 runs
+  Time (mean ± σ):     218.4 ms ±   5.4 ms    [User: 161.6 ms, System: 55.9 ms]
+  Range (min … max):   212.0 ms … 232.5 ms    13 runs
  
 Summary
   'python hello.py' ran
-    9.08 ± 0.48 times faster than '../target/release/monotrail run python hello.py'
+   12.65 ± 0.64 times faster than '../target/release/monotrail run python hello.py'
 ```
 
 Simplest numpy usage:
@@ -194,16 +196,16 @@ print(
 ```
 $ hyperfine --warmup 2 "python numpy_version.py" "../target/release/monotrail run python numpy_version.py"
 Benchmark 1: python numpy_version.py
-  Time (mean ± σ):      96.9 ms ±   0.8 ms    [User: 126.2 ms, System: 169.1 ms]
-  Range (min … max):    95.4 ms …  98.9 ms    29 runs
+  Time (mean ± σ):      99.8 ms ±   1.2 ms    [User: 127.3 ms, System: 171.7 ms]
+  Range (min … max):    98.1 ms … 103.1 ms    29 runs
  
 Benchmark 2: ../target/release/monotrail run python numpy_version.py
-  Time (mean ± σ):     213.6 ms ±   4.1 ms    [User: 187.1 ms, System: 197.5 ms]
-  Range (min … max):   209.0 ms … 225.7 ms    13 runs
+  Time (mean ± σ):     285.9 ms ±   1.8 ms    [User: 247.6 ms, System: 169.3 ms]
+  Range (min … max):   283.4 ms … 289.9 ms    10 runs
  
 Summary
   'python numpy_version.py' ran
-    2.20 ± 0.05 times faster than '../target/release/monotrail run python numpy_version.py'
+    2.86 ± 0.04 times faster than '../target/release/monotrail run python numpy_version.py'
 ```
 
 

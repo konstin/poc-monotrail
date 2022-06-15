@@ -1,4 +1,4 @@
-maturin[zig]>=0.12.17,<0.13
+maturin[zig]>=0.13.0b5,<0.14
 pytest>=7.1.2,<8.0
 jupyter==1.0.0
 nbconvert>=6.5.0,<7.0.0

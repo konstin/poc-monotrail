@@ -1,5 +1,18 @@
 #![allow(clippy::needless_borrow)] // This is really annoying when refactoring
 
+//! This proof of concept shows how to use python packages without virtualenvs. It will install both
+//! python itself and your dependencies, given a `requirement.txt` or a
+//! `pyproject.toml`/`poetry.lock` in the directory.
+//!
+//! # General Code Notes
+//!
+//!  * temporary directories everywhere. The have two functions: One is that they clean up any stuff
+//!    that a subprocess might have generated besides its target files, which we copy out
+//!    explicitly. The other is for atomic (or mostly atomic) installation. i.e. if the software
+//!    crashes mid installation (either being killed externally or through a bug), only the tmp dir
+//!    remains (which is in some case cleared up by the os) and we avoid half finished broken
+//!    installations.
+
 pub use crate::markers::Pep508Environment;
 pub use cli::{run_cli, Cli};
 pub use inject_and_run::{parse_major_minor, run_python_args};
