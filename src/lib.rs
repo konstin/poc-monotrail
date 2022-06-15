@@ -1,4 +1,5 @@
 #![allow(clippy::needless_borrow)] // This is really annoying when refactoring
+#![deny(missing_docs)]
 
 //! This proof of concept shows how to use python packages without virtualenvs. It will install both
 //! python itself and your dependencies, given a `requirement.txt` or a

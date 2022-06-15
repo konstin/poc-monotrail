@@ -69,6 +69,7 @@ pub enum RunSubcommand {
     Args(Vec<String>),
 }
 
+/// The main cli
 #[derive(Parser)]
 pub enum Cli {
     /// Run with `python` or `command`. This features two subcommands that we unfortunately can't
@@ -125,6 +126,7 @@ pub enum Cli {
         /// command to run (e.g. `black` or `pytest`), will also be used as package name unless
         /// --package is set
         command: String,
+        /// arguments to be passed verbatim to the command
         #[clap(subcommand)]
         args: Option<ExternalArgs>,
     },
@@ -137,15 +139,21 @@ pub enum Cli {
     /// Run the poetry bundled with monotrail. You can use the same command line options as with
     /// normally installed poetry, e.g. `monotrail poetry update` instead of `poetry update`
     #[clap(trailing_var_arg = true)]
-    Poetry { args: Vec<String> },
+    Poetry {
+        /// arguments passed verbatim to poetry
+        args: Vec<String>,
+    },
     /// Install the given list of wheels in the current venv
     VenvInstall {
+        /// The wheels to install
         targets: Vec<String>,
+        /// skip pyc compilation
         #[clap(long)]
         no_compile: bool,
     },
     /// Faster reimplementation of "poetry install" for both venvs and monotrail
     PoetryInstall {
+        #[allow(missing_docs)]
         #[clap(flatten)]
         options: PoetryOptions,
     },
@@ -240,6 +248,7 @@ fn poetry_install(
     Ok((location, installed_done))
 }
 
+/// Dispatches from the Cli
 pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
     match cli {
         Cli::Run {

@@ -307,6 +307,8 @@ pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
     Ok(python_version)
 }
 
+/// `monotrail run python` implementation. Injects the dependencies and runs the python interpreter
+/// with the specified arguments.
 pub fn run_python_args(
     args: &[String],
     python_version: Option<&str>,
