@@ -4,8 +4,7 @@ set -e
 rm -f target-maturin/wheels/monotrail-*.whl
 CARGO_TARGET_DIR=target-maturin maturin build --release --strip
 virtualenv -p 3.8 .venv
-.venv/bin/pip uninstall -y monotrail
-.venv/bin/pip install target-maturin/wheels/monotrail-*.whl
+.venv/bin/pip install --force-reinstall target-maturin/wheels/monotrail-*.whl
 
 #CARGO_TARGET_DIR=target-maturin maturin build --strip
 #CARGO_TARGET_DIR=target-maturin VIRTUAL_ENV=$(pwd)/.venv maturin develop --strip

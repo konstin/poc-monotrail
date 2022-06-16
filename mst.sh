@@ -4,8 +4,7 @@ set -e
 rm -f target-maturin/wheels/monotrail-*.whl
 CARGO_TARGET_DIR=target-maturin maturin build --release --strip
 virtualenv -q .venv
-.venv/bin/pip uninstall -y -q monotrail
-.venv/bin/pip install -q target-maturin/wheels/monotrail-*.whl
+.venv/bin/pip install --force-reinstall target-maturin/wheels/monotrail-*.whl
 
 # Run pytest, entrypoint
 (cd ../meine-stadt-transparent && SKIP_SLOW_TESTS=1 MONOTRAIL_EXTRAS="import-json" ../monotrail/.venv/bin/monotrail_script pytest)
