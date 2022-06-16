@@ -296,10 +296,10 @@ pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
         if let Some((major, minor)) = version.trim_start_matches('+').split_once('.') {
             let major = major
                 .parse::<u8>()
-                .context("Could not parse value of version_major")?;
+                .with_context(|| format!("Could not parse value of version_major: {}", major))?;
             let minor = minor
                 .parse::<u8>()
-                .context("Could not parse value of version_minor")?;
+                .with_context(|| format!("Could not parse value of version_minor: {}", minor))?;
             (major, minor)
         } else {
             bail!("Expect +x.y as first argument (missing dot)");
@@ -509,6 +509,10 @@ pub fn prepare_execve_environment(
 mod tests {
     use crate::inject_and_run::naive_python_arg_parser;
     use crate::run_python_args;
+    use crate::utils::cache_dir;
+    use anyhow::Context;
+    use fs_err as fs;
+    use std::fs::File;
     use std::path::Path;
 
     #[test]
@@ -533,7 +537,41 @@ mod tests {
 
     #[test]
     fn no_deps_specs_file() {
-        let err = run_python_args(&[], None, Some(Path::new("/")), &[]).unwrap_err();
+        // Fake already installed python
+        let python_parent_dir = cache_dir().unwrap().join("python-build-standalone");
+        let unpack_dir = python_parent_dir.join(format!("cpython-{}.{}", 3, 141));
+        let lib_dir = unpack_dir.join("python").join("install").join("lib");
+        let lib = if cfg!(target_os = "macos") {
+            format!("libpython3.141.dylib")
+        } else {
+            "libpython3.so".to_string()
+        };
+
+        // Make it assume it's installed
+        fs::create_dir_all(&lib_dir).unwrap();
+        File::create(lib_dir.join(lib)).unwrap();
+
+        // Make python runnable for the PEP508 markers
+        let bin_dir = unpack_dir.join("python").join("install").join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let bin = bin_dir.join("python3");
+        if !bin.is_file() {
+            let python3 = which::which("python3").unwrap();
+            #[cfg(unix)]
+            {
+                fs_err::os::unix::fs::symlink(python3, bin)
+                    .context("Failed to create symlink for scripts PATH")
+                    .unwrap();
+            }
+            #[cfg(windows)]
+            {
+                std::os::windows::fs::symlink_file(python3, bin)
+                    .context("Failed to create symlink for scripts PATH")
+                    .unwrap();
+            }
+        }
+
+        let err = run_python_args(&[], Some("3.141"), Some(Path::new("/")), &[]).unwrap_err();
         let errors = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
         assert_eq!(errors, ["neither pyproject.toml nor requirements.txt not found next to / nor in any parent directory"]);
     }

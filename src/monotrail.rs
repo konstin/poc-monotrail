@@ -631,13 +631,7 @@ pub fn run_command(
     let (args, python_version) = determine_python_version(args, python_version)?;
     let (python_context, python_home) = provision_python(python_version)?;
     let (specs, root_scripts, lockfile, root) = load_specs(root, extras, &python_context)?;
-    let finder_data = install(
-        &specs,
-        root_scripts,
-        lockfile,
-        Some(root.clone()),
-        &python_context,
-    )?;
+    let finder_data = install(&specs, root_scripts, lockfile, Some(root), &python_context)?;
 
     run_command_finder_data(&command, &args, &python_context, &python_home, &finder_data)
 }

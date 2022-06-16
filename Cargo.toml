@@ -69,3 +69,4 @@ opt-level = 3
 indoc = "1.0.6"
 mockito = "0.31.0"
 tempfile = "3.3.0"
+which = "4.2.5"
