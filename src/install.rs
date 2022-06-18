@@ -196,7 +196,8 @@ pub fn install_all(
         }
         _ => {
             let pb = ProgressBar::new(specs.len() as u64).with_style(
-                ProgressStyle::default_bar().template("Installing {bar} {pos:>3}/{len:3} {msg}"),
+                ProgressStyle::default_bar()
+                    .template("Installing {bar} {pos:>3}/{len:3} {wide_msg}"),
             );
             let current: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
             let installed = specs

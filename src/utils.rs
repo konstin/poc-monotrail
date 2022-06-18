@@ -1,5 +1,5 @@
 use crate::cli::{run_cli, Cli};
-use anyhow::{Context, Error};
+use anyhow::Context;
 use fs_err as fs;
 use fs_err::DirEntry;
 use install_wheel_rs::WheelInstallerError;
@@ -45,7 +45,6 @@ pub(crate) fn data_local_dir() -> Result<PathBuf, WheelInstallerError> {
 #[doc(hidden)]
 pub fn assert_cli_error(cli: Cli, venv: Option<&Path>, expected: &[&str]) {
     if let Err(err) = run_cli(cli, venv) {
-        let err: Error = err;
         let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
         assert_eq!(expected, actual);
     } else {

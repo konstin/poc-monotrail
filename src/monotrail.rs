@@ -633,7 +633,17 @@ pub fn run_command(
     let (specs, root_scripts, lockfile, root) = load_specs(root, extras, &python_context)?;
     let finder_data = install(&specs, root_scripts, lockfile, Some(root), &python_context)?;
 
-    run_command_finder_data(&command, &args, &python_context, &python_home, &finder_data)
+    // We need to resolve the command when we pass it to python so we need to remove the bare
+    // command. TODO: Do we want to fake argv with the bare command? At least for code in tracebacks
+    // we need to pass the real file to python
+    let trail_args = args[1..].to_vec();
+    run_command_finder_data(
+        &command,
+        &trail_args,
+        &python_context,
+        &python_home,
+        &finder_data,
+    )
 }
 
 pub fn run_command_finder_data(
@@ -679,7 +689,6 @@ pub fn run_command_finder_data(
         )
     };
     let exit_code = if is_python_script(&script_path)? {
-        debug!("launching (python) {}", script_path.display());
         let args: Vec<String> = [
             python_context.sys_executable.to_string_lossy().to_string(),
             script_path.to_string_lossy().to_string(),
@@ -688,6 +697,8 @@ pub fn run_command_finder_data(
         .chain(args)
         .map(ToString::to_string)
         .collect();
+        debug!("launching (python) {:?}", args);
+
         let exit_code = inject_and_run_python(
             &python_home,
             python_context.version,
