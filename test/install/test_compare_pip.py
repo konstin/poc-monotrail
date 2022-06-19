@@ -113,6 +113,14 @@ def test_tqdm():
     compare_with_pip("tqdm", [purelib_platlib_wheel], get_bin())
 
 
+def test_bio_embeddings_plus():
+    """This wheel used to fail to install due to a name normalization mismatch"""
+    bio_embeddings_plus_wheel = get_root().joinpath(
+        "test-data/wheels/bio_embeddings_PLUS-0.1.1-py3-none-any.whl"
+    )
+    compare_with_pip("bio_embeddings_plus", [bio_embeddings_plus_wheel], get_bin())
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument("wheel")

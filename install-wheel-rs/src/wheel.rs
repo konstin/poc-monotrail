@@ -954,10 +954,12 @@ pub fn install_wheel(
     let dist = python_pkginfo::Distribution::new(&wheel_path)?;
     let escaped_name = Regex::new(r"[^\w\d.]+")
         .unwrap()
-        .replace_all(&dist.metadata().name, "_");
-    if &escaped_name != name {
+        .replace_all(&dist.metadata().name, "_")
+        .to_string();
+    if escaped_name.to_lowercase() != name.to_lowercase() {
         return Err(WheelInstallerError::InvalidWheel(format!(
-            "Inconsistent package name: {} (wheel metadata) vs {} (filename)",
+            "Inconsistent package name: {} (wheel metadata, from {}) vs {} (filename)",
+            escaped_name.to_lowercase(),
             dist.metadata().name,
             name
         )));
@@ -1068,7 +1070,7 @@ pub fn install_wheel(
 mod test {
     use super::parse_wheel_version;
     use crate::wheel::{read_record_file, relative_to};
-    use crate::{install_wheel, parse_key_value_file, InstallLocation};
+    use crate::{install_wheel, parse_key_value_file, InstallLocation, Script};
     use fs_err as fs;
     use indoc::{formatdoc, indoc};
     use std::path::{Path, PathBuf};
@@ -1188,6 +1190,35 @@ mod test {
             )
             .unwrap(),
             Path::new("../../../bin/foo_launcher")
+        );
+    }
+
+    #[test]
+    fn test_script_from_value() {
+        assert_eq!(
+            Script::from_value("launcher", "foo.bar:main", &[]).unwrap(),
+            Some(Script {
+                script_name: "launcher".to_string(),
+                module: "foo.bar".to_string(),
+                function: "main".to_string(),
+            })
+        );
+        assert_eq!(
+            Script::from_value("launcher", "foomod:main_bar [bar,baz]", &[]).unwrap(),
+            None
+        );
+        assert_eq!(
+            Script::from_value(
+                "launcher",
+                "foomod:main_bar [bar,baz]",
+                &["bar".to_string(), "baz".to_string()]
+            )
+            .unwrap(),
+            Some(Script {
+                script_name: "launcher".to_string(),
+                module: "foomod".to_string(),
+                function: "main_bar".to_string(),
+            })
         );
     }
 }
