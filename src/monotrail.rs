@@ -252,20 +252,22 @@ pub fn install_missing(
     let monotrail_root = monotrail_root()?;
     let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
 
+    // Lock install directory to prevent races between multiple monotrail processes. We need to
+    // lock before determining which packages to install because another process might install
+    // packages meanwhile and then we'll clash later because the package is then already installed.
+    // We also it here instead of install_wheel to allow multithreading, since we'll only install
+    // disjoint packages
+    let location = InstallLocation::Monotrail {
+        monotrail_root: PathBuf::from(&monotrail_root),
+        python: python.to_path_buf(),
+        python_version,
+    }
+    .acquire_lock()?;
+
     let (to_install_specs, installed_done) =
         filter_installed_monotrail(specs, Path::new(&monotrail_root), &compatible_tags)?;
 
-    let mut installed = install_all(
-        &to_install_specs,
-        &InstallLocation::Monotrail {
-            monotrail_root: PathBuf::from(&monotrail_root),
-            python: python.to_path_buf(),
-            python_version,
-        },
-        &compatible_tags,
-        false,
-        true,
-    )?;
+    let mut installed = install_all(&to_install_specs, &location, &compatible_tags, false, true)?;
 
     installed.extend(installed_done);
     // Helps debugging

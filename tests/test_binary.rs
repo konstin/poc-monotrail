@@ -11,7 +11,12 @@ fn handle_output(output: io::Result<Output>) -> anyhow::Result<Vec<String>> {
     match output {
         Ok(output) => {
             if !output.status.success() {
-                bail!("Command failed: {}", output.status);
+                bail!(
+                    "Command failed: {}\n---stdout:{}\n---stderr:\n{}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
             }
             let stdout = str::from_utf8(&output.stdout)?;
             Ok(stdout.lines().map(ToString::to_string).collect())

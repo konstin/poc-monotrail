@@ -156,16 +156,11 @@ pub fn filter_installed(
 /// Installs all given specs
 pub fn install_all(
     specs: &[RequestedSpec],
-    location: &InstallLocation<PathBuf>,
+    location: &InstallLocation<LockedDir>,
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
     background: bool,
 ) -> anyhow::Result<Vec<InstalledPackage>> {
-    // Lock install directory to prevent races between multiple monotrail processes
-    // Lock it here instead of install_wheel to allow multithreading, since we'll only install
-    // disjoint packages
-    let location = location.acquire_lock()?;
-
     match specs {
         // If everything is already installed, return silently
         [] if background => Ok(vec![]),

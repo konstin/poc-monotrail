@@ -24,7 +24,7 @@ fn test_brokenwheel() -> Result<()> {
         "brokenwheel-1.0-py2.py3-none-any.whl",
         &[
             "Failed to install test-data/pip-test-packages/brokenwheel-1.0-py2.py3-none-any.whl",
-            "The wheel is invalid: Inconsistent package name: simple.dist (wheel metadata) vs brokenwheel (filename)",
+            "The wheel is invalid: Inconsistent package name: simple.dist (wheel metadata, from simple.dist) vs brokenwheel (filename)"
         ],
     )
 }

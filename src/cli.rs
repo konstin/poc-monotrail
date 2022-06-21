@@ -1,5 +1,5 @@
 use crate::inject_and_run::{parse_plus_arg, run_python_args};
-use crate::install::{filter_installed, install_all, InstalledPackage};
+use crate::install::{filter_installed, install_all};
 use crate::markers::Pep508Environment;
 use crate::monotrail::{monotrail_root, run_command};
 use crate::package_index::download_distribution;
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info};
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 pub struct PoetryOptions {
     /// Don't install dev dependencies
     #[clap(long)]
@@ -70,7 +70,8 @@ pub enum RunSubcommand {
 }
 
 /// The main cli
-#[derive(Parser)]
+#[derive(Parser, Debug)]
+#[clap(version)]
 pub enum Cli {
     /// Run with `python` or `command`. This features two subcommands that we unfortunately can't
     /// have as proper subcommands due to a clap bug
@@ -192,7 +193,7 @@ fn poetry_install(
     python_version: (u8, u8),
     venv_canon: &Path,
     options: &PoetryOptions,
-) -> anyhow::Result<(InstallLocation<PathBuf>, Vec<InstalledPackage>)> {
+) -> anyhow::Result<()> {
     let compatible_tags = compatible_tags(
         get_venv_python_version(venv)?,
         &Os::current()?,
@@ -232,6 +233,7 @@ fn poetry_install(
         }
     };
 
+    let location = location.acquire_lock()?;
     let (to_install, mut installed_done) = if options.skip_existing || options.monotrail {
         filter_installed(&location, &specs, &compatible_tags)?
     } else {
@@ -245,7 +247,7 @@ fn poetry_install(
         false,
     )?;
     installed_done.append(&mut installed_new);
-    Ok((location, installed_done))
+    Ok(())
 }
 
 /// Dispatches from the Cli
@@ -364,22 +366,17 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                 &Os::current()?,
                 &Arch::current()?,
             )?;
+            let location = InstallLocation::Venv {
+                venv_base: venv_canon,
+                python_version,
+            }
+            .acquire_lock()?;
             let specs = targets
                 .iter()
                 .map(|target| RequestedSpec::from_requested(target, &[]))
                 .collect::<Result<Vec<RequestedSpec>, WheelInstallerError>>()?;
-            let installation_location = InstallLocation::Venv {
-                venv_base: venv_canon,
-                python_version,
-            };
 
-            install_all(
-                &specs,
-                &installation_location,
-                &compatible_tags,
-                no_compile,
-                false,
-            )?;
+            install_all(&specs, &location, &compatible_tags, no_compile, false)?;
             Ok(None)
         }
         Cli::PoetryInstall { options } => {
