@@ -17,7 +17,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
 
@@ -173,6 +173,7 @@ pub fn install_all(
             } else {
                 info!("Installing {}", spec.requested);
             }
+            let start = Instant::now();
             let (python_version, unique_version, tag) = download_and_install(
                 spec,
                 &location,
@@ -180,7 +181,12 @@ pub fn install_all(
                 no_compile,
                 &location.get_python(),
             )?;
-            debug!("Installed {} {}", spec.name, unique_version);
+            debug!(
+                "Installed {} {} in {:.1}s",
+                spec.name,
+                unique_version,
+                start.elapsed().as_secs_f32()
+            );
             let installed_package = InstalledPackage {
                 name: spec.normalized_name(),
                 python_version,
@@ -211,6 +217,7 @@ pub fn install_all(
                         }
                     }
 
+                    let start = Instant::now();
                     let (python_version, unique_version, tag) = download_and_install(
                         spec,
                         &location,
@@ -218,7 +225,12 @@ pub fn install_all(
                         no_compile,
                         &location.get_python(),
                     )?;
-                    debug!("Installed {} {}", spec.name, unique_version);
+                    debug!(
+                        "Installed {} {} in {:.1}s",
+                        spec.name,
+                        unique_version,
+                        start.elapsed().as_secs_f32()
+                    );
                     {
                         let mut current = current.lock().unwrap();
                         current.retain(|x| x != &spec.name);
