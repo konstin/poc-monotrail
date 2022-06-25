@@ -1,6 +1,6 @@
 //! Communication with libpython
 
-use crate::monotrail::{find_scripts, install, load_specs};
+use crate::monotrail::{find_scripts, install, load_specs, FinderData, PythonContext};
 use crate::standalone_python::provision_python;
 use crate::DEFAULT_PYTHON_VERSION;
 use anyhow::{bail, format_err, Context};
@@ -331,6 +331,17 @@ pub fn run_python_args(
         load_specs(script.as_deref(), extras, &python_context)?;
     let finder_data = install(&specs, scripts, lockfile, Some(root_dir), &python_context)?;
 
+    run_python_args_finder_data(root, args, &python_context, &python_home, &finder_data)
+}
+
+/// `monotrail run python` implementation after installing the requirements
+pub fn run_python_args_finder_data(
+    root: Option<&Path>,
+    args: Vec<String>,
+    python_context: &PythonContext,
+    python_home: &Path,
+    finder_data: &FinderData,
+) -> anyhow::Result<i32> {
     let args: Vec<_> = [python_context.sys_executable.to_string_lossy().to_string()]
         .into_iter()
         .chain(args)
@@ -542,7 +553,7 @@ mod tests {
         let unpack_dir = python_parent_dir.join(format!("cpython-{}.{}", 3, 141));
         let lib_dir = unpack_dir.join("python").join("install").join("lib");
         let lib = if cfg!(target_os = "macos") {
-            format!("libpython3.141.dylib")
+            "libpython3.141.dylib".to_string()
         } else {
             "libpython3.so".to_string()
         };

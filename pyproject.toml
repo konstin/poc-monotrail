@@ -1,5 +1,6 @@
 [project]
 name = "monotrail"
+dependencies = ["importlib_metadata ; python_version < \"3.7\""]
 
 [project.scripts]
 monotrail_python = "monotrail.run_python:main"

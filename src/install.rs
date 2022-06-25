@@ -281,7 +281,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
             Ok(repo) => Some(repo),
             Err(err) => {
                 warn!("Repository directory {} exists, but can't be opened as a git repository, recreating: {}", repo_dir.display(), err);
-                fs::remove_dir_all(&repo_dir)?;
+                fs::remove_dir_all(&repo_dir).context("Failed to remove old repo dir")?;
                 None
             }
         }
@@ -319,7 +319,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
                 Ok(repository) => break repository,
                 Err(err) if tries > 0 => {
                     warn!(
-                        "Failed to clone {}: {}. Sleeping {}s and retrying",
+                        "Failed to clone {}, sleeping {}s and retrying: {}",
                         url,
                         err,
                         backoff.as_secs()

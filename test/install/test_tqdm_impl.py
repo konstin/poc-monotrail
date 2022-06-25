@@ -1,4 +1,9 @@
-from importlib.metadata import Distribution
+import sys
+
+if sys.version_info < (3, 8):
+    from importlib_metadata import Distribution
+else:
+    from importlib.metadata import Distribution
 
 
 def main():

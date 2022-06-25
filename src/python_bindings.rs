@@ -119,8 +119,8 @@ pub fn monotrail_from_git(
     debug!("extras: {:?}", extras);
 
     let (specs, repo_dir, lockfile) = specs_from_git(
-        git_url,
-        revision,
+        &git_url,
+        &revision,
         extras.as_deref().unwrap_or_default(),
         lockfile.as_deref(),
         &python_context,

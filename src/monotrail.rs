@@ -1,10 +1,11 @@
 use crate::inject_and_run::{
     determine_python_version, inject_and_run_python, prepare_execve_environment,
+    run_python_args_finder_data,
 };
 use crate::install::{install_all, InstalledPackage};
 use crate::markers::Pep508Environment;
 use crate::poetry_integration::lock::poetry_resolve;
-use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
+use crate::poetry_integration::read_dependencies::{poetry_spec_from_dir, specs_from_git};
 use crate::read_poetry_specs;
 use crate::requirements_txt::parse_requirements_txt;
 use crate::spec::RequestedSpec;
@@ -731,4 +732,50 @@ pub fn run_command_finder_data(
     // just to assert it lives until here
     drop(scripts_tmp);
     Ok(exit_code)
+}
+
+/// Like `git pull <repo> <tmpdir> && cd <tmpdir> && git checkout <rev> && monotrail run <...>`,
+/// mostly here to mirror the python `monotrail.from_git()` function
+pub fn cli_from_git(
+    git_url: &str,
+    revision: &str,
+    extras: &[String],
+    python_version: Option<String>,
+    args: &[String],
+) -> anyhow::Result<Option<i32>> {
+    let trail_args = args[1..].to_vec();
+    let (trail_args, python_version) =
+        determine_python_version(&trail_args, python_version.as_deref())?;
+    let (python_context, python_home) = provision_python(python_version)?;
+
+    let (specs, repo_dir, lockfile) =
+        specs_from_git(git_url, revision, &extras, None, &python_context)?;
+
+    let finder_data = install(
+        &specs,
+        BTreeMap::new(),
+        lockfile,
+        Some(repo_dir.clone()),
+        &python_context,
+    )?;
+
+    let exit_code = match args[0].as_str() {
+        "python" => run_python_args_finder_data(
+            Some(&repo_dir),
+            trail_args,
+            &python_context,
+            &python_home,
+            &finder_data,
+        )?,
+        "command" => run_command_finder_data(
+            // If there's no command this will show an error downstream
+            &args.get(1).unwrap_or(&"".to_string()),
+            &trail_args,
+            &python_context,
+            &python_home,
+            &finder_data,
+        )?,
+        other => bail!("invalid command `{}`, must be 'python' or 'command'", other),
+    };
+    Ok(Some(exit_code))
 }

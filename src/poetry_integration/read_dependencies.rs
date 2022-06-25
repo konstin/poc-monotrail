@@ -13,6 +13,7 @@ use anyhow::{bail, Context};
 use fs_err as fs;
 use install_wheel_rs::{Script, WheelFilename, WheelInstallerError};
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -326,15 +327,16 @@ pub fn read_poetry_specs(
 /// Checkouts the specified revision to the cache dir, if not present
 #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
 pub fn specs_from_git(
-    url: String,
-    revision: String,
+    url: &str,
+    revision: &str,
     extras: &[String],
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, PathBuf, String)> {
+    let reference_hash = Sha256::digest(format!("{}-{}", url, revision));
     let repo_dir = cache_dir()?
         .join("checkouts")
-        .join(format!("{}-{}", url, revision));
+        .join(format!("{:x}", reference_hash));
     repo_at_revision(&url, &revision, &repo_dir).context("Failed to checkout repository")?;
 
     if repo_dir.join("poetry.lock").is_file() {

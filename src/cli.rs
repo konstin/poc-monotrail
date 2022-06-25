@@ -1,7 +1,7 @@
 use crate::inject_and_run::{parse_plus_arg, run_python_args};
 use crate::install::{filter_installed, install_all};
 use crate::markers::Pep508Environment;
-use crate::monotrail::{monotrail_root, run_command};
+use crate::monotrail::{cli_from_git, monotrail_root, run_command};
 use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
@@ -130,6 +130,23 @@ pub enum Cli {
         /// arguments to be passed verbatim to the command
         #[clap(subcommand)]
         args: Option<ExternalArgs>,
+    },
+    /// Like `git pull <repo> <tmpdir> && cd <tmpdir> && git checkout <rev> && monotrail run <...>`,
+    /// mostly here to mirror the python `monotrail.from_git()` function
+    FromGit {
+        /// The git repository, e.g. `https://github.com/octocat/Spoon-Knife`
+        git_url: String,
+        /// The revision, e.g. `main` or `b0bab0`
+        revision: String,
+        /// extras to enable on the package e.g. `jupyter` for `black` to get `black[jupyter]`
+        #[clap(long)]
+        extras: Vec<String>,
+        /// Run this python version x.y
+        #[clap(long, short)]
+        python_version: Option<String>,
+        /// Either `python ...` or `command ...`
+        #[clap(subcommand)]
+        action: RunSubcommand,
     },
     /// Check all installed packages against their RECORD files
     VerifyInstallation {
@@ -398,13 +415,24 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                 .context("Failed to download and install")?;
             Ok(None)
         }
+        Cli::FromGit {
+            git_url,
+            revision,
+            extras,
+            python_version,
+            action,
+        } => {
+            let RunSubcommand::Args(args) = action;
+            cli_from_git(&git_url, &revision, &extras, python_version, &args)
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{assert_cli_error, Cli};
     use clap::Parser;
+
+    use crate::{assert_cli_error, Cli};
 
     #[test]
     fn test_neither_command_nor_python() {

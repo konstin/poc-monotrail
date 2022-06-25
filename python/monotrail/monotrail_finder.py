@@ -1,15 +1,25 @@
-import importlib.metadata as importlib_metadata
+import sys
+
+if sys.version_info < (3, 8):
+    import importlib_metadata
+    from importlib_metadata import (
+        DistributionFinder,
+        PackageNotFoundError,
+        PathDistribution,
+    )
+else:
+    import importlib.metadata as importlib_metadata
+    from importlib.metadata import (
+        DistributionFinder,
+        PackageNotFoundError,
+        PathDistribution,
+    )
 import logging
 import site
-import sys
 import typing
 from importlib.abc import MetaPathFinder
 from importlib.machinery import PathFinder, ModuleSpec
-from importlib.metadata import (
-    DistributionFinder,
-    PackageNotFoundError,
-    PathDistribution,
-)
+
 from importlib.util import spec_from_file_location
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
