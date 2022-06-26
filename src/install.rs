@@ -310,7 +310,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
     } else {
         // We need to first clone the entire thing and then checkout the revision we want
         // https://stackoverflow.com/q/3489173/3549270
-        let mut tries = 3;
+        let mut tries = 1;
         loop {
             let result = Repository::clone(url, &repo_dir);
             let backoff = Duration::from_secs(1);
@@ -324,6 +324,10 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
                         err,
                         backoff.as_secs()
                     );
+                    if repo_dir.is_dir() {
+                        fs::remove_dir_all(&repo_dir)
+                            .context("Failed to remove broken repo dir")?;
+                    }
                     sleep(backoff);
                     continue;
                 }

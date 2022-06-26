@@ -21,6 +21,7 @@ use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Py
 use std::collections::BTreeMap;
 use std::env;
 use std::path::PathBuf;
+use std::sync::Once;
 use tracing::{debug, trace};
 
 fn format_monotrail_error(err: impl Into<anyhow::Error>) -> PyErr {
@@ -43,7 +44,19 @@ fn get_pep508_env(py: Python) -> PyResult<String> {
     Ok(json_string)
 }
 
+static INIT_LOGGING: Once = Once::new();
+
+/// Setups logging if not yet done and returns the info for the python interpreter we're called from
 fn get_python_context(py: Python) -> PyResult<PythonContext> {
+    // Do it in this order so you start the logging later from python
+    // TODO: proper log bridging
+    if env::var_os("RUST_LOG").is_some() {
+        INIT_LOGGING.call_once(|| {
+            if let Err(err) = tracing_subscriber::fmt::try_init() {
+                eprintln!("Failed to initialize rust logging: {}", err);
+            }
+        });
+    }
     // Would be nicer through https://docs.python.org/3/c-api/init.html#c.Py_GetProgramFullPath
     let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
     let python_context = PythonContext {
