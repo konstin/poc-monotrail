@@ -5,13 +5,14 @@ use crate::monotrail::{LaunchType, PythonContext};
 use crate::utils::cache_dir;
 use crate::Pep508Environment;
 use anyhow::{bail, Context};
+use fs2::FileExt;
 use fs_err as fs;
+use fs_err::File;
 use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir_in;
 use tracing::{debug, info};
-
 #[cfg_attr(test, allow(dead_code))]
 const GITHUB_API: &str = "https://api.github.com";
 
@@ -109,48 +110,91 @@ fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()
     Ok(())
 }
 
+/// Check whether the installed python looks good or broken
+fn check_installed_python(unpack_dir: &Path, python_version: (u8, u8)) -> anyhow::Result<()> {
+    let lib_dir = unpack_dir.join("python").join("install").join("lib");
+    let lib = if cfg!(target_os = "macos") {
+        format!("libpython{}.{}.dylib", python_version.0, python_version.1)
+    } else {
+        "libpython3.so".to_string()
+    };
+    if !lib_dir.join(lib).is_file() {
+        bail!(
+            "broken python installation in {}. \
+                Try deleting the directory and running again",
+            unpack_dir.display()
+        )
+    }
+    // Good installation, reuse
+    debug!("Python {}.{} ready", python_version.0, python_version.1);
+    Ok(())
+}
+
+/// Actual download and move into place logic
+fn provision_python_inner(
+    python_version: (u8, u8),
+    python_parent_dir: &PathBuf,
+    unpack_dir: &PathBuf,
+) -> anyhow::Result<()> {
+    debug!(
+        "Installing python {}.{}",
+        python_version.0, python_version.1
+    );
+    let url = find_python(python_version.0, python_version.1).with_context(|| {
+        format!(
+            "Couldn't find a matching python {}.{} to download",
+            python_version.0, python_version.1,
+        )
+    })?;
+    // atomic installation by tempdir & rename
+    let temp_dir = tempdir_in(&python_parent_dir)
+        .context("Failed to create temporary directory for unpacking")?;
+    download_and_unpack_python(&url, temp_dir.path())?;
+    // we can use fs::rename here because we stay in the same directory
+    fs::rename(temp_dir, &unpack_dir).context("Failed to move installed python into place")?;
+    debug!("Installed python {}.{}", python_version.0, python_version.1);
+    Ok(())
+}
+
 /// If a downloaded python version exists, return this, otherwise download and unpack a matching one
 /// from indygreg/python-build-standalone
 pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonContext, PathBuf)> {
     let python_parent_dir = cache_dir()?.join("python-build-standalone");
+    // We need this here for the locking logic
+    fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
     let unpack_dir =
         python_parent_dir.join(format!("cpython-{}.{}", python_version.0, python_version.1));
 
     if unpack_dir.is_dir() {
-        let lib_dir = unpack_dir.join("python").join("install").join("lib");
-        let lib = if cfg!(target_os = "macos") {
-            format!("libpython{}.{}.dylib", python_version.0, python_version.1)
-        } else {
-            "libpython3.so".to_string()
-        };
-        if !lib_dir.join(lib).is_file() {
-            bail!(
-                "broken python installation in {}. \
-                Try deleting the directory and running again",
-                unpack_dir.display()
-            )
-        }
-        // Good installation, reuse
-        debug!("Python {}.{} ready", python_version.0, python_version.1);
+        check_installed_python(&unpack_dir, python_version)?;
     } else {
-        debug!(
-            "Installing python {}.{}",
+        // If two processes are started in parallel that both install python, the second one will fail
+        // because it can't move the installed directory because it already exists. To avoid this, only
+        // one process at
+        let install_lock = python_parent_dir.join(format!(
+            "cpython-{}.{}.install-lock",
             python_version.0, python_version.1
-        );
-        fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
-        let url = find_python(python_version.0, python_version.1).with_context(|| {
-            format!(
-                "Couldn't find a matching python {}.{} to download",
-                python_version.0, python_version.1,
-            )
-        })?;
-        // atomic installation by tempdir & rename
-        let temp_dir = tempdir_in(&python_parent_dir)
-            .context("Failed to create temporary directory for unpacking")?;
-        download_and_unpack_python(&url, temp_dir.path())?;
-        // we can use fs::rename here because we stay in the same directory
-        fs::rename(temp_dir, &unpack_dir).context("Failed to move installed python into place")?;
-        debug!("Installed python {}.{}", python_version.0, python_version.1);
+        ));
+        let lockfile = File::create(install_lock)?;
+        if lockfile.file().try_lock_exclusive().is_ok() {
+            provision_python_inner(python_version, &python_parent_dir, &unpack_dir)?;
+        } else {
+            info!("Waiting for other process to finish installing");
+            lockfile.file().lock_exclusive()?;
+            // Maybe the other process failed
+            let result = if unpack_dir.is_dir() {
+                info!("The other process seems to have succeeded");
+                // Check if ok install, ok if true, error if not
+                check_installed_python(&unpack_dir, python_version)
+            } else {
+                info!("The other process seems to have failed, installing");
+                provision_python_inner(python_version, &python_parent_dir, &unpack_dir)
+            };
+            // Make sure we unlock the file before returning. This would be nicer if it would
+            // work through drop on a file lock object
+            lockfile.file().unlock()?;
+            result?;
+        }
     }
     let python_binary = unpack_dir
         .join("python")

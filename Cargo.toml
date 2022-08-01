@@ -1,6 +1,6 @@
 [package]
 name = "monotrail"
-version = "0.0.11"
+version = "0.0.12"
 edition = "2021"
 readme = "Readme.md"
 
@@ -8,45 +8,47 @@ readme = "Readme.md"
 members = [
     "install-wheel-rs"
 ]
+exclude = ["git_fail"]
 
 [lib]
 crate-type = ["rlib", "cdylib"]
 name = "monotrail"
 
 [dependencies]
-anyhow = "1.0.57"
+anyhow = "1.0.58"
 base64 = "0.13.0"
-clap = { version = "3.1.18", features = ["derive"] }
+clap = { version = "3.2.6", features = ["derive"] }
 cpufeatures = "0.2.2"
 dirs = "4.0.0"
 fs-err = "2.7.0"
+fs2 = "0.4.3"
 git2 = "0.14.4"
 indicatif = "0.16.2"
 install-wheel-rs = { version = "0.0.3", path = "install-wheel-rs" }
-libc = "0.2.125"
+libc = "0.2.126"
 libloading = "0.7.3"
 # For the zig build
 libz-sys = { version = "1.1.8", features = ["static"] }
 nix = { version = "0.24.1", features = ["process"] }
 pep440 = "0.2.0"
-pyo3 = { version = "0.16.4", features = ["extension-module", "abi3-py37"], optional = true }
+pyo3 = { version = "0.16.5", features = ["extension-module", "abi3-py37"], optional = true }
 rayon = "1.5.3"
-regex = "1.5.5"
+regex = "1.5.6"
 requirements = "0.3.0"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
 sha2 = "0.10.2"
 tar = "0.4.38"
-target-lexicon = "0.12.3"
+target-lexicon = "0.12.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 toml = "0.5.9"
-tracing = "0.1.34"
+tracing = "0.1.35"
 tracing-subscriber = "0.3.11"
 ureq = { version = "2.4.0", features = ["json"] }
 walkdir = "2.3.2"
-widestring = "0.5.1"
-zstd = "0.10.2"
+widestring = "1.0.1"
+zstd = "0.11.2"
 
 [features]
 default = ["vendored"]
