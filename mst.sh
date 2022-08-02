@@ -3,7 +3,7 @@ set -e
 
 rm -f target-maturin/wheels/monotrail-*.whl
 CARGO_TARGET_DIR=target-maturin maturin build --release --strip
-virtualenv -q .venv
+virtualenv -p 3.8 -q .venv
 .venv/bin/pip install --force-reinstall target-maturin/wheels/monotrail-*.whl
 
 # Run pytest, entrypoint

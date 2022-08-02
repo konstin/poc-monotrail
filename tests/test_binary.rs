@@ -119,6 +119,7 @@ fn test_pipx_black_version() {
 fn test_poetry_config() {
     let output = Command::new(BIN)
         .args(["poetry", "config", "--list"])
+        .env("POETRY_VIRTUALENVS_IN_PROJECT", "1")
         .output();
     let output = handle_output(output).unwrap();
     let line = output
