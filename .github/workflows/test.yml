@@ -70,8 +70,8 @@ jobs:
           command: test
           args: --workspace --release
 
-      - name: pytest test/install test/binary
-        run: pytest test/install test/binary
+      - name: pytest test/install
+        run: pytest test/install
 
       - name: Install hyperfine (linux)
         if: matrix.os == 'ubuntu-latest-skip-for-slowness'
