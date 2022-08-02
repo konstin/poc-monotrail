@@ -7,7 +7,7 @@ monotrail_python = "monotrail.run_python:main"
 monotrail_script = "monotrail.run_script:main"
 
 [tool.maturin]
-cargo-extra-args = "--features python_bindings"
+features = ["python_bindings"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
