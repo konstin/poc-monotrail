@@ -17,7 +17,6 @@ use fs_err::{DirEntry, File};
 use install_wheel_rs::{
     compatible_tags, Arch, InstallLocation, Os, Script, MONOTRAIL_SCRIPT_SHEBANG,
 };
-use nix::unistd;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env::current_dir;
@@ -723,11 +722,23 @@ pub fn run_command_finder_data(
             .collect::<anyhow::Result<Vec<CString>>>()?;
 
         debug!("launching (execv) {}", script_path.display());
-        // We replace the current process with the new process is it's like actually just running
-        // the real thing.
-        // Note the that this may launch a python script, a native binary or anything else
-        unistd::execv(&executable_c_str, &args_c_string).context("Failed to launch process")?;
-        unreachable!()
+        #[cfg(unix)]
+        {
+            // We replace the current process with the new process is it's like actually just running
+            // the real thing.
+            // Note the that this may launch a python script, a native binary or anything else
+            nix::unistd::execv(&executable_c_str, &args_c_string)
+                .context("Failed to launch process")?;
+            unreachable!()
+        }
+        #[cfg(windows)]
+        {
+            todo!("execv: {:?} {:?}", &executable_c_str, &args_c_string);
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            compile_error!("Unsupported Platform")
+        }
     };
     // just to assert it lives until here
     drop(scripts_tmp);

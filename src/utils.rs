@@ -45,7 +45,11 @@ pub(crate) fn data_local_dir() -> Result<PathBuf, WheelInstallerError> {
 #[doc(hidden)]
 pub fn assert_cli_error(cli: Cli, venv: Option<&Path>, expected: &[&str]) {
     if let Err(err) = run_cli(cli, venv) {
-        let actual = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
+        // Convert windows path to unix paths
+        let actual = err
+            .chain()
+            .map(|e| e.to_string().replace("\\", "/"))
+            .collect::<Vec<_>>();
         assert_eq!(expected, actual);
     } else {
         panic!("Should have errored");

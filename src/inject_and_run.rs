@@ -173,7 +173,8 @@ pub fn inject_and_run_python(
         // Entirely untested, but it should at least compile
         #[cfg(windows)]
         unsafe {
-            libloading::os::unix::Windows::Library::new(libpython3_so)?
+            let windows_lib = libloading::os::windows::Library::new(libpython3_so)?;
+            libloading::Library::from(windows_lib)
         }
     };
     trace!("Initializing libpython");
@@ -456,7 +457,7 @@ pub fn prepare_execve_environment(
         }
         #[cfg(windows)]
         {
-            os::windows::fs::symlink_file(&script_path, path_dir.join(script_name))
+            fs_err::os::windows::fs::symlink_file(&script_path, path_dir.join(script_name))
                 .context("Failed to create symlink for scripts PATH")?;
         }
     }

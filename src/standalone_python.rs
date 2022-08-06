@@ -112,13 +112,19 @@ fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()
 
 /// Check whether the installed python looks good or broken
 fn check_installed_python(unpack_dir: &Path, python_version: (u8, u8)) -> anyhow::Result<()> {
-    let lib_dir = unpack_dir.join("python").join("install").join("lib");
+    let install_dir = unpack_dir.join("python").join("install");
     let lib = if cfg!(target_os = "macos") {
-        format!("libpython{}.{}.dylib", python_version.0, python_version.1)
+        install_dir.join("lib").join(format!(
+            "libpython{}.{}.dylib",
+            python_version.0, python_version.1
+        ))
+    } else if cfg!(target_os = "windows") {
+        install_dir.join("python3.dll".to_string())
     } else {
-        "libpython3.so".to_string()
+        // Assume generic unix otherwise (tested for linux)
+        install_dir.join("lib").join("libpython3.so".to_string())
     };
-    if !lib_dir.join(lib).is_file() {
+    if !lib.is_file() {
         bail!(
             "broken python installation in {}. \
                 Try deleting the directory and running again",
@@ -196,11 +202,17 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
             result?;
         }
     }
-    let python_binary = unpack_dir
-        .join("python")
-        .join("install")
-        .join("bin")
-        .join("python3");
+
+    let python_binary = if cfg!(target_os = "windows") {
+        unpack_dir.join("python").join("install").join("python.exe")
+    } else {
+        // Tested for linux and mac
+        unpack_dir
+            .join("python")
+            .join("install")
+            .join("bin")
+            .join("python3")
+    };
     // TODO: Already init and use libpython here
     let pep508_env = Pep508Environment::from_python(&python_binary);
     let python_context = PythonContext {
@@ -220,26 +232,31 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
 /// <https://python-build-standalone.readthedocs.io/en/latest/running.html>
 pub fn filename_regex(major: u8, minor: u8) -> Regex {
     let target_triple = target_lexicon::HOST.to_string();
-    let target_triple = if target_triple.starts_with("x86_64-unknown-linux") {
+    // https://python-build-standalone.readthedocs.io/en/latest/running.html#obtaining-distributions
+    let (target_triple, linker_opts) = if target_triple.starts_with("x86_64-unknown-linux") {
         cpufeatures::new!(cpu_v3, "avx2");
         cpufeatures::new!(cpu_v2, "sse4.2");
         // For python3.8 there's only the base version
-        if cpu_v3::init().get() && minor > 8 {
+        let target_triple = if cpu_v3::init().get() && minor > 8 {
             target_triple.replace("x86_64", "x86_64_v3")
         } else if cpu_v2::init().get() && minor > 8 {
             target_triple.replace("x86_64", "x86_64_v2")
         } else {
             target_triple
-        }
+        };
+        (target_triple, "pgo+lto")
+    } else if target_triple.ends_with("pc-windows-msvc") {
+        (format!("{}-shared", target_triple), "pgo")
     } else {
-        target_triple
+        (target_triple, "pgo+lto")
     };
 
     let version_re = format!(
-        r#"^cpython-{major}\.{minor}\.(\d+)\+(\d+)-{target_triple}-pgo\+lto-full\.tar\.zst$"#,
+        r#"^cpython-{major}\.{minor}\.(\d+)\+(\d+)-{target_triple}-{linker_opts}-full\.tar\.zst$"#,
         major = major,
         minor = minor,
-        target_triple = regex::escape(&target_triple)
+        target_triple = regex::escape(&target_triple),
+        linker_opts = regex::escape(linker_opts),
     );
     Regex::new(&version_re)
         .context("Failed to build version regex")
@@ -250,9 +267,10 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
 mod test {
     use mockito::Mock;
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    use crate::standalone_python::provision_python;
     use crate::standalone_python::{
-        find_python, provision_python, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE,
-        PYTHON_STANDALONE_LATEST_RELEASE,
+        find_python, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE, PYTHON_STANDALONE_LATEST_RELEASE,
     };
     use crate::utils::zstd_json_mock;
 
