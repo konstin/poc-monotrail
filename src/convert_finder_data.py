@@ -31,13 +31,20 @@ class InstalledPackage:
         # keep python version around in case we'll need to refactor to use it again
         _python_version: (int, int),
     ) -> str:
-        return str(
-            Path(self.monotrail_location(sprawl_root))
-            .joinpath("lib")
-            # .joinpath(f"python{python_version[0]}.{python_version[1]}")
-            .joinpath(f"python")
-            .joinpath("site-packages")
-        )
+        if os.name == 'nt':
+            return str(
+                Path(self.monotrail_location(sprawl_root))
+                .joinpath("Lib")
+                .joinpath("site-packages")
+            )
+        else:
+            return str(
+                Path(self.monotrail_location(sprawl_root))
+                .joinpath("lib")
+                # .joinpath(f"python{python_version[0]}.{python_version[1]}")
+                .joinpath(f"python")
+                .joinpath("site-packages")
+            )
 
 
 @dataclass

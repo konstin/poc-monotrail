@@ -24,10 +24,14 @@ fn verify_package(
 ) -> anyhow::Result<Vec<String>> {
     let mut failing = Vec::new();
     let package_root = root.join(&name).join(&unique_version).join(&tag);
-    let site_packages = package_root
-        .join("lib")
-        .join("python")
-        .join("site-packages");
+    let site_packages = if cfg!(windows) {
+        package_root.join("Lib").join("site-packages")
+    } else {
+        package_root
+            .join("lib")
+            .join("python")
+            .join("site-packages")
+    };
 
     // detect the location of the <name>-<version>.dist-info directory
     let dist_info: Vec<_> = get_dir_content(&site_packages)

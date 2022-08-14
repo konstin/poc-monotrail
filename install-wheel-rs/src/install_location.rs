@@ -114,12 +114,19 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
             InstallLocation::Venv {
                 venv_base,
                 python_version,
-            } => venv_base
-                .join("lib")
-                .join(format!("python{}.{}", python_version.0, python_version.1))
-                .join("site-packages")
-                .join(format!("{}-{}.dist-info", normalized_name, version))
-                .is_dir(),
+            } => {
+                let site_packages = if cfg!(target_os = "windows") {
+                    venv_base.join("Lib").join("site-packages")
+                } else {
+                    venv_base
+                        .join("lib")
+                        .join(format!("python{}.{}", python_version.0, python_version.1))
+                        .join("site-packages")
+                };
+                site_packages
+                    .join(format!("{}-{}.dist-info", normalized_name, version))
+                    .is_dir()
+            }
             InstallLocation::Monotrail { monotrail_root, .. } => monotrail_root
                 .join(format!("{}-{}", normalized_name, version))
                 .is_dir(),

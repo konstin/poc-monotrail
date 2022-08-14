@@ -65,10 +65,16 @@ impl InstalledPackage {
         // folders for location stuff
         _python_version: (u8, u8),
     ) -> PathBuf {
-        self.monotrail_location(sprawl_root)
-            .join("lib")
-            .join("python")
-            .join("site-packages")
+        if cfg!(windows) {
+            self.monotrail_location(sprawl_root)
+                .join("Lib")
+                .join("site-packages")
+        } else {
+            self.monotrail_location(sprawl_root)
+                .join("lib")
+                .join("python")
+                .join("site-packages")
+        }
     }
 }
 
@@ -79,10 +85,14 @@ pub fn filter_installed_venv(
     venv_base: &Path,
     python_version: (u8, u8),
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
-    let site_packages = venv_base
-        .join("lib")
-        .join(format!("python{}.{}", python_version.0, python_version.1))
-        .join("site-packages");
+    let site_packages = if cfg!(windows) {
+        venv_base.join("Lib").join("site-packages")
+    } else {
+        venv_base
+            .join("lib")
+            .join(format!("python{}.{}", python_version.0, python_version.1))
+            .join("site-packages")
+    };
     let entries: Vec<DirEntry> = match fs::read_dir(site_packages) {
         Ok(entries) => entries.collect::<io::Result<Vec<DirEntry>>>()?,
         Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),

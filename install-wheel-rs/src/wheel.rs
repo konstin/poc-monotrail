@@ -926,9 +926,16 @@ pub fn install_wheel(
             fs::create_dir_all(&name_version_dir)?;
             let final_location = name_version_dir.join(filename.get_tag());
             // temp dir and rename for atomicity
-            let temp_dir = TempDir::new_in(&name_version_dir)?;
-            let base_location = temp_dir.path().to_path_buf();
-            (Some((temp_dir, final_location)), base_location)
+            // well, except for windows, because there renaming fails for undeterminable reasons
+            // with an os error 5 permission denied.
+            if cfg!(not(windows)) {
+                let temp_dir = TempDir::new_in(&name_version_dir)?;
+                let base_location = temp_dir.path().to_path_buf();
+                (Some((temp_dir, final_location)), base_location)
+            } else {
+                fs::create_dir(&final_location)?;
+                (None, final_location)
+            }
         }
     };
 
@@ -945,10 +952,14 @@ pub fn install_wheel(
         // we use it with (on install in that python version)
         InstallLocation::Monotrail { .. } => "python".to_string(),
     };
-    let site_packages = base_location
-        .join("lib")
-        .join(site_packages_python)
-        .join("site-packages");
+    let site_packages = if cfg!(target_os = "windows") {
+        base_location.join("Lib").join("site-packages")
+    } else {
+        base_location
+            .join("lib")
+            .join(site_packages_python)
+            .join("site-packages")
+    };
 
     debug!(name = name.as_str(), "Getting wheel metadata");
     let dist = python_pkginfo::Distribution::new(&wheel_path)?;
@@ -1059,6 +1070,7 @@ pub fn install_wheel(
     }
 
     // rename for atomicity
+    // well, except for windows, see comment above
     if let Some((_temp_dir, final_location)) = temp_dir_final_location {
         fs::rename(base_location, final_location)?;
     }
@@ -1138,8 +1150,12 @@ mod test {
         let wheel = Path::new("../test-data/wheels/colander-0.9.9-py2.py3-none-any.whl");
         let temp_dir = TempDir::new().unwrap();
         // TODO: Would be nicer to pick the default python here, but i don't want to launch a
-        // subprocess
-        let python = PathBuf::from("python3.8");
+        //  subprocess
+        let python = if cfg!(target_os = "windows") {
+            PathBuf::from("python.exe")
+        } else {
+            PathBuf::from("python3.8")
+        };
         let install_location = InstallLocation::<PathBuf>::Monotrail {
             monotrail_root: temp_dir.path().to_path_buf(),
             python: python.clone(),
@@ -1149,13 +1165,17 @@ mod test {
         .unwrap();
         install_wheel(&install_location, wheel, true, &[], "0.9.9", &python).unwrap();
 
-        let record = temp_dir
+        let base = temp_dir
             .path()
             .join("colander")
             .join("0.9.9")
-            .join("py2.py3-none-any")
-            .join("lib")
-            .join("python")
+            .join("py2.py3-none-any");
+        let mid = if cfg!(windows) {
+            base.join("Lib")
+        } else {
+            base.join("lib").join("python")
+        };
+        let record = mid
             .join("site-packages")
             .join("colander-0.9.9.dist-info")
             .join("RECORD");

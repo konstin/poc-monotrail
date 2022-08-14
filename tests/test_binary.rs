@@ -12,7 +12,7 @@ fn handle_output(output: io::Result<Output>) -> anyhow::Result<Vec<String>> {
         Ok(output) => {
             if !output.status.success() {
                 bail!(
-                    "Command failed: {}\n---stdout:{}\n---stderr:\n{}",
+                    "Command failed: {}\n---stdout:\n{}\n---stderr:\n{}",
                     output.status,
                     String::from_utf8_lossy(&output.stdout),
                     String::from_utf8_lossy(&output.stderr)

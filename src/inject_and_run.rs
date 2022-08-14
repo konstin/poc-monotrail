@@ -62,6 +62,7 @@ pub struct PyStatus {
 /// <https://docs.python.org/3/c-api/init_config.html#preinitialize-python-with-pypreconfig>
 unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
     trace!("libpython pre-init");
+    trace!("PyPreConfig_InitPythonConfig");
     let py_pre_config_init_python_config: libloading::Symbol<
         unsafe extern "C" fn(*mut PyPreConfig) -> c_void,
     > = lib.get(b"PyPreConfig_InitPythonConfig")?;
@@ -72,10 +73,13 @@ unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
     // same as PYTHONUTF8=1
     preconfig.utf8_mode = 1;
 
+    trace!("Py_PreInitialize");
     let py_pre_initialize: libloading::Symbol<unsafe extern "C" fn(*mut PyPreConfig) -> PyStatus> =
         lib.get(b"Py_PreInitialize")?;
+    trace!("PyStatus_Exception");
     let py_status_exception: libloading::Symbol<unsafe extern "C" fn(PyStatus) -> c_int> =
         lib.get(b"PyStatus_Exception")?;
+    trace!("Py_ExitStatusException");
     let py_exit_status_exception: libloading::Symbol<unsafe extern "C" fn(PyStatus) -> !> =
         lib.get(b"Py_ExitStatusException")?;
 
@@ -153,7 +157,10 @@ pub fn inject_and_run_python(
     #[cfg(test)]
     panic!("Must not load libpython in test");
 
-    let libpython3_so = if cfg!(target_os = "macos") {
+    let libpython3 = if cfg!(target_os = "windows") {
+        // python3.dll doesn't include functions from the limited abi apparently
+        python_home.join(format!("python3{}.dll", python_version.1))
+    } else if cfg!(target_os = "macos") {
         python_home.join("lib").join(format!(
             "libpython{}.{}.dylib",
             python_version.0, python_version.1
@@ -173,7 +180,8 @@ pub fn inject_and_run_python(
         // Entirely untested, but it should at least compile
         #[cfg(windows)]
         unsafe {
-            let windows_lib = libloading::os::windows::Library::new(libpython3_so)?;
+            let windows_lib = libloading::os::windows::Library::new(libpython3)
+                .context("Failed to load python3y.dll")?;
             libloading::Library::from(windows_lib)
         }
     };
@@ -457,8 +465,18 @@ pub fn prepare_execve_environment(
         }
         #[cfg(windows)]
         {
-            fs_err::os::windows::fs::symlink_file(&script_path, path_dir.join(script_name))
-                .context("Failed to create symlink for scripts PATH")?;
+            // On windows, we can't symlink without being root for an unknown reason
+            // (see [std::os::windows::fs::symlink_file]), so instead we create batch files that
+            // redirect
+            if script_path.display().to_string().contains('"') {
+                unimplemented!(
+                    "path contains quotation marks, escaping for batch scripts needs \
+                    to be implemented"
+                )
+            }
+            let batch_script = format!(r#"start /b cmd /c "{}" %*"#, script_path.display());
+            fs::write(path_dir.join(script_name), batch_script)
+                .context("Failed to create batch script as launcher for python script")?;
         }
     }
 
@@ -495,7 +513,12 @@ pub fn prepare_execve_environment(
     // venv/bin/activate also puts venv scripts first. Our python launcher we have to put first
     // anyway to overwrite system python
     let mut path = path_dir.as_os_str().to_owned();
-    path.push(":");
+    if cfg!(windows) {
+        path.push(";");
+    } else {
+        // assumption: non-unix platforms most likely will also use a colon
+        path.push(":");
+    }
     path.push(env::var_os("PATH").unwrap_or_default());
     env::set_var("PATH", path);
 
@@ -522,6 +545,7 @@ mod tests {
     use crate::inject_and_run::naive_python_arg_parser;
     use crate::run_python_args;
     use crate::utils::cache_dir;
+    #[cfg(unix)]
     use anyhow::Context;
     use fs_err as fs;
     use std::fs::File;
@@ -568,18 +592,16 @@ mod tests {
         fs::create_dir_all(&bin_dir).unwrap();
         let bin = bin_dir.join("python3");
         if !bin.is_file() {
-            let python3 = which::which("python3").unwrap();
             #[cfg(unix)]
             {
+                let python3 = which::which("python3").unwrap();
                 fs_err::os::unix::fs::symlink(python3, bin)
                     .context("Failed to create symlink for scripts PATH")
                     .unwrap();
             }
             #[cfg(windows)]
             {
-                std::os::windows::fs::symlink_file(python3, bin)
-                    .context("Failed to create symlink for scripts PATH")
-                    .unwrap();
+                // I don't think need to do anything here
             }
         }
 
