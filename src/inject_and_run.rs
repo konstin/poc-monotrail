@@ -21,6 +21,7 @@ use widestring::WideCString;
 ///
 /// <https://docs.rs/pyo3/0.16.5/pyo3/ffi/struct.PyPreConfig.html>
 #[repr(C)]
+#[derive(Debug)]
 struct PyPreConfig {
     _config_init: i32,
     parse_argv: i32,
@@ -72,6 +73,7 @@ unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
     let mut preconfig = preconfig.assume_init();
     // same as PYTHONUTF8=1
     preconfig.utf8_mode = 1;
+    trace!("preconfig: {:?}", preconfig);
 
     trace!("Py_PreInitialize");
     let py_pre_initialize: libloading::Symbol<unsafe extern "C" fn(*mut PyPreConfig) -> PyStatus> =
@@ -152,7 +154,11 @@ pub fn inject_and_run_python(
     args: &[String],
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
-    trace!("Loading libpython");
+    trace!(
+        "Loading libpython {} {}",
+        python_version.0,
+        python_version.1
+    );
 
     #[cfg(test)]
     panic!("Must not load libpython in test");

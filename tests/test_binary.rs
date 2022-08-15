@@ -48,6 +48,8 @@ fn test_datascience() {
 fn test_flipstring() {
     let output = Command::new(BIN)
         .args(["run", "python", "flipstring/flip.py", "hello world!"])
+        // windows uses the cp encoding otherwise and then printing utf8 characters fails
+        .env("PYTHONIOENCODING", "utf8")
         .output();
     let output = handle_output(output).unwrap();
 
