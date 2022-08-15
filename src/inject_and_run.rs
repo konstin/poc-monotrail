@@ -545,7 +545,6 @@ mod tests {
     use crate::inject_and_run::naive_python_arg_parser;
     use crate::run_python_args;
     use crate::utils::cache_dir;
-    #[cfg(unix)]
     use anyhow::Context;
     use fs_err as fs;
     use std::fs::File;
@@ -576,32 +575,49 @@ mod tests {
         // Fake already installed python
         let python_parent_dir = cache_dir().unwrap().join("python-build-standalone");
         let unpack_dir = python_parent_dir.join(format!("cpython-{}.{}", 3, 141));
-        let lib_dir = unpack_dir.join("python").join("install").join("lib");
-        let lib = if cfg!(target_os = "macos") {
-            "libpython3.141.dylib".to_string()
+        let install_dir = unpack_dir.join("python").join("install");
+        let libpython3 = if cfg!(target_os = "windows") {
+            // python3.dll doesn't include functions from the limited abi apparently
+            install_dir.join("python3141.dll")
+        } else if cfg!(target_os = "macos") {
+            install_dir.join("lib").join("libpython3.141.dylib")
         } else {
-            "libpython3.so".to_string()
+            install_dir.join("lib").join("libpython3.so")
         };
 
         // Make it assume it's installed
-        fs::create_dir_all(&lib_dir).unwrap();
-        File::create(lib_dir.join(lib)).unwrap();
+        fs::create_dir_all(libpython3.parent().unwrap()).unwrap();
+        File::create(libpython3).unwrap();
 
         // Make python runnable for the PEP508 markers
-        let bin_dir = unpack_dir.join("python").join("install").join("bin");
+        let bin_dir = if cfg!(windows) {
+            unpack_dir.join("python").join("install")
+        } else {
+            unpack_dir.join("python").join("install").join("bin")
+        };
         fs::create_dir_all(&bin_dir).unwrap();
-        let bin = bin_dir.join("python3");
+        let bin = if cfg!(windows) {
+            bin_dir.join("python.exe")
+        } else {
+            bin_dir.join("python3")
+        };
         if !bin.is_file() {
             #[cfg(unix)]
             {
                 let python3 = which::which("python3").unwrap();
+
                 fs_err::os::unix::fs::symlink(python3, bin)
                     .context("Failed to create symlink for scripts PATH")
                     .unwrap();
             }
             #[cfg(windows)]
             {
-                // I don't think need to do anything here
+                // python3 opens the windows store, even with python installed 🙄
+                let python = which::which("python").unwrap();
+                // symlink are not allowed for normal users on windows
+                fs_err::hard_link(python, bin)
+                    .context("Failed to create symlink for scripts PATH")
+                    .unwrap();
             }
         }
 

@@ -119,7 +119,7 @@ fn check_installed_python(unpack_dir: &Path, python_version: (u8, u8)) -> anyhow
             python_version.0, python_version.1
         ))
     } else if cfg!(target_os = "windows") {
-        install_dir.join("python3.dll".to_string())
+        install_dir.join(format!("python3{}.dll", python_version.1))
     } else {
         // Assume generic unix otherwise (tested for linux)
         install_dir.join("lib").join("libpython3.so".to_string())
