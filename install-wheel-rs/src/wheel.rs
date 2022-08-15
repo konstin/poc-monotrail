@@ -338,9 +338,16 @@ fn write_script_entrypoints(
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
     // for monotrail
-    fs::create_dir_all(site_packages.join("../../../bin"))?;
+    let bin_rel = if cfg!(windows) {
+        // windows doesn't have the python part, only Lib/site-packages
+        "../../bin"
+    } else {
+        // linux/mac has lib/python/site-packages
+        "../../../bin"
+    };
+    fs::create_dir_all(site_packages.join(bin_rel))?;
     for entrypoint in entrypoints {
-        let entrypoint_relative = Path::new("../../../bin").join(&entrypoint.script_name);
+        let entrypoint_relative = Path::new(bin_rel).join(&entrypoint.script_name);
         let launcher_python_script = get_script_launcher(
             &entrypoint.module,
             &entrypoint.function,
