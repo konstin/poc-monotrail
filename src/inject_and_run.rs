@@ -178,8 +178,7 @@ pub fn inject_and_run_python(
         #[cfg(unix)]
         {
             let flags = libloading::os::unix::RTLD_LAZY | libloading::os::unix::RTLD_GLOBAL;
-            let unix_lib =
-                unsafe { libloading::os::unix::Library::open(Some(libpython3_so), flags)? };
+            let unix_lib = unsafe { libloading::os::unix::Library::open(Some(libpython3), flags)? };
             libloading::Library::from(unix_lib)
         }
         // Entirely untested, but it should at least compile
