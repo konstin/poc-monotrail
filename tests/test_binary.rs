@@ -39,7 +39,8 @@ fn test_datascience() {
             .output();
         let output = handle_output(output).unwrap();
 
-        assert_eq!(output.last().expect("Expected at least one line"), "1.4.2");
+        // contains to ignore log messages
+        assert!(output.contains(&"1.4.2".to_string()));
         // .venv/bin/monotrail_python data_science_project/make_paper.py
     }
 }
@@ -53,10 +54,9 @@ fn test_flipstring() {
         .output();
     let output = handle_output(output).unwrap();
 
-    assert_eq!(
-        output.last().expect("Expected at least one line"),
-        "¡pꞁɹoM oꞁꞁǝH"
-    );
+    dbg!(&output);
+    // contains to ignore log messages
+    assert!(output.contains(&"¡pꞁɹoM oꞁꞁǝH".to_string()));
     // .venv/bin/monotrail_python data_science_project/make_paper.py
 }
 

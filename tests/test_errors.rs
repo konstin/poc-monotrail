@@ -7,6 +7,8 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
+const BIN: &str = env!("CARGO_BIN_EXE_monotrail");
+
 fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let temp_dir = TempDir::new()?;
     let venv = temp_dir.path().join(".venv");
@@ -66,7 +68,7 @@ fn test_priority() -> Result<()> {
 #[test]
 fn test_cli_python_hyphen() {
     let cli = Cli::try_parse_from(&[
-        "monotrail",
+        BIN,
         "run",
         "--root",
         "data_science_project",
@@ -76,4 +78,11 @@ fn test_cli_python_hyphen() {
     ])
     .unwrap();
     assert_eq!(run_cli(cli, None).unwrap(), Some(1));
+}
+
+#[test]
+fn test_neither_command_nor_python() {
+    let cli = Cli::try_parse_from(&[BIN, "run", "bogus"]).unwrap();
+    let expected = &["invalid command `bogus`, must be 'python' or 'command'"];
+    assert_cli_error(cli, None, expected);
 }

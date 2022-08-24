@@ -22,22 +22,24 @@ use widestring::WideCString;
 /// <https://docs.rs/pyo3/0.16.5/pyo3/ffi/struct.PyPreConfig.html>
 #[repr(C)]
 #[derive(Debug)]
-struct PyPreConfig {
-    _config_init: i32,
-    parse_argv: i32,
-    isolated: i32,
-    use_environment: i32,
-    configure_locale: i32,
-    coerce_c_locale: i32,
-    coerce_c_locale_warn: i32,
-    utf8_mode: i32,
-    dev_mode: i32,
-    allocator: i32,
+pub struct PyPreConfig {
+    pub _config_init: c_int,
+    pub parse_argv: c_int,
+    pub isolated: c_int,
+    pub use_environment: c_int,
+    pub configure_locale: c_int,
+    pub coerce_c_locale: c_int,
+    pub coerce_c_locale_warn: c_int,
+    #[cfg(windows)]
+    pub legacy_windows_fs_encoding: c_int,
+    pub utf8_mode: c_int,
+    pub dev_mode: c_int,
+    pub allocator: c_int,
 }
 
 /// <https://docs.rs/pyo3/0.16.5/pyo3/ffi/enum._PyStatus_TYPE.html>
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[allow(non_camel_case_types, clippy::enum_variant_names)]
 pub enum _PyStatus_TYPE {
     _PyStatus_TYPE_OK,
@@ -49,12 +51,12 @@ pub enum _PyStatus_TYPE {
 ///
 /// <https://docs.rs/pyo3/0.16.5/pyo3/ffi/struct.PyStatus.html>
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct PyStatus {
     pub _type: _PyStatus_TYPE,
     pub func: *const i8,
     pub err_msg: *const i8,
-    pub exitcode: i32,
+    pub exitcode: c_int,
 }
 
 //noinspection RsUnreachableCode
@@ -63,7 +65,6 @@ pub struct PyStatus {
 /// <https://docs.python.org/3/c-api/init_config.html#preinitialize-python-with-pypreconfig>
 unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
     trace!("libpython pre-init");
-    trace!("PyPreConfig_InitPythonConfig");
     let py_pre_config_init_python_config: libloading::Symbol<
         unsafe extern "C" fn(*mut PyPreConfig) -> c_void,
     > = lib.get(b"PyPreConfig_InitPythonConfig")?;
@@ -75,13 +76,10 @@ unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
     preconfig.utf8_mode = 1;
     trace!("preconfig: {:?}", preconfig);
 
-    trace!("Py_PreInitialize");
     let py_pre_initialize: libloading::Symbol<unsafe extern "C" fn(*mut PyPreConfig) -> PyStatus> =
         lib.get(b"Py_PreInitialize")?;
-    trace!("PyStatus_Exception");
     let py_status_exception: libloading::Symbol<unsafe extern "C" fn(PyStatus) -> c_int> =
         lib.get(b"PyStatus_Exception")?;
-    trace!("Py_ExitStatusException");
     let py_exit_status_exception: libloading::Symbol<unsafe extern "C" fn(PyStatus) -> !> =
         lib.get(b"Py_ExitStatusException")?;
 
@@ -89,6 +87,7 @@ unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
     let status = py_pre_initialize(&mut preconfig as *mut PyPreConfig);
     #[allow(unreachable_code)]
     if py_status_exception(status) != 0 {
+        debug!("libpython initialization error: {:?}", status);
         // This should never error, but who knows
         py_exit_status_exception(status);
         // I don't trust cpython

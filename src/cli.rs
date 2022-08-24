@@ -427,17 +427,3 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use clap::Parser;
-
-    use crate::{assert_cli_error, Cli};
-
-    #[test]
-    fn test_neither_command_nor_python() {
-        let cli = Cli::try_parse_from(&["monotrail", "run", "bogus"]).unwrap();
-        let expected = &["invalid command `bogus`, must be 'python' or 'command'"];
-        assert_cli_error(cli, None, expected);
-    }
-}
