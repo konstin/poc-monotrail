@@ -349,7 +349,7 @@ pub fn spec_paths(
                         file_modules
                             .insert(stem.to_string(), (sprawl_package.clone(), entry.path()));
                     }
-                    [stem, _tag, "so"] => {
+                    [stem, _tag, "so" | "pyd"] => {
                         // TODO: Check compatibility of so tag
                         file_modules
                             .insert(stem.to_string(), (sprawl_package.clone(), entry.path()));
