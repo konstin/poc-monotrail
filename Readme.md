@@ -8,7 +8,7 @@ monotrail run python my_script.py
 
 Every dependency is installed only once globally and hooked to your code. No venv directory, no explicit installation, no activate, no pyenv.
 
-This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. only linux (and a bit of macos) is supported, installation is awkward, error messages are suboptimal, only pypi is supported, startup is slow, only some requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, some pkg_resources usage doesn't work, etc. 
+This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. non-linux is badly tested, installation is awkward, error messages are suboptimal, only pypi is supported, startup is slow, only some requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, some pkg_resources usage doesn't work, etc. 
 
 monotrail means to show you can use python without the traditional "installing packages in an environment". It also integrates [PyOxy](https://github.com/indygreg/PyOxidizer/tree/main/pyoxy) so you don't need to install python anymore. 
 
