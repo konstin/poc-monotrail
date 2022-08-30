@@ -8,7 +8,6 @@ readme = "Readme.md"
 members = [
     "install-wheel-rs"
 ]
-exclude = ["git_fail"]
 
 [lib]
 crate-type = ["rlib", "cdylib"]
@@ -22,16 +21,16 @@ cpufeatures = "0.2.2"
 dirs = "4.0.0"
 fs-err = "2.7.0"
 fs2 = "0.4.3"
-git2 = "0.14.4"
-indicatif = "0.16.2"
+git2 = "0.15.0"
+indicatif = "0.17.0"
 install-wheel-rs = { version = "0.0.3", path = "install-wheel-rs" }
 libc = "0.2.126"
 libloading = "0.7.3"
 # For the zig build
 libz-sys = { version = "1.1.8", features = ["static"] }
-nix = { version = "0.24.1", features = ["process"] }
+nix = { version = "0.25.0", features = ["process"] }
 pep440 = "0.2.0"
-pyo3 = { version = "0.16.5", features = ["extension-module", "abi3-py37"], optional = true }
+pyo3 = { version = "0.17.1", features = ["extension-module", "abi3-py37"], optional = true }
 rayon = "1.5.3"
 regex = "1.5.6"
 requirements = "0.3.0"

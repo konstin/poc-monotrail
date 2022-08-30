@@ -208,7 +208,8 @@ pub fn install_all(
         _ => {
             let pb = ProgressBar::new(specs.len() as u64).with_style(
                 ProgressStyle::default_bar()
-                    .template("Installing {bar} {pos:>3}/{len:3} {wide_msg}"),
+                    .template("Installing {bar} {pos:>3}/{len:3} {wide_msg}")
+                    .unwrap(), // We know the template, it's correct
             );
             let current: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
             let installed = specs
@@ -260,7 +261,7 @@ pub fn install_all(
             pb.finish_and_clear();
             info!(
                 "Installed {} packages in {:.1}s",
-                pb.length(),
+                pb.length().unwrap_or(0),
                 pb.elapsed().as_secs_f32()
             );
             Ok(installed)

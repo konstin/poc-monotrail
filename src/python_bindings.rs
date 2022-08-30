@@ -8,7 +8,7 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{
-    self, install, load_specs, spec_paths, FinderData, LaunchType, PythonContext, SpecPaths,
+    find_scripts, install, load_specs, spec_paths, FinderData, LaunchType, PythonContext, SpecPaths,
 };
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
@@ -189,7 +189,7 @@ pub fn monotrail_find_scripts(
     sprawl_root: PathBuf,
     sprawl_packages: Vec<InstalledPackage>,
 ) -> PyResult<BTreeMap<String, PathBuf>> {
-    monotrail::find_scripts(&sprawl_packages, &sprawl_root).map_err(format_monotrail_error)
+    find_scripts(&sprawl_packages, &sprawl_root).map_err(format_monotrail_error)
 }
 
 fn parse_extras() -> anyhow::Result<Vec<String>> {
