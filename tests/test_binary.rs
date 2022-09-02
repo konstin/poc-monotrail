@@ -54,7 +54,6 @@ fn test_flipstring() {
         .output();
     let output = handle_output(output).unwrap();
 
-    dbg!(&output);
     // contains to ignore log messages
     assert!(output.contains(&"¡pꞁɹoM oꞁꞁǝH".to_string()));
     // .venv/bin/monotrail_python data_science_project/make_paper.py

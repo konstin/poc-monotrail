@@ -37,9 +37,9 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
-      # We need normal poetry as reference
+      # We need normal poetry as reference; Pin to a specific version since we diff against the output
       - name: Install poetry
-        run: pipx install poetry
+        run: pipx install poetry==1.1.13
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v1
@@ -141,9 +141,9 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
-      # We need normal poetry as reference
+      # We need normal poetry as reference; Pin to a specific version since we diff against the output
       - name: Install poetry
-        run: pipx install poetry
+        run: pipx install poetry==1.1.13
 
       # For some reason, alternating between maturin and cargo invalidates the cache
       - name: Cache maturin build
@@ -155,8 +155,11 @@ jobs:
 
       # The whole venv management is overly complex
       - name: make paper
+        if: matrix.os != 'windows'
         run: bash make_paper.sh
       - name: pip install pytest
+        if: matrix.os != 'windows'
         run: .venv/bin/pip install pytest jupyter nbconvert
       - name: pytest test/python
+        if: matrix.os != 'windows'
         run: .venv/bin/pytest test/python
