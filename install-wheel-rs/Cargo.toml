@@ -6,6 +6,7 @@ description = "Takes a wheel and installs it, either in a venv or for monotrail"
 
 [lib]
 name = "install_wheel_rs"
+# https://github.com/PyO3/maturin/issues/1080 :((
 #crate-type = ["cdylib", "rlib"]
 
 [dependencies]
