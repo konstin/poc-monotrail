@@ -223,7 +223,8 @@ fn poetry_install(
     } else {
         env::current_dir()?
     };
-    let (poetry_section, poetry_lock, _lockfile) = read_toml_files(&dir)?;
+    let (poetry_section, poetry_lock, _lockfile) =
+        read_toml_files(&dir).context("Failed to read poetry files")?;
     let specs = read_poetry_specs(
         &poetry_section,
         poetry_lock,

@@ -47,7 +47,10 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
     # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]
     # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
-    root_dir: Optional[str]
+    project_dir: Optional[str]
+    # Last part of project dir (though this should be overwritten by https://peps.python.org/pep-0621/#name in the
+    # future), used with the flat src layout
+    project_name: Optional[str]
     # The contents of the last poetry.lock, used a basis for the next resolution when requirements
     # change at runtime, both for faster resolution and in hopes the exact version stay the same
     # so the user doesn't need to reload python
@@ -58,7 +61,8 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         # TODO: This dummy is unsound typing-wise. First init should always also set path and packages
         self.sprawl_packages = {}
         self.spec_paths = {}
-        self.root_dir = None
+        self.project_dir = None
+        self.project_name = None
         self.lockfile = None
 
     @staticmethod
@@ -83,11 +87,17 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         if "" in sys.path:
             sys.path.remove("")
         # Support "" as value for "current directory"
-        if self.root_dir is not None and self.root_dir in sys.path:
-            sys.path.remove(self.root_dir)
-        if finder_data.root_dir is not None:
-            sys.path.insert(0, finder_data.root_dir)
-        self.root_dir = finder_data.root_dir
+        if self.project_dir is not None and self.project_dir in sys.path:
+            sys.path.remove(self.project_dir)
+        if finder_data.project_dir is not None:
+            sys.path.insert(0, finder_data.project_dir)
+        self.project_dir = finder_data.project_dir
+        if self.project_dir:
+            name = Path(self.project_dir).name
+            assert (
+                name
+            ), f"Invalid project directory '{self.project_dir}': no or empty final path component"
+            self.project_name = name
         self.spec_paths = finder_data.spec_paths
 
         # patch pkg resources so it can also find the distributions
@@ -147,14 +157,14 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
                     logger.warning(
                         f"Version conflict: {existing.name} {existing.unique_version} is loaded, "
                         f"but {new.unique_version} is now required. "
-                        f"Please restart your jupyter kernel or python interpreter",
+                        f"Please restart your jupyter kernel or python interpreter"
                     )
             else:
                 if imported_version != new.unique_version:
                     logger.warning(
                         f"Version conflict: {new.name} {imported_version} was already imported, "
                         f"even though {new.unique_version} is now required. "
-                        f"Is there any other loading mechanism with higher precedence than {project_name}?",
+                        f"Is there any other loading mechanism with higher precedence than {project_name}?"
                     )
 
     def find_spec(self, fullname, path=None, target=None):
@@ -162,10 +172,21 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         # https://packaging.python.org/en/latest/specifications/core-metadata/#provides-dist-multiple-use
         # e.g. "python-dateutil" actually ships a module "dateutil" but there's no indication about that
 
+        # handle flat src case first
+        if fullname == self.project_name:
+            # To be in line with normal python imports we need to check this in find_spec and can't cache this
+            # in update_and_activate
+            init_py = Path(self.project_dir).joinpath("src").joinpath("__init__.py")
+            if init_py.is_file():
+                return spec_from_file_location(fullname, init_py)
+
         if fullname in self.spec_paths:
             location, submodule_search_locations = self.spec_paths[fullname]
         else:
             return None
+
+        # flat src layout: we want to allow to import from project_dir/src/__init__.py
+        # To match what python import is doing, we checking for the existence
 
         # namespace packages, i.e. directory modules without an __init__.py. We don't actually no whether these
         # are python modules or just random folders, but just like vanilla python we're just treating them like it.

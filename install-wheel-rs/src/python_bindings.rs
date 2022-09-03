@@ -1,3 +1,5 @@
+#![allow(clippy::format_push_string)] // I will not replace clear and infallible with fallible, io looking code
+
 use crate::{install_wheel, InstallLocation, LockedDir, WheelInstallerError};
 use pyo3::create_exception;
 use pyo3::types::PyModule;

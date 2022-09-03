@@ -340,9 +340,15 @@ pub fn run_python_args(
     };
     debug!("run_python_args: {:?}, `{}`", script, args.join(" "));
 
-    let (specs, scripts, lockfile, root_dir) =
+    let (specs, scripts, lockfile, project_dir) =
         load_specs(script.as_deref(), extras, &python_context)?;
-    let finder_data = install(&specs, scripts, lockfile, Some(root_dir), &python_context)?;
+    let finder_data = install(
+        &specs,
+        scripts,
+        lockfile,
+        Some(project_dir),
+        &python_context,
+    )?;
 
     run_python_args_finder_data(root, args, &python_context, &python_home, &finder_data)
 }

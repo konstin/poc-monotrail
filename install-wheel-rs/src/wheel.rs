@@ -237,7 +237,7 @@ fn unpack_wheel_files(
         };
         let out_path = site_packages.join(&relative);
 
-        if (&*file.name()).ends_with('/') {
+        if file.name().ends_with('/') {
             // pip seems to do ignore those folders, so do we
             // fs::create_dir_all(&out_path)?;
             continue;
@@ -1111,7 +1111,7 @@ mod test {
     #[test]
     fn test_parse_wheel_version() {
         fn wheel_with_version(version: &str) -> String {
-            return formatdoc! {"
+            formatdoc! {"
                 Wheel-Version: {}
                 Generator: bdist_wheel (0.37.0)
                 Root-Is-Purelib: true
@@ -1119,7 +1119,7 @@ mod test {
                 Tag: py3-none-any
                 ",
                 version
-            };
+            }
         }
         parse_wheel_version(&wheel_with_version("1.0")).unwrap();
         parse_wheel_version(&wheel_with_version("2.0")).unwrap_err();

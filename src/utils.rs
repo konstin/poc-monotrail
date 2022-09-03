@@ -48,7 +48,7 @@ pub fn assert_cli_error(cli: Cli, venv: Option<&Path>, expected: &[&str]) {
         // Convert windows path to unix paths
         let actual = err
             .chain()
-            .map(|e| e.to_string().replace("\\", "/"))
+            .map(|e| e.to_string().replace('\\', "/"))
             .collect::<Vec<_>>();
         assert_eq!(expected, actual);
     } else {

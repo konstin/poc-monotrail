@@ -77,6 +77,17 @@ monotrail run -p 3.8 -p 3.9 -p 3.10 command pytest
 
 You can symlink `monotrail` to a file called `python`, `python3` or `python3.x` and it'll work as python3.8 or the specified python version.
 
+There is also a demo of the flat source layout, where you have the `__init__.py` directly in src instead of nesting `src/srcery/__init__.py`.
+
+```
+srcery
+├── poetry.lock
+├── pyproject.toml
+└── src
+    ├── __init__.py
+    └── potion.py
+```
+
 Setting `RUST_LOG=debug` will give you details to track down bugs.
 
 ## Background

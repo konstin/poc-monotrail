@@ -1,6 +1,8 @@
 //! Test running the `monotrail` binary
 
 use anyhow::bail;
+use fs_err as fs;
+use std::path::Path;
 use std::process::{Command, Output};
 use std::{io, str};
 
@@ -112,6 +114,28 @@ fn test_pipx_black_version() {
         .last()
         .expect("Expected at least one line")
         .starts_with("black, 22.3.0"));
+}
+
+/// Tests the flat src layout and whether `python run` works without poetry.lock
+#[test]
+fn test_srcery() {
+    let poetry_lock = Path::new("srcery").join("poetry.lock");
+    if poetry_lock.is_file() {
+        fs::remove_file(poetry_lock).unwrap();
+    }
+    let output = Command::new(BIN)
+        .args([
+            "run",
+            "python",
+            "-c",
+            "from srcery import satanarchaeolidealcohellish_notion_potion; print(satanarchaeolidealcohellish_notion_potion())",
+        ]).current_dir("srcery")
+        .output();
+    let output = handle_output(output).unwrap();
+    assert_eq!(
+        output.last().expect("Expected at least one line"),
+        "https://www.youtube.com/watch?v=D5YYoY9l9Ew"
+    );
 }
 
 /// Test our poetry runner in general and specifically the in-project-venv setting that

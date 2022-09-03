@@ -19,16 +19,22 @@ use install_wheel_rs::{
 };
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
-use std::env::current_dir;
+use std::env::{current_dir, current_exe};
 use std::ffi::CString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::{env, io};
 use tempfile::TempDir;
-use tracing::{debug, trace, warn};
+use tracing::{debug, info, trace, warn};
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum LockfileType {
+    /// poetry.lock, which means a pyproject.toml also needs to exist
+    PoetryLock,
+    /// pyproject.toml, we assume it's one with poetry config
     PyprojectToml,
+    /// requirements.txt, we parse a subset of it
     RequirementsTxt,
 }
 
@@ -62,7 +68,7 @@ pub struct FinderData {
     /// Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     pub spec_paths: SpecPaths,
     /// In from git mode where we check out a repository and make it available for import as if it was added to sys.path
-    pub root_dir: Option<PathBuf>,
+    pub project_dir: Option<PathBuf>,
     /// We need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
     pub pth_files: Vec<PathBuf>,
     /// The contents of the last poetry.lock, used a basis for the next resolution when requirements
@@ -87,7 +93,7 @@ pub struct FinderData {
     #[pyo3(get)]
     pub spec_paths: SpecPaths,
     #[pyo3(get)]
-    pub root_dir: Option<PathBuf>,
+    pub project_dir: Option<PathBuf>,
     #[pyo3(get)]
     pub pth_files: Vec<PathBuf>,
     #[pyo3(get)]
@@ -119,10 +125,11 @@ pub fn monotrail_root() -> anyhow::Result<PathBuf> {
 fn find_dep_file(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
     let mut parent = Some(dir_running.to_path_buf());
     while let Some(dir) = parent {
-        if dir.join("pyproject.toml").exists() {
+        if dir.join("poetry.lock").exists() {
+            return Some((dir, LockfileType::PoetryLock));
+        } else if dir.join("pyproject.toml").exists() {
             return Some((dir, LockfileType::PyprojectToml));
-        }
-        if dir.join("requirements.txt").exists() {
+        } else if dir.join("requirements.txt").exists() {
             return Some((dir.join("requirements.txt"), LockfileType::RequirementsTxt));
         }
         parent = dir.parent().map(|path| path.to_path_buf());
@@ -432,7 +439,7 @@ pub fn load_specs(
     String,
     PathBuf,
 )> {
-    let root_dir = match script {
+    let project_dir = match script {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(file) if file.is_file() => {
             let path = if let Some(parent) = file.parent() {
@@ -446,7 +453,7 @@ pub fn load_specs(
             if root_marker.is_file() {
                 // This is the system created in `scripts_to_path` to communicate through execve
                 PathBuf::from(
-                    fs::read_to_string(root_marker).context("Failed to read root marger")?,
+                    fs::read_to_string(root_marker).context("Failed to read root marker")?,
                 )
             } else {
                 path
@@ -464,9 +471,9 @@ pub fn load_specs(
             )
         }
     };
-    debug!("python project dir: {}", root_dir.display());
+    debug!("python project dir: {}", project_dir.display());
 
-    let (dep_file_location, lockfile_type) = find_dep_file(&root_dir).with_context(|| {
+    let (dep_file_location, lockfile_type) = find_dep_file(&project_dir).with_context(|| {
         format!(
             "neither pyproject.toml nor requirements.txt not found next to {} nor in any parent directory",
             script.map_or_else(
@@ -476,10 +483,35 @@ pub fn load_specs(
         )
     })?;
     match lockfile_type {
-        LockfileType::PyprojectToml => {
+        LockfileType::PoetryLock | LockfileType::PyprojectToml => {
+            // If there's no poetry.lock yet, we need to call `poetry lock` first to create it
+            if lockfile_type == LockfileType::PyprojectToml {
+                info!(
+                    "No poetry.lock found, running `{} poetry lock`",
+                    env!("CARGO_PKG_NAME")
+                );
+                // Run in subprocess so as not to pollute the current process by already injecting
+                // python
+                let current_exe =
+                    current_exe().context("Couldn't determine currently running program 🤨")?;
+                let status = Command::new(&current_exe)
+                    .args(["poetry", "lock"])
+                    .status()
+                    .with_context(|| {
+                        format!("Failed to run `{} poetry lock`", current_exe.display())
+                    })?;
+                if !status.success() {
+                    bail!(
+                        "Failed to run `{} poetry lock`: {}",
+                        current_exe.display(),
+                        status
+                    )
+                }
+            }
             let (specs, root_scripts, lockfile) =
-                poetry_spec_from_dir(&dep_file_location, extras, &python_context.pep508_env)?;
-            Ok((specs, root_scripts, lockfile, root_dir))
+                poetry_spec_from_dir(&dep_file_location, extras, &python_context.pep508_env)
+                    .context("Couldn't load specs from pyproject.toml/poetry.lock")?;
+            Ok((specs, root_scripts, lockfile, project_dir))
         }
         LockfileType::RequirementsTxt => {
             let (specs, lockfile) = specs_from_requirements_txt_resolved(
@@ -488,7 +520,7 @@ pub fn load_specs(
                 None,
                 python_context,
             )?;
-            Ok((specs, BTreeMap::new(), lockfile, root_dir))
+            Ok((specs, BTreeMap::new(), lockfile, project_dir))
         }
     }
 }
@@ -524,7 +556,7 @@ pub fn install(
     specs: &[RequestedSpec],
     root_scripts: BTreeMap<String, Script>,
     lockfile: String,
-    root_dir: Option<PathBuf>,
+    project_dir: Option<PathBuf>,
     python_context: &PythonContext,
 ) -> anyhow::Result<FinderData> {
     let (sprawl_root, sprawl_packages) = install_missing(
@@ -567,7 +599,7 @@ pub fn install(
         sprawl_root,
         sprawl_packages,
         spec_paths,
-        root_dir,
+        project_dir,
         pth_files,
         lockfile,
         root_scripts,
@@ -664,7 +696,7 @@ pub fn run_command_finder_data(
     let (sys_executable, path_dir) = prepare_execve_environment(
         &scripts,
         &finder_data.root_scripts,
-        finder_data.root_dir.as_deref(),
+        finder_data.project_dir.as_deref(),
         scripts_tmp.path(),
         python_context.version,
     )?;

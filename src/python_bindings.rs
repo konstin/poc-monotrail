@@ -88,10 +88,16 @@ pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<FinderData
     let extras = parse_extras().map_err(format_monotrail_error)?;
     debug!("extras: {:?}", extras);
 
-    let (specs, scripts, lockfile, root_dir) =
+    let (specs, scripts, lockfile, project_dir) =
         load_specs(script.as_deref(), &extras, &python_context).map_err(format_monotrail_error)?;
-    install(&specs, scripts, lockfile, Some(root_dir), &python_context)
-        .map_err(format_monotrail_error)
+    install(
+        &specs,
+        scripts,
+        lockfile,
+        Some(project_dir),
+        &python_context,
+    )
+    .map_err(format_monotrail_error)
 }
 
 /// User gives a `[tool.poetry.dependencies]`
@@ -158,10 +164,16 @@ pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyRe
     let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
 
-    let (specs, scripts, lockfile, root_dir) =
+    let (specs, scripts, lockfile, project_dir) =
         load_specs(Some(&dir), &extras, &python_context).map_err(format_monotrail_error)?;
-    install(&specs, scripts, lockfile, Some(root_dir), &python_context)
-        .map_err(format_monotrail_error)
+    install(
+        &specs,
+        scripts,
+        lockfile,
+        Some(project_dir),
+        &python_context,
+    )
+    .map_err(format_monotrail_error)
 }
 
 /// The installed packages are all lies and rumors, we can only find the actually importable

@@ -10,6 +10,7 @@ flamegraph*.svg
 hyperfine.json
 perf.data*
 requirements-benchmark.txt
+srcery/poetry.lock
 target
 target-*
 test-data/popular-wheels

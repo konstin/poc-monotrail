@@ -1,4 +1,5 @@
 #![allow(clippy::needless_borrow)] // This is really annoying when refactoring
+#![allow(clippy::format_push_string)] // I will not replace clear and infallible with fallible, io looking code
 #![deny(missing_docs)]
 
 //! This proof of concept shows how to use python packages without virtualenvs. It will install both

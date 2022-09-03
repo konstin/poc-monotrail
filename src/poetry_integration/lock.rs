@@ -115,8 +115,8 @@ pub fn poetry_resolve_from_dir(
         include_str!("poetry_boostrap_lock/pyproject.toml"),
     )?;
 
-    let (poetry_section, poetry_lock, _lockfile) =
-        read_toml_files(&poetry_boostrap_lock).context("Failed to read toml files")?;
+    let (poetry_section, poetry_lock, _lockfile) = read_toml_files(&poetry_boostrap_lock)
+        .context("Failed to read toml files that were just written")?;
     let specs = read_poetry_specs(
         &poetry_section,
         poetry_lock,

@@ -29,7 +29,7 @@ class FinderData:
     # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
     spec_paths: Dict[str, Tuple[Optional[str], List[str]]]
     # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
-    root_dir: Optional[str]
+    project_dir: Optional[str]
     # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
     pth_files: List[str]
     # The contents of the last poetry.lock, used a basis for the next resolution when requirements
