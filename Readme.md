@@ -1,8 +1,9 @@
 # Proof Of Concept: Monotrail
 
-This proof of concept shows how to use python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml`/`poetry.lock` in the directory: 
+This proof of concept shows how to use python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml`/`poetry.lock` in the directory:
 
 ```
+pipx install monotrail # or `pip install monotrail`
 monotrail run python my_script.py
 ```
 
@@ -60,6 +61,16 @@ import monotrail
 monotrail.interactive(
     numpy="^1.21",
     pandas="^1"
+)
+```
+
+In google colab, you might want to import your git repository:
+
+```python
+import monotrail
+
+monotrail.from_git(
+    "https://github.com/sokrypton/ColabFold", "63b42b8f5b5da418efecf6c4d11490a96595020d"
 )
 ```
 

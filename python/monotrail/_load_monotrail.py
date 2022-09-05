@@ -2,7 +2,7 @@ import os
 import sys
 
 from .monotrail import monotrail_from_args, project_name
-from .monotrail_finder import MonotrailFinder
+from ._monotrail_finder import MonotrailFinder
 
 
 def load_monotrail():

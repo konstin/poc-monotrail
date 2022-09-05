@@ -1,4 +1,6 @@
 """
+Like `monotrail ru script`, but as a python entrypoint
+
 The major missing point is setting up the execve environment
 """
 
@@ -8,7 +10,7 @@ import runpy
 import sys
 
 from .monotrail import monotrail_from_args, project_name, monotrail_find_scripts
-from .monotrail_finder import MonotrailFinder
+from ._monotrail_finder import MonotrailFinder
 
 
 def main():

@@ -1,9 +1,13 @@
+"""
+Like `monotrail run python`, but as a python entrypoint
+"""
+
 import runpy
 import sys
 from pathlib import Path
 
 from .monotrail import monotrail_from_args
-from .monotrail_finder import MonotrailFinder
+from ._monotrail_finder import MonotrailFinder
 
 
 def main():
