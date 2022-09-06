@@ -345,14 +345,14 @@ fn write_script_entrypoints(
     // for monotrail
     let bin_rel = if cfg!(windows) {
         // windows doesn't have the python part, only Lib/site-packages
-        "..\..\bin"
+        Path::new("..").join("..").join("bin")
     } else {
         // linux/mac has lib/python/site-packages
-        "../../../bin"
+        Path::new("..").join("..").join("..").join("bin")
     };
-    fs::create_dir_all(site_packages.join(bin_rel))?;
+    fs::create_dir_all(site_packages.join(&bin_rel))?;
     for entrypoint in entrypoints {
-        let entrypoint_relative = Path::new(bin_rel).join(&entrypoint.script_name);
+        let entrypoint_relative = bin_rel.join(&entrypoint.script_name);
         let launcher_python_script = get_script_launcher(
             &entrypoint.module,
             &entrypoint.function,
