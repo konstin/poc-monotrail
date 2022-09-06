@@ -1,0 +1,9 @@
+[project]
+name = "install-wheel-rs"
+
+[tool.maturin]
+features = ["python_bindings"]
+
+[build-system]
+requires = ["maturin>=0.12.16,<0.13"]
+build-backend = "maturin"

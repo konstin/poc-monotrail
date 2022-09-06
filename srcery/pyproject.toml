@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "srcery"
+version = "0.1.0"
+description = "Showcase for the flat src layout"
+authors = ["konstin <konstin@mailbox.org>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+[tool.poetry.dev-dependencies]
+
+[tool.poetry.scripts]
+wunschpunsch = "src.potion:print_url"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

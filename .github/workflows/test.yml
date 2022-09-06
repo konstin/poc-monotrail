@@ -1,0 +1,191 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+    tags: [ "*" ]
+  pull_request:
+
+jobs:
+  test-cargo:
+    name: Test Cargo
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive: maturin-x86_64-unknown-linux-gnu.tar.gz
+          - os: macos-latest
+            archive: maturin-x86_64-apple-darwin.tar.gz
+          - os: windows-latest
+            archive: maturin-x86_64-pc-windows-msvc.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      # Make this the active python
+      - name: Install python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+          cache: 'pip'
+          cache-dependency-path: 'requirements-test.txt'
+      - name: Install virtualenv maturin pytest jupyter nbconvert
+        run: pip install -r requirements-test.txt
+      - name: Install stable rust
+        uses: actions-rs/toolchain@v1
+        id: rustup
+        with:
+          profile: minimal
+          toolchain: stable
+      # We need normal poetry as reference; Pin to a specific version since we diff against the output
+      - name: Install poetry
+        run: pipx install poetry==1.2.0
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v1
+        with:
+          key: monotrail-cargo-${{ runner.os }}
+          cache-on-failure: true
+
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - name: Cache popular wheels
+        id: cache-popular-wheels
+        uses: actions/cache@v3
+        with:
+          path: test-data/popular-wheels
+          key: cache-popular-wheels-${{ runner.os }}-${{ hashFiles('test-data/popular.txt') }}
+
+      - name: Download popular wheels
+        if: steps.cache-popular-wheels.outputs.cache-hit != 'true'
+        run: pip download -d test-data/popular-wheels -r test-data/popular.txt
+
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --release
+        env:
+          RUST_LOG: monotrail=trace # For debugging ci failures
+
+      - name: pytest test/install
+        run: pytest test/install
+
+      - name: Install hyperfine (linux)
+        if: matrix.os == 'ubuntu-latest-skip-for-slowness'
+        run: |
+          mkdir -p $HOME/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          hyperfine_version="v1.12.0"
+          hyperfine_url="https://github.com/sharkdp/hyperfine/releases/download/$hyperfine_version/hyperfine-$hyperfine_version-x86_64-unknown-linux-musl.tar.gz"
+          curl -L $hyperfine_url | tar -zxv --strip-components 1 -C $HOME/.local/bin hyperfine-$hyperfine_version-x86_64-unknown-linux-musl/hyperfine
+      - name: Install hyperfine (mac)
+        if: matrix.os == 'macos-latest-skip-for-slowness'
+        run: brew install hyperfine
+      - name: Benchmark plotly and tqdm
+        #if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'skip-for-slowness'
+        run: |
+          virtualenv .venv-benchmark
+          
+          VIRTUAL_ENV=.venv-benchmark hyperfine -r 5 -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+            "target/release/monotrail install test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+            ".venv-benchmark/bin/pip install --no-deps test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl"
+          
+          VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y tqdm" \
+            "target/release/monotrail install test-data/popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl" \
+            ".venv-benchmark/bin/pip install --no-deps test-data/popular-wheels/tqdm-4.62.3-py2.py3-none-any.whl"
+
+          #VIRTUAL_ENV=.venv-benchmark hyperfine -r 5 -p ".venv-benchmark/bin/pip uninstall -y plotly" \
+          #  "target/release/monotrail install --no-compile wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+          #  ".venv-benchmark/bin/pip install --no-compile --no-deps wheels/plotly-5.5.0-py2.py3-none-any.whl"
+          
+          rm -r .venv-benchmark
+
+      - name: Archive binary (windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd target/release
+          7z a ../../${{ matrix.archive }} monotrail.exe
+          cd -
+      - name: Archive binary (linux and macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd target/release
+          tar czvf ../../${{ matrix.archive }} monotrail
+          cd -
+      - name: Upload Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries
+          path: ${{ matrix.archive }}
+
+  upload-binaries:
+    name: Upload Binaries
+    runs-on: ubuntu-latest
+    needs: [ test-cargo ]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download wheels
+        uses: actions/download-artifact@v3
+        with:
+          name: binaries
+          path: binaries
+      - name: Deploy to github pages
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: JamesIves/github-pages-deploy-action@v4.4.0
+        with:
+          branch: gh-pages
+          folder: binaries
+          target-folder: ${{ github.ref_name }}
+
+  test-maturin:
+    name: Test Maturin
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      # Make this the active python
+      - name: Install python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+          cache: 'pip'
+          cache-dependency-path: 'requirements-test.txt'
+      - name: Install virtualenv requirements-test.txt
+        run: pip install -r requirements-test.txt
+      - name: Install stable rust
+        uses: actions-rs/toolchain@v1
+        id: rustup
+        with:
+          profile: minimal
+          toolchain: stable
+      # We need normal poetry as reference; Pin to a specific version since we diff against the output
+      - name: Install poetry
+        run: pipx install poetry==1.2.0
+
+      # For some reason, alternating between maturin and cargo invalidates the cache
+      - name: Cache maturin build
+        uses: Swatinem/rust-cache@v1
+        with:
+          key: monotrail-maturin-${{ runner.os }}
+          target-dir: target-maturin
+          cache-on-failure: true
+
+      # The whole venv management is overly complex
+      - name: make paper
+        if: matrix.os != 'windows-latest' # TODO
+        run: python make_paper.py
+      - name: pip install pytest
+        if: matrix.os != 'windows-latest'
+        run: .venv/bin/pip install pytest jupyter nbconvert
+      - name: pytest test/python
+        if: matrix.os != 'windows-latest'
+        run: .venv/bin/pytest test/python
