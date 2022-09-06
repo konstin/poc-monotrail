@@ -1,0 +1,5 @@
+maturin[zig]>=0.13.2,<0.14
+pytest>=7.1.2,<8.0
+jupyter==1.0.0
+nbconvert>=7.0.0,<8.0.0
+virtualenv>=20.14.1,<21.1

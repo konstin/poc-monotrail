@@ -1,0 +1,18 @@
+[project]
+name = "monotrail"
+dependencies = ["importlib_metadata ; python_version < \"3.7\""]
+
+[project.scripts]
+monotrail_python = "monotrail.run_python:main"
+monotrail_script = "monotrail.run_script:main"
+
+[tool.maturin]
+features = ["python_bindings"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--tb=short"
+
+[build-system]
+requires = ["maturin>=0.12.16,<0.13"]
+build-backend = "maturin"
