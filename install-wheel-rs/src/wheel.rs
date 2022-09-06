@@ -345,7 +345,7 @@ fn write_script_entrypoints(
     // for monotrail
     let bin_rel = if cfg!(windows) {
         // windows doesn't have the python part, only Lib/site-packages
-        "../../bin"
+        "..\..\bin"
     } else {
         // linux/mac has lib/python/site-packages
         "../../../bin"
@@ -661,7 +661,11 @@ fn install_script(
         )));
     }
 
-    let target_path = Path::new("../../../bin").join(file.file_name());
+    let target_path = Path::new("..")
+        .join("..")
+        .join("..")
+        .join("bin")
+        .join(file.file_name());
     let mut script = File::open(&path)?;
     // https://sphinx-locales.github.io/peps/pep-0427/#recommended-installer-features
     // > In wheel, scripts are packaged in {distribution}-{version}.data/scripts/.
