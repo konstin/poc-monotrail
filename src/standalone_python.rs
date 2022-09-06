@@ -12,7 +12,7 @@ use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir_in;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 #[cfg_attr(test, allow(dead_code))]
 const GITHUB_API: &str = "https://api.github.com";
 
@@ -26,10 +26,12 @@ const PYTHON_STANDALONE_LATEST_RELEASE: (&str, &str) = (
 
 /// i've manually confirmed that this release has python 3.8, 3.9 and 3.10 for all major
 /// platforms and a naming convention monotrail can read
-const PYTHON_STANDALONE_KNOWN_GOOD_RELEASE: (&str, &str) = (
-    "/repos/indygreg/python-build-standalone/releases/65881217",
-    "https://github.com/indygreg/python-build-standalone/releases/tag/20220502",
-);
+/// Since https://github.com/indygreg/python-build-standalone/issues/138
+/// we ship this with the binary.
+/// zstd because it's 2.44% of the original json size.
+/// Source: https://github.com/indygreg/python-build-standalone/releases/tag/20220502
+const PYTHON_STANDALONE_KNOWN_GOOD_RELEASE: &[u8] =
+    include_bytes!("python_build_standalone_known_good_release.json.zst");
 
 #[derive(Deserialize)]
 struct GitHubRelease {
@@ -52,29 +54,38 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
     #[cfg(test)]
     let host = &mockito::server_url();
 
-    let latest_release: GitHubRelease =
+    let version_re = filename_regex(major, minor);
+
+    let latest_release: anyhow::Result<GitHubRelease> =
         ureq::get(&format!("{}{}", host, PYTHON_STANDALONE_LATEST_RELEASE.0))
             .set("User-Agent", "monotrail (konstin@mailbox.org)")
-            .call()?
-            .into_json()?;
+            .call()
+            .map_err(anyhow::Error::new)
+            .and_then(|x| x.into_json().map_err(anyhow::Error::new));
 
-    let version_re = filename_regex(major, minor);
-    let asset = latest_release.assets.into_iter().find(|asset| {
-        // TODO: Proper name parsing
-        // https://github.com/indygreg/python-build-standalone/issues/127
-        version_re.is_match(&asset.name)
-    });
-    if let Some(asset) = asset {
-        return Ok(asset.browser_download_url);
+    match latest_release {
+        Ok(latest_release) => {
+            let asset = latest_release.assets.into_iter().find(|asset| {
+                // TODO: Proper name parsing
+                // https://github.com/indygreg/python-build-standalone/issues/127
+                version_re.is_match(&asset.name)
+            });
+            if let Some(asset) = asset {
+                return Ok(asset.browser_download_url);
+            }
+        }
+        Err(err) => {
+            warn!(
+                "Failed to call github api for latest standalone python release: {}",
+                err
+            );
+        }
     }
 
-    let good_release: GitHubRelease = ureq::get(&format!(
-        "{}{}",
-        host, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0
-    ))
-    .set("User-Agent", "monotrail (konstin@mailbox.org)")
-    .call()?
-    .into_json()?;
+    // unwrap because we know the content
+    let good_release: GitHubRelease =
+        serde_json::from_slice(&zstd::decode_all(PYTHON_STANDALONE_KNOWN_GOOD_RELEASE).unwrap())
+            .unwrap();
 
     let asset = good_release
         .assets
@@ -86,10 +97,10 @@ fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
         })
         .with_context(|| {
             format!(
-                "Failed to find a matching python-build-standalone download: /{}/. Searched in {} and {}", 
+                "Failed to find a matching python-build-standalone download: /{}/. \
+                Searched in {} and https://github.com/indygreg/python-build-standalone/releases/tag/20220502",
                 version_re,
                 PYTHON_STANDALONE_LATEST_RELEASE.1,
-                PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.1,
             )
         })?;
     Ok(asset.browser_download_url)
@@ -269,21 +280,15 @@ mod test {
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     use crate::standalone_python::provision_python;
-    use crate::standalone_python::{
-        find_python, PYTHON_STANDALONE_KNOWN_GOOD_RELEASE, PYTHON_STANDALONE_LATEST_RELEASE,
-    };
+    use crate::standalone_python::{find_python, PYTHON_STANDALONE_LATEST_RELEASE};
     use crate::utils::zstd_json_mock;
 
-    fn mock() -> (Mock, Mock) {
+    fn mock() -> Mock {
         let latest_mock = zstd_json_mock(
             PYTHON_STANDALONE_LATEST_RELEASE.0,
             "test-data/standalone_python_github_release.json.zstd",
         );
-        let known_good_mock = zstd_json_mock(
-            PYTHON_STANDALONE_KNOWN_GOOD_RELEASE.0,
-            "test-data/standalone_python_known_good_release.json.zstd",
-        );
-        (latest_mock, known_good_mock)
+        latest_mock
     }
 
     #[test]
