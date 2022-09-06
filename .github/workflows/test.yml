@@ -11,6 +11,7 @@ jobs:
   test_cargo:
     name: Test Cargo
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
