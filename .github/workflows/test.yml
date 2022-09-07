@@ -157,7 +157,7 @@ jobs:
       # The whole venv management is overly complex
       - name: make paper
         if: matrix.os != 'windows-latest'
-        run: bash make_paper.sh
+        run: python make_paper.py
       - name: pip install pytest
         if: matrix.os != 'windows-latest'
         run: .venv/bin/pip install pytest jupyter nbconvert

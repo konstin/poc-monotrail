@@ -284,11 +284,10 @@ mod test {
     use crate::utils::zstd_json_mock;
 
     fn mock() -> Mock {
-        let latest_mock = zstd_json_mock(
+        zstd_json_mock(
             PYTHON_STANDALONE_LATEST_RELEASE.0,
             "test-data/standalone_python_github_release.json.zstd",
-        );
-        latest_mock
+        )
     }
 
     #[test]

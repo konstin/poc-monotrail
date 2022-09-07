@@ -37,3 +37,6 @@ check_call(
 
 # .venv/bin/monotrail_python flipstring/flip.py "hello world!"
 # .venv/bin/pytest test/python
+
+if __name__ == '__main__':
+    pass
