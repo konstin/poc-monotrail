@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::str::FromStr;
@@ -20,9 +20,14 @@ use tempfile::{tempdir, TempDir};
 use tracing::{debug, error, span, warn, Level};
 use walkdir::WalkDir;
 use zip::result::ZipError;
-use zip::ZipArchive;
+use zip::write::FileOptions;
+use zip::{ZipArchive, ZipWriter};
 
 pub const MONOTRAIL_SCRIPT_SHEBANG: &str = "#!/usr/bin/env python";
+
+pub const LAUNCHER_T32: &[u8] = include_bytes!("../../resources/t32.exe");
+pub const LAUNCHER_T64: &[u8] = include_bytes!("../../resources/t64.exe");
+pub const LAUNCHER_T64_ARM: &[u8] = include_bytes!("../../resources/t64-arm.exe");
 
 /// Line in a RECORD file
 /// <https://www.python.org/dev/peps/pep-0376/#record>
@@ -333,6 +338,45 @@ fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
     }
 }
 
+/// Ported from https://github.com/pypa/pip/blob/fd0ea6bc5e8cb95e518c23d901c26ca14db17f89/src/pip/_vendor/distlib/scripts.py#L248-L262
+///
+/// To get a launcher on windows we write a minimal .exe launcher binary and then attach the actual
+/// python after it.
+///
+/// TODO pyw scripts
+fn windows_script_launcher(launcher_python_script: &str) -> Result<Vec<u8>, WheelInstallerError> {
+    let launcher_bin = match env::consts::ARCH {
+        "x84" => LAUNCHER_T32,
+        "x86_64" => LAUNCHER_T64,
+        "aarch64" => LAUNCHER_T64_ARM,
+        arch => {
+            let error = format!(
+                "Don't know how to create windows launchers for script for {}, \
+                        only x86, x86_64 and aarch64 (64-bit arm) are supported",
+                arch
+            );
+            return Err(WheelInstallerError::OsVersionDetectionError(error));
+        }
+    };
+
+    let mut stream: Vec<u8> = Vec::new();
+    {
+        let mut archive = ZipWriter::new(Cursor::new(&mut stream));
+        let error_msg = "Writing to Vec<u8> should never fail";
+        archive
+            .start_file("__main__.py", FileOptions::default())
+            .expect(error_msg);
+        archive
+            .write_all(launcher_python_script.as_bytes())
+            .expect(error_msg);
+        archive.finish().expect(error_msg);
+    }
+
+    let mut launcher: Vec<u8> = launcher_bin.to_vec();
+    launcher.append(&mut stream);
+    Ok(launcher)
+}
+
 /// Create the wrapper scripts in the bin folder of the venv for launching console scripts
 ///
 /// We also pass venv_base so we can write the same path as pip does
@@ -343,38 +387,58 @@ fn write_script_entrypoints(
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
     // for monotrail
-    let bin_rel = if cfg!(windows) {
-        // windows doesn't have the python part, only Lib/site-packages
-        Path::new("..").join("..").join("bin")
-    } else {
-        // linux/mac has lib/python/site-packages
-        Path::new("..").join("..").join("..").join("bin")
-    };
-    fs::create_dir_all(site_packages.join(&bin_rel))?;
+    fs::create_dir_all(site_packages.join(&bin_rel()))?;
     for entrypoint in entrypoints {
-        let entrypoint_relative = bin_rel.join(&entrypoint.script_name);
+        let entrypoint_relative = if cfg!(windows) {
+            // On windows we actually build an .exe wrapper
+            let script_name = entrypoint
+                .script_name
+                // FIXME: What are the in-reality rules here for names?
+                .strip_suffix(".py")
+                .unwrap_or(&entrypoint.script_name)
+                .to_string()
+                + ".exe";
+            bin_rel().join(script_name)
+        } else {
+            bin_rel().join(&entrypoint.script_name)
+        };
         let launcher_python_script = get_script_launcher(
             &entrypoint.module,
             &entrypoint.function,
             &get_shebang(&location),
         );
-        write_file_recorded(
-            site_packages,
-            &entrypoint_relative,
-            &launcher_python_script,
-            record,
-        )?;
-        // We need to make the launcher executable
-        #[cfg(target_family = "unix")]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(
-                site_packages.join(entrypoint_relative),
-                std::fs::Permissions::from_mode(0o755),
+        if cfg!(windows) {
+            let launcher = windows_script_launcher(&launcher_python_script)?;
+            write_file_recorded(site_packages, &entrypoint_relative, &launcher, record)?;
+        } else {
+            write_file_recorded(
+                site_packages,
+                &entrypoint_relative,
+                &launcher_python_script,
+                record,
             )?;
+            // We need to make the launcher executable
+            #[cfg(target_family = "unix")]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(
+                    site_packages.join(entrypoint_relative),
+                    std::fs::Permissions::from_mode(0o755),
+                )?;
+            }
         }
     }
     Ok(())
+}
+
+fn bin_rel() -> PathBuf {
+    if cfg!(windows) {
+        // windows doesn't have the python part, only Lib/site-packages
+        Path::new("..").join("..").join("Scripts")
+    } else {
+        // linux/mac has lib/python/site-packages
+        Path::new("..").join("..").join("..").join("bin")
+    }
 }
 
 /// Parse WHEEL file
@@ -661,14 +725,7 @@ fn install_script(
         )));
     }
 
-    let bin_rel = if cfg!(windows) {
-        // windows doesn't have the python part, only Lib/site-packages
-        Path::new("..").join("..").join("bin")
-    } else {
-        // linux/mac has lib/python/site-packages
-        Path::new("..").join("..").join("..").join("bin")
-    };
-    let target_path = bin_rel.join(file.file_name());
+    let target_path = bin_rel().join(file.file_name());
     let mut script = File::open(&path)?;
     // https://sphinx-locales.github.io/peps/pep-0427/#recommended-installer-features
     // > In wheel, scripts are packaged in {distribution}-{version}.data/scripts/.
@@ -809,11 +866,11 @@ fn install_data(
 fn write_file_recorded(
     site_packages: &Path,
     relative_path: &Path,
-    content: &str,
+    content: impl AsRef<[u8]>,
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
-    File::create(site_packages.join(relative_path))?.write_all(content.as_bytes())?;
-    let hash = Sha256::new().chain_update(content.as_bytes()).finalize();
+    File::create(site_packages.join(relative_path))?.write_all(content.as_ref())?;
+    let hash = Sha256::new().chain_update(content.as_ref()).finalize();
     let encoded_hash = format!(
         "sha256={}",
         base64::encode_config(&hash, base64::URL_SAFE_NO_PAD)
@@ -821,7 +878,7 @@ fn write_file_recorded(
     record.push(RecordEntry {
         path: relative_path.display().to_string(),
         hash: Some(encoded_hash),
-        size: Some(content.as_bytes().len()),
+        size: Some(content.as_ref().len()),
     });
     Ok(())
 }

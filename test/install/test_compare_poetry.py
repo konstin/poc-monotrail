@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import platform
 import shutil
 import sys
 import time
@@ -29,12 +30,16 @@ def compare_with_poetry(
     env_rs = test_venvs.joinpath(f"{env_name}-rs")
     env_poetry = test_venvs.joinpath(f"{env_name}-poetry")
 
-    paths = os.environ["PATH"].split(":")
+    separator = ";" if platform.system() == "Windows" else ":"
+    paths = os.environ["PATH"].split(separator)
     if env_var_virtualenv := os.environ.get("VIRTUAL_ENV"):
-        paths.remove(str(Path(env_var_virtualenv).joinpath("bin")))
-    paths.insert(0, str(env.joinpath("bin")))
+        bin_dir = "Scripts" if platform.system() == "Windows" else "bin"
+        paths.remove(str(Path(env_var_virtualenv).joinpath(bin_dir)))
+    paths.insert(
+        0, str(env.joinpath("Scripts" if platform.system() == "Windows" else "bin"))
+    )
     venv_env_vars = os.environ.copy()
-    venv_env_vars["PATH"] = ":".join(paths)
+    venv_env_vars["PATH"] = separator.join(paths)
     venv_env_vars["VIRTUAL_ENV"] = str(env)
 
     # poetry install

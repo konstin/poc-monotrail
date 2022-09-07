@@ -156,7 +156,7 @@ jobs:
 
       # The whole venv management is overly complex
       - name: make paper
-        if: matrix.os != 'windows-latest'
+        if: matrix.os != 'windows-latest' # TODO
         run: python make_paper.py
       - name: pip install pytest
         if: matrix.os != 'windows-latest'

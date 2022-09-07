@@ -31,7 +31,7 @@ const PYTHON_STANDALONE_LATEST_RELEASE: (&str, &str) = (
 /// zstd because it's 2.44% of the original json size.
 /// Source: https://github.com/indygreg/python-build-standalone/releases/tag/20220502
 const PYTHON_STANDALONE_KNOWN_GOOD_RELEASE: &[u8] =
-    include_bytes!("python_build_standalone_known_good_release.json.zst");
+    include_bytes!("../resources/python_build_standalone_known_good_release.json.zst");
 
 #[derive(Deserialize)]
 struct GitHubRelease {

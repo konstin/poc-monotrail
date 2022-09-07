@@ -20,6 +20,7 @@ use install_wheel_rs::{
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env::{current_dir, current_exe};
+#[cfg(unix)]
 use std::ffi::CString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -618,7 +619,7 @@ pub fn find_scripts(
     for package in packages {
         let bin_dir = package
             .monotrail_location(sprawl_root.to_path_buf())
-            .join("bin");
+            .join(if cfg!(windows) { "Scripts" } else { "bin" });
         if !bin_dir.is_dir() {
             continue;
         }
@@ -628,10 +629,19 @@ pub fn find_scripts(
                 continue;
             }
 
-            scripts.insert(
-                entry.file_name().to_string_lossy().to_string(),
-                entry.path(),
-            );
+            let entry_name = if cfg!(windows) {
+                // All the windows scripts we install end with .exe
+                if let Some(stem) = entry.file_name().to_string_lossy().strip_suffix(".exe") {
+                    stem.to_string()
+                } else {
+                    continue;
+                }
+            } else {
+                // unix scripts are normal .py
+                entry.file_name().to_string_lossy().to_string()
+            };
+
+            scripts.insert(entry_name, entry.path());
         }
     }
     trace!(
@@ -717,7 +727,7 @@ pub fn run_command_finder_data(
         all_scripts.sort_unstable();
 
         bail!(
-            "Couldn't find command {} in installed packages.\nInstalled scripts: {:?}",
+            "Couldn't find command {} in installed packages. Installed scripts: {:?}",
             script,
             all_scripts.join(" ")
         )
@@ -742,20 +752,20 @@ pub fn run_command_finder_data(
         )?;
         exit_code as i32
     } else {
-        // Sorry for the to_string_lossy all over the place
-        // https://stackoverflow.com/a/38948854/3549270
-        let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
-            .context("Failed to convert executable path")?;
-        let args_c_string = args
-            .iter()
-            .map(|arg| {
-                CString::new(arg.as_bytes()).context("Failed to convert executable argument")
-            })
-            .collect::<anyhow::Result<Vec<CString>>>()?;
-
         debug!("launching (execv) {}", script_path.display());
         #[cfg(unix)]
         {
+            // Sorry for the to_string_lossy all over the place
+            // https://stackoverflow.com/a/38948854/3549270
+            let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
+                .context("Failed to convert executable path")?;
+            let args_c_string = args
+                .iter()
+                .map(|arg| {
+                    CString::new(arg.as_bytes()).context("Failed to convert executable argument")
+                })
+                .collect::<anyhow::Result<Vec<CString>>>()?;
+
             // We replace the current process with the new process is it's like actually just running
             // the real thing.
             // Note the that this may launch a python script, a native binary or anything else
@@ -765,7 +775,14 @@ pub fn run_command_finder_data(
         }
         #[cfg(windows)]
         {
-            todo!("execv: {:?} {:?}", &executable_c_str, &args_c_string);
+            // TODO: What's the correct equivalent of execv on windows?
+            let status = Command::new(script_path)
+                .args(args.iter())
+                .status()
+                .context("Failed to launch process")?;
+            status
+                .code()
+                .context("Process didn't return an exit code")?
         }
         #[cfg(not(any(unix, windows)))]
         {

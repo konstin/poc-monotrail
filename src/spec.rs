@@ -217,7 +217,7 @@ mod test {
         );
 
         let (specs, _, _) = poetry_spec_from_dir(
-            Path::new("src/poetry_integration/poetry_boostrap_lock"),
+            Path::new("resources/poetry_boostrap_lock"),
             &[],
             &pep508_env,
         )

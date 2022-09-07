@@ -16,9 +16,9 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
     let (args, python_version) = determine_python_version(&args, python_version)?;
     let (python_context, python_home) = provision_python(python_version)?;
 
-    let pyproject_toml = include_str!("poetry_boostrap_lock/pyproject.toml");
+    let pyproject_toml = include_str!("../../resources/poetry_boostrap_lock/pyproject.toml");
     let poetry_toml: PoetryPyprojectToml = toml::from_str(pyproject_toml).unwrap();
-    let lockfile = include_str!("poetry_boostrap_lock/poetry.lock");
+    let lockfile = include_str!("../../resources/poetry_boostrap_lock/poetry.lock");
     let poetry_lock: PoetryLock = toml::from_str(lockfile).unwrap();
 
     let poetry_section = poetry_toml.tool.unwrap().poetry.unwrap();
@@ -44,10 +44,12 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
         .iter()
         .find(|package| package.name == "poetry")
         .context("poetry is missing 🤨")?;
-    let launcher = poetry_package
-        .monotrail_location(PathBuf::from(&finder_data.sprawl_root))
-        .join("bin")
-        .join("poetry");
+    let base = poetry_package.monotrail_location(PathBuf::from(&finder_data.sprawl_root));
+    let launcher = if cfg!(windows) {
+        base.join("Scripts").join("poetry.exe")
+    } else {
+        base.join("bin").join("poetry")
+    };
 
     let poetry_args: Vec<_> = [
         python_context.sys_executable.to_string_lossy().to_string(),

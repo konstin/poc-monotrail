@@ -1,3 +1,4 @@
+import platform
 from pathlib import Path
 from subprocess import check_call, check_output
 
@@ -6,7 +7,11 @@ def check_installed(venv: Path) -> bool:
     """true: installed and working, false: not installed, borked: exception"""
     try:
         output = check_output(
-            [venv.joinpath("bin").joinpath("upsidedown")],
+            [
+                venv.joinpath(
+                    "Scripts" if platform.system() == "Windows" else "bin"
+                ).joinpath("upsidedown")
+            ],
             input="hello world!",
             text=True,
         ).strip()

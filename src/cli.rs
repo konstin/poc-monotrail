@@ -238,7 +238,11 @@ fn poetry_install(
         let monotrail_root = monotrail_root()?;
         InstallLocation::Monotrail {
             monotrail_root,
-            python: venv_canon.join("bin").join("python"),
+            python: if cfg!(windows) {
+                venv_canon.join("Scripts").join("python.exe")
+            } else {
+                venv_canon.join("bin").join("python")
+            },
             python_version,
         }
     } else {

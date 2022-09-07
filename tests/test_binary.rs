@@ -131,7 +131,11 @@ fn test_srcery() {
             "from srcery import satanarchaeolidealcohellish_notion_potion; print(satanarchaeolidealcohellish_notion_potion())",
         ]).current_dir("srcery")
         .output();
-    let output = handle_output(output).unwrap();
+    let output: Vec<String> = handle_output(output)
+        .unwrap()
+        .into_iter()
+        .filter(|line| !line.starts_with("\u{1b}"))
+        .collect();
     assert_eq!(
         output.last().expect("Expected at least one line"),
         "https://www.youtube.com/watch?v=D5YYoY9l9Ew"
