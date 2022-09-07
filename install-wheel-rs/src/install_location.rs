@@ -94,8 +94,12 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
     pub fn get_python(&self) -> PathBuf {
         match self {
             InstallLocation::Venv { venv_base, .. } => {
-                // canonicalize on python would resolve the symlink
-                venv_base.join("bin").join("python")
+                if cfg!(windows) {
+                    venv_base.join("Scripts").join("python.exe")
+                } else {
+                    // canonicalize on python would resolve the symlink
+                    venv_base.join("bin").join("python")
+                }
             }
             // TODO: For monotrail use the monotrail launcher
             InstallLocation::Monotrail { python, .. } => python.clone(),

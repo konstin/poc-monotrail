@@ -1,13 +1,20 @@
+import platform
 from pathlib import Path
 
 
 def get_bin() -> Path:
-    release_bin = get_root().joinpath("target/release/monotrail")
+    if platform.system() == "Windows":
+        bin_filename = "monotrail.exe"
+    else:
+        bin_filename = "monotrail"
+    release_bin = (
+        get_root().joinpath("target").joinpath("release").joinpath(bin_filename)
+    )
     if release_bin.is_file():
         release_ctime = release_bin.stat().st_ctime
     else:
         release_ctime = 0
-    debug_bin = get_root().joinpath("target/debug/monotrail")
+    debug_bin = get_root().joinpath("target").joinpath("debug").joinpath(bin_filename)
     if debug_bin.is_file():
         debug_ctime = debug_bin.stat().st_ctime
     else:

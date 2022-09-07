@@ -822,7 +822,7 @@ dependencies = [
 
 [[package]]
 name = "monotrail"
-version = "0.0.15"
+version = "0.0.18"
 dependencies = [
  "anyhow",
  "base64",

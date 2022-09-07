@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import platform
 import re
 import shutil
 import sys
@@ -34,9 +35,11 @@ def compare_with_pip(
     if not env_py.exists():
         check_call(["virtualenv", env], stdout=DEVNULL)
         start_pip = time.time()
-        check_call(
-            [env.joinpath("bin").joinpath("pip"), "install", "-q", "--no-deps", *wheels]
-        )
+        if platform.system() == "Windows":
+            pip = env.joinpath("Scripts").joinpath("pip.exe")
+        else:
+            pip = env.joinpath("bin").joinpath("pip")
+        check_call([pip, "install", "-q", "--no-deps", *wheels])
         stop_pip = time.time()
         env.rename(env_py)
 
@@ -49,8 +52,8 @@ def compare_with_pip(
     start_rs = time.time()
     check_call(
         [monotrail, "venv-install", *wheels],
-        stdout=DEVNULL,
-        env=dict(os.environ, VIRTUAL_ENV=env),
+        # stdout=DEVNULL,
+        env=dict(os.environ, VIRTUAL_ENV=str(env)),
     )
     stop_rs = time.time()
     env.rename(env_rs)
@@ -75,10 +78,18 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         r"_distutils_hack/__pycache__",
     ]
     pattern = (
-        r"^(lib/python3\.8/site-packages/("
+        (
+            r"^(Lib/site-packages/("
+            if platform.system() == "Windows"
+            else r"^(lib/python3\.8/site-packages/("
+        )
         + "|".join(dirs)
         + r")|bin/__pycache__|monotrail.lock)"
     )
+    if platform.system() == "Windows":
+        # -.-
+        # two for regex escaping
+        pattern = pattern.replace("/", "\\\\")
     env_rs_entries = set()
     for i in env_rs.glob("**/*"):
         if re.match(pattern, str(i.relative_to(env_rs))):
