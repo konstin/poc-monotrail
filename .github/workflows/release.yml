@@ -88,22 +88,23 @@ jobs:
           args: --release
 
       - name: Archive binary (windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.platform.os == 'windows-latest'
         run: |
           cd target/release
-          7z a ../../${{ matrix.release }} ${{ matrix.bin }}.exe
+          7z a ../../${{ matrix.platform.release }} ${{ matrix.platform.bin }}.exe
           cd -
       - name: Archive binary (linux and macOS)
-        if: matrix.os != 'windows-latest'
+        if: matrix.platform.os != 'windows-latest'
         run: |
           cd target/release
-          tar czvf ../../${{ matrix.release }} ${{ matrix.bin }}
+          ls
+          tar czvf ../../${{ matrix.platform.release }} ${{ matrix.platform.bin }}
           cd -
       - name: Upload Binary
         uses: actions/upload-artifact@v3
         with:
           name: binaries
-          path: ${{ matrix.release }}
+          path: ${{ matrix.platform.release }}
 
   release-binaries-github:
     name: Publish to GitHub releases
