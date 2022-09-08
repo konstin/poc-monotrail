@@ -142,6 +142,7 @@ fn resolution_to_specs(
         } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
             continue;
         } else {
+            debug!("Packages: {:?}", packages);
             bail!(
                 "Lockfile outdated (run `poetry update`): {} is missing",
                 dep_name
@@ -283,6 +284,7 @@ pub fn read_poetry_specs(
         } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
             continue;
         } else {
+            debug!("Packages: {:?}", packages);
             bail!(
                 "Lockfile outdated (run `poetry update`): {} is missing",
                 dep_name

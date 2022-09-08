@@ -17,11 +17,10 @@ It includes simple reimplementations of pipx and tox. There's also a pip package
 
 ## Usage
 
-First download the binary and put it in PATH (e.g. via `.local/bin`):
+First download the binary from [release](https://github.com/konstin/poc-monotrail/releases/latest) or [main](https://konstin.github.io/poc-monotrail/) and put it in PATH (e.g. via `.local/bin`):
 
 ```shell
-wget -O ~/.local/bin/monotrail https://konstin.github.io/poc-monotrail/main/ubuntu/monotrail
-chmod +x ~/.local/bin/monotrail
+curl -L https://github.com/konstin/poc-monotrail/releases/download/v0.1.0/monotrail-x86_64-unknown-linux-gnu.tar.gz | tar xz -C ~/.local/bin/
 ```
 
 Make sure you have either a `requirements.txt` or `pyproject.toml`/`poetry.lock`:
