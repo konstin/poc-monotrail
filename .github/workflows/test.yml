@@ -109,13 +109,13 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd target/release
-          7z a ../../${{ matrix.archive }} ${{ bin-name }}.exe
+          7z a ../../${{ matrix.archive }} monotrail.exe
           cd -
       - name: Archive binary (linux and macOS)
         if: matrix.os != 'windows-latest'
         run: |
           cd target/release
-          tar czvf ../../${{ matrix.archive }} ${{ bin-name }}
+          tar czvf ../../${{ matrix.archive }} monotrail
           cd -
       - name: Upload Binary
         uses: actions/upload-artifact@v3
