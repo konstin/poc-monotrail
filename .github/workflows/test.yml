@@ -15,14 +15,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            platform-name: ubuntu
-            release-name: maturin-x86_64-unknown-linux-gnu.tar.gz
+            archive: maturin-x86_64-unknown-linux-gnu.tar.gz
           - os: macos-latest
-            platform-name: macos
-            release-name: maturin-x86_64-apple-darwin.tar.gz
+            archive: maturin-x86_64-apple-darwin.tar.gz
           - os: windows-latest
-            platform-name: windows
-            release-name: maturin-x86_64-pc-windows-msvc.zip
+            archive: maturin-x86_64-pc-windows-msvc.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -112,19 +109,19 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd target/release
-          7z a ../../${{ matrix.release-name }} ${{ bin-name }}.exe
+          7z a ../../${{ matrix.archive }} ${{ bin-name }}.exe
           cd -
       - name: Archive binary (linux and macOS)
         if: matrix.os != 'windows-latest'
         run: |
           cd target/release
-          tar czvf ../../${{ matrix.release-name }} ${{ bin-name }}
+          tar czvf ../../${{ matrix.archive }} ${{ bin-name }}
           cd -
       - name: Upload Binary
         uses: actions/upload-artifact@v3
         with:
           name: binaries
-          path: ${{ matrix.release-name }}
+          path: ${{ matrix.archive }}
 
   upload-binaries:
     name: Upload Binaries
