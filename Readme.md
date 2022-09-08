@@ -11,7 +11,7 @@ Every dependency is installed only once globally and hooked to your code. No ven
 
 This is a proof of concept, so only **most features are missing** and will crash or produce nonsense. E.g. non-linux is badly tested, installation is awkward, error messages are suboptimal, only pypi is supported, startup is slow, only some requirement.txt syntax is supported, lockfiles from interactive mode aren't saved, some pkg_resources usage doesn't work, etc. 
 
-monotrail means to show you can use python without the traditional "installing packages in an environment". It also integrates [PyOxy](https://github.com/indygreg/PyOxidizer/tree/main/pyoxy) so you don't need to install python anymore. 
+monotrail means to show you can use python without the traditional "installing packages in an environment". It also integrates [python-build-standalone](https://github.com/indygreg/python-build-standalone) so you don't need to install python anymore. 
 
 It includes simple reimplementations of pipx and tox. There's also a pip package meant for notebooks, where you can interactively add packages at runtime, get an isolated package set per notebook and avoid version conflicts.
 
