@@ -732,7 +732,11 @@ pub fn run_command_finder_data(
             all_scripts.join(" ")
         )
     };
-    let exit_code = if is_python_script(&script_path)? {
+    // TODO: Properly handle windows here
+    // Current logic: The binaries we produce can't actually launch for themselves due to some bug,
+    // but running the binary through python works (?!) and python even displays it as running
+    // `some_script.exe/__main__.py`.
+    let exit_code = if is_python_script(&script_path)? || cfg!(windows) {
         let args: Vec<String> = [
             python_context.sys_executable.to_string_lossy().to_string(),
             script_path.to_string_lossy().to_string(),

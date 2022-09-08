@@ -84,7 +84,7 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
             else r"^(lib/python3\.8/site-packages/("
         )
         + "|".join(dirs)
-        + r")|bin/__pycache__|monotrail.lock)"
+        + r")|bin/__pycache__|Scripts/__pycache__|monotrail.lock)"
     )
     if platform.system() == "Windows":
         # -.-

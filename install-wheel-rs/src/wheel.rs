@@ -330,7 +330,19 @@ fn unpack_wheel_files(
 
 fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
     if matches!(location, InstallLocation::Venv { .. }) {
-        format!("#!{}", location.get_python().display())
+        let path = location.get_python().display().to_string();
+        let path = if cfg!(windows) {
+            // https://stackoverflow.com/a/50323079
+            const VERBATIM_PREFIX: &str = r#"\\?\"#;
+            if path.starts_with(VERBATIM_PREFIX) {
+                path[VERBATIM_PREFIX.len()..].to_string()
+            } else {
+                path
+            }
+        } else {
+            path
+        };
+        format!("#!{}", path)
     } else {
         // This will use the monotrail binary moonlighting as python. `python` alone doesn't,
         // we need env to find the python link we put in PATH
@@ -344,6 +356,8 @@ fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
 /// python after it.
 ///
 /// TODO pyw scripts
+///
+/// TODO: a nice, reproducible-without-distlib rust solution
 fn windows_script_launcher(launcher_python_script: &str) -> Result<Vec<u8>, WheelInstallerError> {
     let launcher_bin = match env::consts::ARCH {
         "x84" => LAUNCHER_T32,
@@ -361,11 +375,13 @@ fn windows_script_launcher(launcher_python_script: &str) -> Result<Vec<u8>, Whee
 
     let mut stream: Vec<u8> = Vec::new();
     {
+        // We're using the zip writer, but it turns out we're not actually deflating apparently
+        // we're just using an offset
+        // https://github.com/pypa/distlib/blob/8ed03aab48add854f377ce392efffb79bb4d6091/PC/launcher.c#L259-L271
+        let stored = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
         let mut archive = ZipWriter::new(Cursor::new(&mut stream));
         let error_msg = "Writing to Vec<u8> should never fail";
-        archive
-            .start_file("__main__.py", FileOptions::default())
-            .expect(error_msg);
+        archive.start_file("__main__.py", stored).expect(error_msg);
         archive
             .write_all(launcher_python_script.as_bytes())
             .expect(error_msg);
@@ -380,6 +396,8 @@ fn windows_script_launcher(launcher_python_script: &str) -> Result<Vec<u8>, Whee
 /// Create the wrapper scripts in the bin folder of the venv for launching console scripts
 ///
 /// We also pass venv_base so we can write the same path as pip does
+///
+/// TODO: Test for this launcher directly in install-wheel-rs
 fn write_script_entrypoints(
     site_packages: &Path,
     location: &InstallLocation<LockedDir>,

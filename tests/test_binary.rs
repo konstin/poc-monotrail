@@ -110,10 +110,14 @@ fn test_pipx_black_version() {
         ])
         .output();
     let output = handle_output(output).unwrap();
-    assert!(output
-        .last()
-        .expect("Expected at least one line")
-        .starts_with("black, 22.3.0"));
+    assert!(
+        output
+            .last()
+            .expect("Expected at least one line")
+            .starts_with("black, 22.3.0"),
+        "{:?}",
+        output
+    );
 }
 
 /// Tests the flat src layout and whether `python run` works without poetry.lock

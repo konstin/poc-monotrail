@@ -1,7 +1,8 @@
 import os
+import platform
 import shutil
 from pathlib import Path
-from subprocess import check_call, SubprocessError, DEVNULL
+from subprocess import check_call, SubprocessError, DEVNULL, CalledProcessError
 
 from test.install.utils import get_bin, get_root
 
@@ -11,11 +12,18 @@ def test_tqdm():
     if venv.is_dir():
         shutil.rmtree(venv)
     check_call(["virtualenv", venv])
-    env = {**os.environ, "VIRTUAL_ENV": venv}
+    env = {**os.environ, "VIRTUAL_ENV": str(venv)}
+
+    if platform.system() == "Windows":
+        python = venv.joinpath("Scripts").joinpath("python.exe")
+        tqdm = venv.joinpath("Scripts").joinpath("tqdm.exe")
+    else:
+        python = venv.joinpath("bin").joinpath("python")
+        tqdm = venv.joinpath("bin").joinpath("tqdm")
 
     try:
         check_call(
-            [f"{venv}/bin/python", "tqdm_test.py"],
+            [python, "tqdm_test.py"],
             env=env,
             stdout=DEVNULL,
             stderr=DEVNULL,
@@ -24,11 +32,9 @@ def test_tqdm():
     except SubprocessError:
         pass
     try:
-        check_call(
-            [f"{venv}/bin/tqdm", "--version"], env=env, stdout=DEVNULL, stderr=DEVNULL
-        )
+        check_call([python, tqdm, "--version"], env=env, stdout=DEVNULL, stderr=DEVNULL)
         assert False
-    except FileNotFoundError:
+    except CalledProcessError:
         pass
 
     tqdm_wheel = (
@@ -40,7 +46,7 @@ def test_tqdm():
     check_call([get_bin(), "venv-install", tqdm_wheel], env=env)
     check_call(
         [
-            f"{venv}/bin/python",
+            python,
             get_root()
             .joinpath("test")
             .joinpath("install")
@@ -48,7 +54,7 @@ def test_tqdm():
         ],
         env=env,
     )
-    check_call([f"{venv}/bin/tqdm", "--version"], env=env)
+    check_call([python, tqdm, "--version"], env=env)
     shutil.rmtree(venv)
 
 
