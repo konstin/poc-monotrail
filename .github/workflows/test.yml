@@ -40,7 +40,7 @@ jobs:
           toolchain: stable
       # We need normal poetry as reference; Pin to a specific version since we diff against the output
       - name: Install poetry
-        run: pipx install poetry==1.1.13
+        run: pipx install poetry==1.2.0
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v1
@@ -167,7 +167,7 @@ jobs:
           toolchain: stable
       # We need normal poetry as reference; Pin to a specific version since we diff against the output
       - name: Install poetry
-        run: pipx install poetry==1.1.13
+        run: pipx install poetry==1.2.0
 
       # For some reason, alternating between maturin and cargo invalidates the cache
       - name: Cache maturin build
