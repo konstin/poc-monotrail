@@ -334,8 +334,8 @@ fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
         let path = if cfg!(windows) {
             // https://stackoverflow.com/a/50323079
             const VERBATIM_PREFIX: &str = r#"\\?\"#;
-            if path.starts_with(VERBATIM_PREFIX) {
-                path[VERBATIM_PREFIX.len()..].to_string()
+            if let Some(stripped) = path.strip_prefix(VERBATIM_PREFIX) {
+                stripped.to_string()
             } else {
                 path
             }

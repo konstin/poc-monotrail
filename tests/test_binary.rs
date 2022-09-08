@@ -138,7 +138,8 @@ fn test_srcery() {
     let output: Vec<String> = handle_output(output)
         .unwrap()
         .into_iter()
-        .filter(|line| !line.starts_with("\u{1b}"))
+        // colored log message
+        .filter(|line| !line.starts_with('\u{1b}'))
         .collect();
     assert_eq!(
         output.last().expect("Expected at least one line"),

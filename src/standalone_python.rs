@@ -245,17 +245,24 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
     let target_triple = target_lexicon::HOST.to_string();
     // https://python-build-standalone.readthedocs.io/en/latest/running.html#obtaining-distributions
     let (target_triple, linker_opts) = if target_triple.starts_with("x86_64-unknown-linux") {
-        cpufeatures::new!(cpu_v3, "avx2");
-        cpufeatures::new!(cpu_v2, "sse4.2");
-        // For python3.8 there's only the base version
-        let target_triple = if cpu_v3::init().get() && minor > 8 {
-            target_triple.replace("x86_64", "x86_64_v3")
-        } else if cpu_v2::init().get() && minor > 8 {
-            target_triple.replace("x86_64", "x86_64_v2")
-        } else {
-            target_triple
-        };
-        (target_triple, "pgo+lto")
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            cpufeatures::new!(cpu_v3, "avx2");
+            cpufeatures::new!(cpu_v2, "sse4.2");
+            // For python3.8 there's only the base version
+            let target_triple = if cpu_v3::init().get() && minor > 8 {
+                target_triple.replace("x86_64", "x86_64_v3")
+            } else if cpu_v2::init().get() && minor > 8 {
+                target_triple.replace("x86_64", "x86_64_v2")
+            } else {
+                target_triple
+            };
+            (target_triple, "pgo+lto")
+        }
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            unreachable!()
+        }
     } else if target_triple.ends_with("pc-windows-msvc") {
         (format!("{}-shared", target_triple), "pgo")
     } else {
