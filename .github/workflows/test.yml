@@ -105,11 +105,17 @@ jobs:
           
           rm -r .venv-benchmark
 
-      - name: Collect binary
-        if: ${{ github.event_name != 'pull_request' }}
+      - name: Collect binary (unix)
+        if: ${{ github.event_name != 'pull_request' && matrix.os != 'windows-latest' }}
         run: |
           mkdir gh_pages_folder
           cp target/release/monotrail gh_pages_folder
+
+      - name: Collect binary (windows)
+        if: ${{ github.event_name != 'pull_request' && matrix.os == 'windows-latest' }}
+        run: |
+          mkdir gh_pages_folder
+          cp target/release/monotrail.exe gh_pages_folder
 
       - name: Deploy to github pages
         if: ${{ github.event_name != 'pull_request' }}
