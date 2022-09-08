@@ -18,7 +18,7 @@ jobs:
         uses: messense/maturin-action@v1
         with:
           command: build
-          args: --release --strip
+          args: --release --strip --universal2
           manylinux: auto
       - name: Upload wheel
         uses: actions/upload-artifact@v3
@@ -56,4 +56,4 @@ jobs:
           MATURIN_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
         with:
           command: upload
-          args: --repository=testpypi --universal2 --skip-existing *
+          args: --repository=testpypi --skip-existing *
