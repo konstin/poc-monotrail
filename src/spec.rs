@@ -235,9 +235,9 @@ mod test {
         assert_eq!(
             manylinux_url("cffi").unwrap().location,
             FileOrUrl::Url {
-                url: "https://files.pythonhosted.org/packages/44/6b/5edf93698ef1dc745774e47e26f5995040dd3604562dd63f5959fcd3a49e/cffi-1.15.0-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl".to_string(),
-                filename: "cffi-1.15.0-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl".to_string()
-            },
+                url: "https://files.pythonhosted.org/packages/93/d0/2e2b27ea2f69b0ec9e481647822f8f77f5fc23faca2dd00d1ff009940eb7/cffi-1.15.1-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl".to_string(),
+                filename: "cffi-1.15.1-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl".to_string()
+            }
         )
     }
 

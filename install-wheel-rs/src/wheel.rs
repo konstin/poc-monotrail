@@ -905,7 +905,8 @@ fn write_file_recorded(
 fn extra_dist_info(
     site_packages: &Path,
     dist_info: &Path,
-    wheel_path: &Path,
+    // https://github.com/python-poetry/poetry/issues/6356
+    #[allow(unused_variables)] wheel_path: &Path,
     requested: bool,
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), WheelInstallerError> {
@@ -919,11 +920,14 @@ fn extra_dist_info(
         write_file_recorded(site_packages, &dist_info.join("REQUESTED"), "", record)?;
     }
 
+    // https://github.com/python-poetry/poetry/issues/6356
+    /*
     let wheel_path_url = format!("file://{}", wheel_path.canonicalize()?.display());
     let direct_url = DirectUrl {
         archive_info: HashMap::new(),
         url: wheel_path_url,
     };
+
     // Map explicitly because we special cased that error
     let direct_url_json =
         serde_json::to_string(&direct_url).map_err(WheelInstallerError::DirectUrlSerdeJsonError)?;
@@ -933,6 +937,7 @@ fn extra_dist_info(
         &direct_url_json,
         record,
     )?;
+    */
     Ok(())
 }
 

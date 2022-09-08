@@ -68,7 +68,8 @@ def compare_with_pip(
 
 
 def diff_envs(env_name: str, env_py: Path, env_rs: Path):
-    # Filter out paths created by invoking pip and pip itself
+    # Filter out paths created by invoking pip and pip itself with on oh horrible regex
+    # Better matching suggestions welcome 😬
     dirs = [
         r"__pycache__",
         r"pip",
@@ -76,6 +77,7 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         r"setuptools",
         r"pkg_resources",
         r"_distutils_hack/__pycache__",
+        r"[^/]+/direct_url.json",  # Doesn't make sense in our case to enforce this strictly
     ]
     pattern = (
         (
@@ -84,7 +86,7 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
             else r"^(lib/python3\.8/site-packages/("
         )
         + "|".join(dirs)
-        + r")|bin/__pycache__|Scripts/__pycache__|monotrail.lock)"
+        + r")|bin/__pycache__|Scripts/__pycache__|monotrail.lock|.*/__pycache__(/.*)?)"
     )
     if platform.system() == "Windows":
         # -.-

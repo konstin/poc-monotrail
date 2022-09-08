@@ -58,10 +58,10 @@ jobs:
       - name: Publish to PyPi
         uses: messense/maturin-action@v1
         env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         with:
           command: upload
-          args: --repository=testpypi --skip-existing *
+          args: --skip-existing *
 
   build-binaries:
     name: Build Binaries
@@ -69,9 +69,9 @@ jobs:
       fail-fast: false
       matrix:
         platform: [
-          { os: "ubuntu-latest", bin: "monotrail", release: "maturin-x86_64-unknown-linux-gnu.tar.gz" },
-          { os: "windows-latest", bin: "monotrail", release: "maturin-x86_64-pc-windows-msvc.zip" },
-          { os: "macos-latest", bin: "monotrail", release: "maturin-x86_64-apple-darwin.tar.gz" },
+          { os: "ubuntu-latest", bin: "monotrail", release: "monotrail-x86_64-unknown-linux-gnu.tar.gz" },
+          { os: "windows-latest", bin: "monotrail", release: "monotrail-x86_64-pc-windows-msvc.zip" },
+          { os: "macos-latest", bin: "monotrail", release: "monotrail-x86_64-apple-darwin.tar.gz" },
         ]
     runs-on: ${{ matrix.platform.os }}
     steps:

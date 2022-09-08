@@ -1,6 +1,6 @@
 # Proof Of Concept: Monotrail
 
-This proof of concept shows how to use python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml`/`poetry.lock` in the directory:
+This proof of concept shows how to use python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml`/`poetry.lock` in the directory. Install with pipx, pip or a binary from [release](https://github.com/konstin/poc-monotrail/releases/latest) or [main](https://konstin.github.io/poc-monotrail/)
 
 ```
 pipx install monotrail # or `pip install monotrail`

@@ -250,14 +250,19 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
 
         Essentially, context has a name and a path attribute and we need to return an iterator with
         our Distribution object"""
-        if context.name in self.sprawl_packages:
-            package = self.sprawl_packages[context.name]
-            return iter([self._single_distribution(package)])
-        elif context.name is None:
+        if context.name is None:
             # return all packages, this is used e.g. by pytest -> pluggy for plugin discovery
             return (
                 self._single_distribution(package)
                 for package in self.sprawl_packages.values()
             )
+
+        # e.g. poetry-plugin-export will be normalized to poetry_plugin_export
+        # TODO: Do we also need to normalize letter case?
+        name = context.name.replace("-", "_")
+        if name in self.sprawl_packages:
+            package = self.sprawl_packages[name]
+            # oddity of the api: you must return an iterator
+            return iter([self._single_distribution(package)])
         else:
             return iter([])

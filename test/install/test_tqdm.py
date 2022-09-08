@@ -8,7 +8,7 @@ from test.install.utils import get_bin, get_root
 
 
 def test_tqdm():
-    venv = Path(__file__).parent.parent.joinpath("test-venvs/venv-tqdm")
+    venv = get_root().joinpath("test-venvs").joinpath("venv-tqdm")
     if venv.is_dir():
         shutil.rmtree(venv)
     check_call(["virtualenv", venv])
