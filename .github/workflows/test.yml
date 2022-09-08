@@ -8,7 +8,7 @@ on:
   pull_request:
 
 jobs:
-  test_cargo:
+  test-cargo:
     name: Test Cargo
     strategy:
       fail-fast: false
@@ -117,15 +117,32 @@ jobs:
           mkdir gh_pages_folder
           cp target/release/monotrail.exe gh_pages_folder
 
+      - name: Upload binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries-${{ matrix.os }}
+          path: |
+            target/release/monotrail
+            target/release/monotrail.exe
+
+  upload-binaries:
+    name: Upload Binaries
+    runs-on: ubuntu-latest
+    needs: [ test-cargo ]
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@v3
+        with:
+          path: binaries
       - name: Deploy to github pages
         if: ${{ github.event_name != 'pull_request' }}
         uses: JamesIves/github-pages-deploy-action@v4.4.0
         with:
           branch: gh-pages
-          folder: gh_pages_folder
+          folder: binaries
           target-folder: ${{ github.ref_name }}/${{ matrix.platform-name }}
 
-  test_maturin:
+  test-maturin:
     name: Test Maturin
     strategy:
       matrix:
