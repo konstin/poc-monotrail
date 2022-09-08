@@ -64,6 +64,8 @@ monotrail.interactive(
 )
 ```
 
+![Screenshot of the jupyter browser UI using monotrail](resources/jupyter.png)
+
 In google colab, you might want to import your git repository:
 
 ```python

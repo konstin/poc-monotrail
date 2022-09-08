@@ -1,6 +1,7 @@
 [package]
 name = "monotrail"
-version = "0.0.21"
+version = "0.0.22"
+description = "This proof of concept shows how to use python packages without virtualenvs"
 edition = "2021"
 readme = "Readme.md"
 

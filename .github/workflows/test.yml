@@ -16,10 +16,13 @@ jobs:
         include:
           - os: ubuntu-latest
             platform-name: ubuntu
+            release-name: maturin-x86_64-unknown-linux-gnu.tar.gz
           - os: macos-latest
             platform-name: macos
+            release-name: maturin-x86_64-apple-darwin.tar.gz
           - os: windows-latest
-            name: windows-latest
+            platform-name: windows
+            release-name: maturin-x86_64-pc-windows-msvc.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -105,25 +108,23 @@ jobs:
           
           rm -r .venv-benchmark
 
-      - name: Collect binary (unix)
-        if: ${{ github.event_name != 'pull_request' && matrix.os != 'windows-latest' }}
+      - name: Archive binary (windows)
+        if: matrix.os == 'windows-latest'
         run: |
-          mkdir gh_pages_folder
-          cp target/release/monotrail gh_pages_folder
-
-      - name: Collect binary (windows)
-        if: ${{ github.event_name != 'pull_request' && matrix.os == 'windows-latest' }}
+          cd target/release
+          7z a ../../${{ matrix.release-name }} ${{ bin-name }}.exe
+          cd -
+      - name: Archive binary (linux and macOS)
+        if: matrix.os != 'windows-latest'
         run: |
-          mkdir gh_pages_folder
-          cp target/release/monotrail.exe gh_pages_folder
-
-      - name: Upload binary
+          cd target/release
+          tar czvf ../../${{ matrix.release-name }} ${{ bin-name }}
+          cd -
+      - name: Upload Binary
         uses: actions/upload-artifact@v3
         with:
-          name: binaries-${{ matrix.os }}
-          path: |
-            target/release/monotrail
-            target/release/monotrail.exe
+          name: binaries
+          path: ${{ matrix.release-name }}
 
   upload-binaries:
     name: Upload Binaries
@@ -134,6 +135,7 @@ jobs:
       - name: Download wheels
         uses: actions/download-artifact@v3
         with:
+          name: binaries
           path: binaries
       - name: Deploy to github pages
         if: ${{ github.event_name != 'pull_request' }}
@@ -141,7 +143,7 @@ jobs:
         with:
           branch: gh-pages
           folder: binaries
-          target-folder: ${{ github.ref_name }}/${{ matrix.platform-name }}
+          target-folder: ${{ github.ref_name }}
 
   test-maturin:
     name: Test Maturin

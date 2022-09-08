@@ -1,4 +1,4 @@
-These are various data files included in the monotrail binary:
+These files included in the monotrail binary:
 
  * python_build_standalone_known_good_release.json.zst: The content of https://github.com/indygreg/python-build-standalone/releases/tag/20220502 as of 2022-09-06, zstd compressed because that's 2.44% of the original json size
  * poetry_boostrap_lock: Resolved dependencies for poetry 1.1.13 we use for bootstrapping poetry itself
