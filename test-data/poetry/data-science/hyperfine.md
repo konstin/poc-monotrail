@@ -1,5 +1,5 @@
 | Command | Mean [s] | Min [s] | Max [s] | Relative |
 |:---|---:|---:|---:|---:|
-| `.venv/bin/pip install -q -r requirements-benchmark.txt` | 11.745 ± 1.159 | 10.830 | 13.048 | 2.24 ± 0.23 |
-| `poetry install -q --no-root -E tqdm_feature` | 15.039 ± 0.153 | 14.894 | 15.199 | 2.87 ± 0.08 |
-| `monotrail poetry-install -E tqdm_feature` | 5.232 ± 0.135 | 5.089 | 5.357 | 1.00 |
+| `.venv/bin/pip install -q -r requirements-benchmark.txt` | 11.061 ± 0.179 | 10.911 | 11.258 | 2.09 ± 0.08 |
+| `poetry install -q --no-root --only main -E tqdm_feature` | 16.234 ± 2.434 | 14.037 | 18.851 | 3.07 ± 0.47 |
+| `monotrail poetry-install -E tqdm_feature` | 5.283 ± 0.189 | 5.085 | 5.462 | 1.00 |

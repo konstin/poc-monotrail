@@ -75,6 +75,8 @@ monotrail.from_git(
 )
 ```
 
+![A google colab screenshot showing the above snippet in action](resources/colabfold-monotrail.png)
+
 As [pipx](https://github.com/pypa/pipx) replacement: 
 
 ```shell
@@ -120,8 +122,8 @@ By reimplementing wheel installation in rust, it also became a good bit faster. 
 
 Installing a single large wheel (plotly)
 
-```        
-$ rm -rf .venv-benchmark && virtualenv .venv-benchmark
+```
+$ virtualenv --clear .venv-benchmark
 $ VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
   "target/release/monotrail venv-install test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl" \
   ".venv-benchmark/bin/pip install --no-deps test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl"
@@ -142,25 +144,26 @@ Summary
 A sample datascience stack (numpy, pandas, matplotlib)
 
 ```
+$ ./benchmark.sh 
 test-data/poetry/data-science -E tqdm_feature
-pip 22.0.4 from /home/konsti/monotrail/.venv-b/lib/python3.8/site-packages/pip (python 3.8)
-Poetry version 1.1.13
+pip 22.2.2 from /home/konsti/monotrail/.venv-b/lib/python3.8/site-packages/pip (python 3.8)
+Poetry (version 1.2.0)
 Benchmark 1: .venv/bin/pip install -q -r requirements-benchmark.txt
-  Time (mean ± σ):     11.745 s ±  1.159 s    [User: 9.637 s, System: 1.339 s]
-  Range (min … max):   10.830 s … 13.048 s    3 runs
+  Time (mean ± σ):     11.061 s ±  0.179 s    [User: 8.705 s, System: 1.297 s]
+  Range (min … max):   10.911 s … 11.258 s    3 runs
  
-Benchmark 2: poetry install -q --no-root -E tqdm_feature
-  Time (mean ± σ):     15.039 s ±  0.153 s    [User: 41.032 s, System: 5.934 s]
-  Range (min … max):   14.894 s … 15.199 s    3 runs
+Benchmark 2: poetry install -q --no-root --only main -E tqdm_feature
+  Time (mean ± σ):     16.234 s ±  2.434 s    [User: 42.682 s, System: 4.044 s]
+  Range (min … max):   14.037 s … 18.851 s    3 runs
  
 Benchmark 3: monotrail poetry-install -E tqdm_feature
-  Time (mean ± σ):      5.232 s ±  0.135 s    [User: 12.850 s, System: 2.334 s]
-  Range (min … max):    5.089 s …  5.357 s    3 runs
+  Time (mean ± σ):      5.283 s ±  0.189 s    [User: 13.815 s, System: 2.540 s]
+  Range (min … max):    5.085 s …  5.462 s    3 runs
  
 Summary
   'monotrail poetry-install -E tqdm_feature' ran
-    2.24 ± 0.23 times faster than '.venv/bin/pip install -q -r requirements-benchmark.txt'
-    2.87 ± 0.08 times faster than 'poetry install -q --no-root -E tqdm_feature'
+    2.09 ± 0.08 times faster than '.venv/bin/pip install -q -r requirements-benchmark.txt'
+    3.07 ± 0.47 times faster than 'poetry install -q --no-root --only main -E tqdm_feature'
 ```
 
 A mid-sized django project 
