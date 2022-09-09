@@ -485,10 +485,10 @@ mod test {
             (mst, false, vec![], 130),
             (mst, true, vec!["import-json".to_string()], 97),
             (mst, false, vec!["import-json".to_string()], 131),
-            (data_science, true, vec![], 14),
-            (data_science, false, vec![], 20),
-            (data_science, true, vec!["tqdm_feature".to_string()], 15),
-            (data_science, false, vec!["tqdm_feature".to_string()], 21),
+            (data_science, true, vec![], 15),
+            (data_science, false, vec![], 21),
+            (data_science, true, vec!["tqdm_feature".to_string()], 16),
+            (data_science, false, vec!["tqdm_feature".to_string()], 22),
         ];
 
         for (toml_dir, no_dev, extras, specs_count) in expected {
