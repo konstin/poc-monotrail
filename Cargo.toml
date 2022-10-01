@@ -25,7 +25,7 @@ fs2 = "0.4.3"
 git2 = "0.15.0"
 indicatif = "0.17.1"
 install-wheel-rs = { version = "0.0.3", path = "install-wheel-rs" }
-libc = "0.2.133"
+libc = "0.2.134"
 libloading = "0.7.3"
 # For the zig build
 libz-sys = { version = "1.1.8", features = ["static"] }
