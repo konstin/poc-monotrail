@@ -244,7 +244,7 @@ impl Os {
                 return Err(WheelInstallerError::OsVersionDetectionError(format!(
                     "The operating system {:?} is not supported",
                     unsupported
-                )))
+                )));
             }
         };
         Ok(os)
@@ -340,7 +340,7 @@ fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
 
     let invalid_mac_os_version = || {
         WheelInstallerError::OsVersionDetectionError(format!(
-            "Invalid mac os version {}",
+            "Invalid Mac OS version {}",
             system_version.product_version
         ))
     };
@@ -357,6 +357,39 @@ fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
         }
         _ => Err(invalid_mac_os_version()),
     }
+}
+
+fn get_mac_binary_formats(major: u16, minor: u16, arch: &Arch) -> Vec<String> {
+    let mut formats = vec![arch.to_string()];
+    match arch {
+        Arch::X86_64 => {
+            if (major, minor) < (10, 4) {
+                return vec![];
+            }
+            formats.extend([
+                "intel".to_string(), "fat64".to_string(), "fat32".to_string(),
+            ]);
+        }
+        Arch::Powerpc64 => {
+            if ((major, minor) > (10, 5)) || ((major, minor) < (10, 4)) {
+                return vec![];
+            }
+            formats.extend([
+                "fat64".to_string()
+            ]);
+        }
+        _ => {}
+    }
+
+    if matches!(arch, Arch::X86_64 | Arch::Aarch64) {
+        formats.push("universal2".to_string());
+    }
+
+    if matches!(arch, Arch::X86_64 | Arch::Powerpc64) {
+        formats.push("universal".to_string());
+    }
+
+    formats
 }
 
 /// Find musl libc path from executable's ELF header
@@ -430,48 +463,67 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             platform_tags
         }
         (Os::Macos { major, minor }, Arch::X86_64) => {
-            assert!(major == 10 || major == 11);
+            assert!(major == 10 || major == 11 || major == 12);
             let mut platform_tags = vec![];
             match major {
                 10 => {
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_x86_64", major, minor)),
-                    );
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)),
-                    );
+                    // Prior to Mac OS 11, each yearly release of Mac OS bumped the "minor" version
+                    // number. The major version was always 10.
+                    for minor in (0..=minor).rev() {
+                        for binary_format in get_mac_binary_formats(major, minor, arch) {
+                            platform_tags.push(
+                                format!("macosx_{}_{}_{}", major, minor, binary_format)
+                            );
+                        }
+                    }
                 }
-                11 => {
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_x86_64", major, minor)),
-                    );
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)),
-                    );
-                    // Mac os 10 backwards compatibility
-                    platform_tags
-                        .extend((0..=15).map(|minor| format!("macosx_{}_{}_x86_64", 10, minor)));
-                    platform_tags.extend(
-                        (0..=15).map(|minor| format!("macosx_{}_{}_universal2", 10, minor)),
-                    );
+                11 | 12 => {
+                    // Starting with Mac OS 11, each yearly release bumps the major version number.
+                    // The minor versions are now the midyear updates.
+                    for major in (10..=major).rev() {
+                        for binary_format in get_mac_binary_formats(major, 0, arch) {
+                            platform_tags.push(
+                                format!("macosx_{}_{}_{}", major, 0, binary_format)
+                            );
+                        }
+                    }
+                    // The "universal2" binary format can have a macOS version earlier than 11.0
+                    // when the x86_64 part of the binary supports that version of macOS.
+                    for minor in (4..=16).rev() {
+                        for binary_format in get_mac_binary_formats(10, minor, arch) {
+                            platform_tags.push(
+                                format!("macosx_{}_{}_{}", 10, minor, binary_format)
+                            );
+                        }
+                    }
                 }
                 _ => {
                     return Err(WheelInstallerError::OsVersionDetectionError(format!(
-                        "Unsupported mac os version: {}",
+                        "Unsupported Mac OS version: {}",
                         major,
                     )));
                 }
             }
             platform_tags
         }
-        (Os::Macos { major, minor }, Arch::Aarch64) => {
-            // arm64 (aka apple silicon) needs mac os 11
-            assert_eq!(major, 11);
+        (Os::Macos { major, .. }, Arch::Aarch64) => {
+            // arm64 (aka apple silicon) needs Mac OS 11 or higher
+            assert!(major == 11 || major == 12);
             let mut platform_tags = vec![];
-            platform_tags
-                .extend((0..=minor).map(|minor| format!("macosx_{}_{}_arm64", major, minor)));
-            platform_tags
-                .extend((0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)));
+            // Starting with Mac OS 11, each yearly release bumps the major version number.
+            // The minor versions are now the midyear updates.
+            for major in (10..=major).rev() {
+                for binary_format in get_mac_binary_formats(major, 0, arch) {
+                    platform_tags.push(
+                        format!("macosx_{}_{}_{}", major, 0, binary_format)
+                    );
+                }
+            }
+            // The "universal2" binary format can have a macOS version earlier than 11.0
+            // when the x86_64 part of the binary supports that version of macOS.
+            platform_tags.extend(
+                (4..=16).rev().map(|minor| format!("macosx_{}_{}_universal2", 10, minor)),
+            );
             platform_tags
         }
         (Os::Windows, Arch::X86) => {
@@ -676,7 +728,7 @@ mod test {
         assert_eq!(
             vec![
                 "numpy-1.22.2-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-                "tqdm-4.62.3-py2.py3-none-any.whl"
+                "tqdm-4.62.3-py2.py3-none-any.whl",
             ],
             compatible
         );
@@ -724,11 +776,11 @@ mod test {
             },
             &Arch::X86_64,
         )?
-        .iter()
-        .map(|(python_tag, abi_tag, platform_tag)| {
-            format!("{}-{}-{}", python_tag, abi_tag, platform_tag)
-        })
-        .collect();
+            .iter()
+            .map(|(python_tag, abi_tag, platform_tag)| {
+                format!("{}-{}-{}", python_tag, abi_tag, platform_tag)
+            })
+            .collect();
         assert_eq!(expected_tags, actual_tags);
         Ok(())
     }
