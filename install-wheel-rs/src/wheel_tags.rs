@@ -244,7 +244,7 @@ impl Os {
                 return Err(WheelInstallerError::OsVersionDetectionError(format!(
                     "The operating system {:?} is not supported",
                     unsupported
-                )));
+                )))
             }
         };
         Ok(os)
