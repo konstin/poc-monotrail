@@ -359,6 +359,36 @@ fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
     }
 }
 
+/// Determine the appropriate binary formats for a mac os version.
+/// Source: https://github.com/pypa/packaging/blob/fd4f11139d1c884a637be8aa26bb60a31fbc9411/packaging/tags.py#L314
+fn get_mac_binary_formats(major: u16, minor: u16, arch: &Arch) -> Vec<String> {
+    let mut formats = vec![match arch {
+        Arch::Aarch64 => "arm64".to_string(),
+        _ => arch.to_string(),
+    }];
+
+    if matches!(arch, Arch::X86_64) {
+        if (major, minor) < (10, 4) {
+            return vec![];
+        }
+        formats.extend([
+            "intel".to_string(),
+            "fat64".to_string(),
+            "fat32".to_string(),
+        ]);
+    }
+
+    if matches!(arch, Arch::X86_64 | Arch::Aarch64) {
+        formats.push("universal2".to_string());
+    }
+
+    if matches!(arch, Arch::X86_64) {
+        formats.push("universal".to_string());
+    }
+
+    formats
+}
+
 /// Find musl libc path from executable's ELF header
 pub fn find_libc() -> Result<PathBuf, WheelInstallerError> {
     let buffer = fs::read("/bin/ls")?;
@@ -430,30 +460,35 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             platform_tags
         }
         (Os::Macos { major, minor }, Arch::X86_64) => {
-            assert!(major == 10 || major == 11);
+            // Source: https://github.com/pypa/packaging/blob/fd4f11139d1c884a637be8aa26bb60a31fbc9411/packaging/tags.py#L346
             let mut platform_tags = vec![];
             match major {
                 10 => {
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_x86_64", major, minor)),
-                    );
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)),
-                    );
+                    // Prior to Mac OS 11, each yearly release of Mac OS bumped the "minor" version
+                    // number. The major version was always 10.
+                    for minor in (0..=minor).rev() {
+                        for binary_format in get_mac_binary_formats(major, minor, arch) {
+                            platform_tags
+                                .push(format!("macosx_{}_{}_{}", major, minor, binary_format));
+                        }
+                    }
                 }
-                11 => {
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_x86_64", major, minor)),
-                    );
-                    platform_tags.extend(
-                        (0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)),
-                    );
-                    // Mac os 10 backwards compatibility
-                    platform_tags
-                        .extend((0..=15).map(|minor| format!("macosx_{}_{}_x86_64", 10, minor)));
-                    platform_tags.extend(
-                        (0..=15).map(|minor| format!("macosx_{}_{}_universal2", 10, minor)),
-                    );
+                x if x >= 11 => {
+                    // Starting with Mac OS 11, each yearly release bumps the major version number.
+                    // The minor versions are now the midyear updates.
+                    for major in (10..=major).rev() {
+                        for binary_format in get_mac_binary_formats(major, 0, arch) {
+                            platform_tags.push(format!("macosx_{}_{}_{}", major, 0, binary_format));
+                        }
+                    }
+                    // The "universal2" binary format can have a macOS version earlier than 11.0
+                    // when the x86_64 part of the binary supports that version of macOS.
+                    for minor in (4..=16).rev() {
+                        for binary_format in get_mac_binary_formats(10, minor, arch) {
+                            platform_tags
+                                .push(format!("macosx_{}_{}_{}", 10, minor, binary_format));
+                        }
+                    }
                 }
                 _ => {
                     return Err(WheelInstallerError::OsVersionDetectionError(format!(
@@ -464,14 +499,23 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             }
             platform_tags
         }
-        (Os::Macos { major, minor }, Arch::Aarch64) => {
-            // arm64 (aka apple silicon) needs mac os 11
-            assert_eq!(major, 11);
+        (Os::Macos { major, .. }, Arch::Aarch64) => {
+            // Source: https://github.com/pypa/packaging/blob/fd4f11139d1c884a637be8aa26bb60a31fbc9411/packaging/tags.py#L346
             let mut platform_tags = vec![];
-            platform_tags
-                .extend((0..=minor).map(|minor| format!("macosx_{}_{}_arm64", major, minor)));
-            platform_tags
-                .extend((0..=minor).map(|minor| format!("macosx_{}_{}_universal2", major, minor)));
+            // Starting with Mac OS 11, each yearly release bumps the major version number.
+            // The minor versions are now the midyear updates.
+            for major in (10..=major).rev() {
+                for binary_format in get_mac_binary_formats(major, 0, arch) {
+                    platform_tags.push(format!("macosx_{}_{}_{}", major, 0, binary_format));
+                }
+            }
+            // The "universal2" binary format can have a macOS version earlier than 11.0
+            // when the x86_64 part of the binary supports that version of macOS.
+            platform_tags.extend(
+                (4..=16)
+                    .rev()
+                    .map(|minor| format!("macosx_{}_{}_universal2", 10, minor)),
+            );
             platform_tags
         }
         (Os::Windows, Arch::X86) => {
@@ -626,6 +670,28 @@ mod test {
                         minor: 0,
                     },
                     Arch::X86_64,
+                ),
+            ),
+            (
+                "ruff-0.0.63-py3-none-macosx_10_9_x86_64.macosx_11_0_arm64.macosx_10_9_universal2.whl",
+                (
+                    (3, 8),
+                    Os::Macos {
+                        major: 12,
+                        minor: 0,
+                    },
+                    Arch::X86_64,
+                ),
+            ),
+            (
+                "ruff-0.0.63-py3-none-macosx_10_9_x86_64.macosx_11_0_arm64.macosx_10_9_universal2.whl",
+                (
+                    (3, 8),
+                    Os::Macos {
+                        major: 12,
+                        minor: 0,
+                    },
+                    Arch::Aarch64,
                 ),
             ),
             (
