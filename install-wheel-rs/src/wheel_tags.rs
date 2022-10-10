@@ -742,7 +742,7 @@ mod test {
         assert_eq!(
             vec![
                 "numpy-1.22.2-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-                "tqdm-4.62.3-py2.py3-none-any.whl",
+                "tqdm-4.62.3-py2.py3-none-any.whl"
             ],
             compatible
         );
