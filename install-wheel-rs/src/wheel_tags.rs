@@ -709,7 +709,6 @@ mod test {
 
         for (filename, (python_version, os, arch)) in filenames {
             let compatible_tags = compatible_tags(python_version, &os, &arch)?;
-            println!("{:?}", compatible_tags);
             assert!(
                 WheelFilename::from_str(filename)?.is_compatible(&compatible_tags),
                 "{}",
