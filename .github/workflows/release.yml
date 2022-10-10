@@ -15,9 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Cache cargo build
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
         with:
-          key: build-wheels-${{ runner.os }}
           cache-on-failure: true
       - name: Build wheel
         uses: messense/maturin-action@v1
@@ -77,9 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Cache cargo build
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
         with:
-          key: build-binaries-${{ runner.os }}
           cache-on-failure: true
       - name: cargo build
         uses: actions-rs/cargo@v1

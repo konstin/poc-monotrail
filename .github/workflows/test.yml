@@ -19,6 +19,8 @@ jobs:
           toolchain: stable
           components: rustfmt
           override: true
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -85,9 +87,8 @@ jobs:
         run: pipx install poetry==1.2.0
 
       - name: Cache cargo build
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
         with:
-          key: monotrail-cargo-${{ runner.os }}
           cache-on-failure: true
 
       - name: cargo build
@@ -215,10 +216,9 @@ jobs:
 
       # For some reason, alternating between maturin and cargo invalidates the cache
       - name: Cache maturin build
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
         with:
-          key: monotrail-maturin-${{ runner.os }}
-          target-dir: target-maturin
+          workspaces: ". -> target-maturin"
           cache-on-failure: true
 
       # The whole venv management is overly complex
