@@ -35,9 +35,7 @@ pub fn filename_and_url(
     compatible_tags: &[(String, String, String)],
 ) -> anyhow::Result<(String, DistributionType, String)> {
     let hashed_files = lockfile
-        .metadata
-        .files
-        .get(&package.name)
+        .get_filenames(&package.name)
         .context("invalid lockfile (missing file hashes), run `poetry update`")?;
     let filenames: Vec<_> = hashed_files
         .iter()
@@ -236,7 +234,7 @@ pub fn read_toml_files(dir: &Path) -> anyhow::Result<(PoetrySection, PoetryLock,
         .and_then(|tool| tool.poetry)
         .with_context(|| format!("[tool.poetry] section missing in {}", path.display()))?;
     let lockfile = fs::read_to_string(dir.join("poetry.lock"))?;
-    let poetry_lock = toml::from_str(&lockfile).context("Invalid poetry.lock")?;
+    let poetry_lock = PoetryLock::from_str(&lockfile).context("Invalid poetry.lock")?;
     Ok((poetry_section, poetry_lock, lockfile))
 }
 

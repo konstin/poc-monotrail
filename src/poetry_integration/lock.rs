@@ -84,7 +84,8 @@ pub fn poetry_resolve(
     }
     let lockfile = fs::read_to_string(poetry_lock_path)?;
     // read poetry lock with the dependencies resolved by poetry
-    let poetry_lock = toml::from_str(&fs::read_to_string(resolve_dir.path().join("poetry.lock"))?)?;
+    let poetry_lock =
+        PoetryLock::from_str(&fs::read_to_string(resolve_dir.path().join("poetry.lock"))?)?;
 
     let poetry_section = pyproject_toml_content.tool.unwrap().poetry.unwrap();
     Ok((poetry_section, poetry_lock, lockfile))

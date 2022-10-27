@@ -1,6 +1,7 @@
 //! Types for poetry.lock
 
 use crate::markers::{parse_markers, Pep508Environment};
+use anyhow::bail;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -10,6 +11,36 @@ use std::collections::{HashMap, HashSet};
 pub struct PoetryLock {
     pub package: Vec<Package>,
     pub metadata: Metadata,
+}
+
+impl PoetryLock {
+    pub fn from_str(data: &str) -> anyhow::Result<Self> {
+        let lockfile: Self = toml::from_str(data)?;
+        if lockfile.metadata.lock_version != "1.1" && lockfile.metadata.lock_version != "2.0" {
+            bail!(
+                "Unsupported poetry.lock version {}",
+                lockfile.metadata.lock_version
+            )
+        }
+        Ok(lockfile)
+    }
+
+    /// Abstract over lock_version 1.1 and 2.0, which change in poetry 1.3
+    ///
+    /// In 1.1 the filenames and the hashes were separately in the metadata table, while in 2.0
+    /// its on each package.
+    ///
+    /// Pass the package name already normalized
+    pub fn get_filenames(&self, package_name: &str) -> Option<&Vec<HashedFile>> {
+        if let Some(v1_1) = &self.metadata.files {
+            return v1_1.get(package_name);
+        }
+        if let Some(v2_0) = self.package.iter().find(|p| p.name == package_name) {
+            return v2_0.files.as_ref();
+        }
+        // outdated lockfile, to be handled downstream
+        None
+    }
 }
 
 /// `[[package]]`
@@ -29,6 +60,8 @@ pub struct Package {
     #[serde(serialize_with = "toml::ser::tables_last")]
     pub dependencies: Option<HashMap<String, Dependency>>,
     pub source: Option<Source>,
+    // Only in lock file format 2.0/poetry 1.3 or newer
+    pub files: Option<Vec<HashedFile>>,
 }
 
 /// e.g. `{version = ">=1.21.0", markers = "python_version >= \"3.10\""}`
@@ -148,7 +181,8 @@ pub struct Metadata {
     pub python_versions: String,
     pub content_hash: String,
     /// `[metadata.files]`
-    pub files: HashMap<String, Vec<HashedFile>>,
+    /// Only in lock_version 1.1, in version 2.0/poetry 1.3 it's in each package
+    pub files: Option<HashMap<String, Vec<HashedFile>>>,
 }
 
 /// e.g. `{file = "attrs-21.4.0-py2.py3-none-any.whl", hash = "sha256:2d27e3784d7a565d36ab851fe94887c5eccd6a463168875832a1be79c82828b4"}`
@@ -158,4 +192,42 @@ pub struct Metadata {
 pub struct HashedFile {
     pub file: String,
     pub hash: String,
+}
+
+#[cfg(test)]
+mod test {
+    use crate::poetry_integration::poetry_lock::PoetryLock;
+    use std::fs;
+
+    fn get_filenames(filename: &str, package: &str) -> usize {
+        PoetryLock::from_str(&fs::read_to_string(filename).unwrap())
+            .unwrap()
+            .get_filenames(package)
+            .unwrap()
+            .len()
+    }
+
+    #[test]
+    fn filenames_1_1_13() {
+        assert_eq!(
+            get_filenames("test-data/poetry-1.1.13/poetry.lock", "certifi"),
+            2
+        );
+    }
+
+    #[test]
+    fn filenames_1_2_0b1() {
+        assert_eq!(
+            get_filenames("test-data/poetry-1.2.0b1/poetry.lock", "certifi"),
+            2
+        );
+    }
+
+    #[test]
+    fn poetry_1_3() {
+        assert_eq!(
+            get_filenames("test-data/poetry-1.3-django/poetry.lock", "django"),
+            2
+        );
+    }
 }
