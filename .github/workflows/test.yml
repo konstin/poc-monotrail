@@ -181,7 +181,7 @@ jobs:
           path: binaries
       - name: Deploy to github pages
         if: ${{ github.event_name != 'pull_request' }}
-        uses: JamesIves/github-pages-deploy-action@v4.4.0
+        uses: JamesIves/github-pages-deploy-action@v4.4.1
         with:
           branch: gh-pages
           folder: binaries
