@@ -10,7 +10,7 @@ name = "install_wheel_rs"
 #crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-base64 = "0.13.0"
+base64 = "0.13.1"
 configparser = "3.0.1"
 csv = "1.1.6"
 fs-err = "2.8.1"
