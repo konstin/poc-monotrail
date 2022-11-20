@@ -15,7 +15,7 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     Command::new("virtualenv").arg(&venv).output()?;
     let wheel = Path::new("test-data").join("pip-test-packages").join(name);
     let cli: Cli =
-        Cli::try_parse_from(&["monotrail", "venv-install", &wheel.display().to_string()])?;
+        Cli::try_parse_from(["monotrail", "venv-install", &wheel.display().to_string()])?;
     assert_cli_error(cli, Some(&venv), expected);
     Ok(())
 }
@@ -67,7 +67,7 @@ fn test_priority() -> Result<()> {
 /// but we load python so i'm not putting this into a unit test
 #[test]
 fn test_cli_python_hyphen() {
-    let cli = Cli::try_parse_from(&[
+    let cli = Cli::try_parse_from([
         BIN,
         "run",
         "--root",
@@ -82,7 +82,7 @@ fn test_cli_python_hyphen() {
 
 #[test]
 fn test_neither_command_nor_python() {
-    let cli = Cli::try_parse_from(&[BIN, "run", "bogus"]).unwrap();
+    let cli = Cli::try_parse_from([BIN, "run", "bogus"]).unwrap();
     let expected = &["invalid command `bogus`, must be 'python' or 'command'"];
     assert_cli_error(cli, None, expected);
 }

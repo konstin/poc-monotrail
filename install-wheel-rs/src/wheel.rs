@@ -230,6 +230,7 @@ fn unpack_wheel_files(
     record_path: &str,
     archive: &mut ZipArchive<File>,
     record: &[RecordEntry],
+    check_hashes: bool,
 ) -> Result<Vec<PathBuf>, WheelInstallerError> {
     let mut extracted_paths = Vec::new();
     // Cache the created parent dirs to avoid io calls
@@ -259,7 +260,13 @@ fn unpack_wheel_files(
             }
         }
         let mut outfile = BufWriter::new(File::create(&out_path)?);
-        let (_size, encoded_hash) = copy_and_hash(&mut file, &mut outfile)?;
+        let encoded_hash = if check_hashes {
+            let (_size, encoded_hash) = copy_and_hash(&mut file, &mut outfile)?;
+            Some(encoded_hash)
+        } else {
+            io::copy(&mut file, &mut outfile)?;
+            None
+        };
 
         extracted_paths.push(relative.clone());
 
@@ -290,39 +297,41 @@ fn unpack_wheel_files(
             continue;
         }
 
-        // `relative == Path::new(entry.path)` was really slow
-        let relative_str = relative.display().to_string();
-        let recorded_hash = record
-            .iter()
-            .find(|entry| relative_str == entry.path)
-            .and_then(|entry| entry.hash.as_ref())
-            .ok_or_else(|| {
-                WheelInstallerError::RecordFileError(format!(
-                    "Missing hash for {} (expected {})",
-                    relative.display(),
-                    encoded_hash
-                ))
-            })?;
-        if recorded_hash != &encoded_hash {
-            if relative.as_os_str().to_string_lossy().starts_with("torch-") {
-                error!(
+        if let Some(encoded_hash) = encoded_hash {
+            // `relative == Path::new(entry.path)` was really slow
+            let relative_str = relative.display().to_string();
+            let recorded_hash = record
+                .iter()
+                .find(|entry| relative_str == entry.path)
+                .and_then(|entry| entry.hash.as_ref())
+                .ok_or_else(|| {
+                    WheelInstallerError::RecordFileError(format!(
+                        "Missing hash for {} (expected {})",
+                        relative.display(),
+                        encoded_hash
+                    ))
+                })?;
+            if recorded_hash != &encoded_hash {
+                if relative.as_os_str().to_string_lossy().starts_with("torch-") {
+                    error!(
+                        "Hash mismatch for {}. Recorded: {}, Actual: {}",
+                        relative.display(),
+                        recorded_hash,
+                        encoded_hash,
+                    );
+                    error!(
+                        "Torch isn't capable of producing correct hashes 🙄 Ignoring. \
+                    https://github.com/pytorch/pytorch/issues/47916"
+                    );
+                    continue;
+                }
+                return Err(WheelInstallerError::RecordFileError(format!(
                     "Hash mismatch for {}. Recorded: {}, Actual: {}",
                     relative.display(),
                     recorded_hash,
                     encoded_hash,
-                );
-                error!(
-                    "Torch isn't capable of producing correct hashes 🙄 Ignoring. \
-                    https://github.com/pytorch/pytorch/issues/47916"
-                );
-                continue;
+                )));
             }
-            return Err(WheelInstallerError::RecordFileError(format!(
-                "Hash mismatch for {}. Recorded: {}, Actual: {}",
-                relative.display(),
-                recorded_hash,
-                encoded_hash,
-            )));
         }
     }
     Ok(extracted_paths)
@@ -1098,7 +1107,8 @@ pub fn install_wheel(
     // > 1.d Else unpack archive into platlib (site-packages).
     // We always install in the same virtualenv site packages
     debug!(name = name.as_str(), "Extracting file");
-    let unpacked_paths = unpack_wheel_files(&site_packages, &record_path, &mut archive, &record)?;
+    let unpacked_paths =
+        unpack_wheel_files(&site_packages, &record_path, &mut archive, &record, true)?;
     debug!(
         name = name.as_str(),
         "Extracted {} files",

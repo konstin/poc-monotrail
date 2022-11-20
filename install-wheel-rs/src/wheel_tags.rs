@@ -413,7 +413,7 @@ pub fn find_libc() -> Result<PathBuf, WheelInstallerError> {
 /// Version 1.2.2
 /// Dynamic Program Loader
 pub fn get_musl_version(ld_path: impl AsRef<Path>) -> std::io::Result<Option<(u16, u16)>> {
-    let output = Command::new(&ld_path.as_ref())
+    let output = Command::new(ld_path.as_ref())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()?;
@@ -534,7 +534,7 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             _,
         ) => {
             let info = PlatformInfo::new()?;
-            let release = info.release().replace('.', "_").replace('-', "_");
+            let release = info.release().replace(['.', '-'], "_");
             vec![format!(
                 "{}_{}_{}",
                 os.to_string().to_lowercase(),
