@@ -29,7 +29,7 @@ libc = "0.2.133"
 libloading = "0.7.3"
 # For the zig build
 libz-sys = { version = "1.1.8", features = ["static"] }
-nix = { version = "0.25.0", features = ["process"] }
+nix = { version = "0.26.1", features = ["process"] }
 pep440 = "0.2.0"
 pyo3 = { version = "0.17.1", features = ["extension-module", "abi3-py37"], optional = true }
 rayon = "1.5.3"
