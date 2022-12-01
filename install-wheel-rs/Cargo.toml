@@ -23,7 +23,7 @@ pyo3 = { version = "0.17.1", features = ["extension-module", "abi3-py37"], optio
 python-pkginfo = "0.5.4"
 regex = "1.6.0"
 serde = { version = "1.0.144", features = ["derive"] }
-serde_json = "1.0.85"
+serde_json = "1.0.89"
 sha2 = "0.10.5"
 target-lexicon = "0.12.4"
 tempfile = "3.3.0"
