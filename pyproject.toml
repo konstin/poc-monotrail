@@ -15,5 +15,5 @@ minversion = "6.0"
 addopts = "--tb=short"
 
 [build-system]
-requires = ["maturin>=0.13.2,<0.14"]
+requires = ["maturin>=0.14,<0.15"]
 build-backend = "maturin"
