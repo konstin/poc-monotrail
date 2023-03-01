@@ -13,6 +13,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir_in;
 use tracing::{debug, info, warn};
+
 #[cfg_attr(test, allow(dead_code))]
 const GITHUB_API: &str = "https://api.github.com";
 
@@ -47,13 +48,7 @@ struct GitHubAsset {
 /// Returns the url of the matching pgo+lto prebuilt python. We first try to find one in the latest
 /// indygreg/python-build-standalone, then fall back to a known good release in case a more recent
 /// release broke compatibility
-fn find_python(major: u8, minor: u8) -> anyhow::Result<String> {
-    #[cfg(not(test))]
-    let host = GITHUB_API;
-
-    #[cfg(test)]
-    let host = &mockito::server_url();
-
+fn find_python(host: &str, major: u8, minor: u8) -> anyhow::Result<String> {
     let version_re = filename_regex(major, minor);
 
     let latest_release: anyhow::Result<GitHubRelease> =
@@ -157,7 +152,7 @@ fn provision_python_inner(
         "Installing python {}.{}",
         python_version.0, python_version.1
     );
-    let url = find_python(python_version.0, python_version.1).with_context(|| {
+    let url = find_python(GITHUB_API, python_version.0, python_version.1).with_context(|| {
         format!(
             "Couldn't find a matching python {}.{} to download",
             python_version.0, python_version.1,
@@ -283,14 +278,14 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
 
 #[cfg(test)]
 mod test {
-    use mockito::Mock;
+    use mockito::{Mock, ServerGuard};
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     use crate::standalone_python::provision_python;
     use crate::standalone_python::{find_python, PYTHON_STANDALONE_LATEST_RELEASE};
     use crate::utils::zstd_json_mock;
 
-    fn mock() -> Mock {
+    fn mock() -> (ServerGuard, Mock) {
         zstd_json_mock(
             PYTHON_STANDALONE_LATEST_RELEASE.0,
             "test-data/standalone_python_github_release.json.zstd",
@@ -300,17 +295,17 @@ mod test {
     #[test]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn test_download_url_from_release_20220502() {
-        let _mocks = mock();
+        let (server, _mocks) = mock();
 
-        let url = find_python(3, 9).unwrap();
+        let url = find_python(&server.url(), 3, 9).unwrap();
         assert_eq!(url, "https://github.com/indygreg/python-build-standalone/releases/download/20220502/cpython-3.9.12%2B20220502-x86_64_v3-unknown-linux-gnu-pgo%2Blto-full.tar.zst")
     }
 
     #[test]
     fn test_download_url_from_release_20220502_any() {
-        let _mocks = mock();
+        let (server, _mocks) = mock();
 
-        assert!(find_python(3, 9).is_ok());
+        assert!(find_python(&server.url(), 3, 9).is_ok());
     }
 
     #[test]

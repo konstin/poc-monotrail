@@ -110,6 +110,7 @@ impl RequestedSpec {
     /// (the pypi url shortcut doesn't work)
     pub fn resolve(
         &self,
+        host: &str,
         compatible_tags: &[(String, String, String)],
     ) -> anyhow::Result<ResolvedSpec> {
         if let Some(python_version) = self.python_version.clone() {
@@ -150,8 +151,12 @@ impl RequestedSpec {
             }
         }
 
-        let (picked_release, distribution_type, version) =
-            search_release(&self.name, self.python_version.clone(), compatible_tags)?;
+        let (picked_release, distribution_type, version) = search_release(
+            host,
+            &self.name,
+            self.python_version.clone(),
+            compatible_tags,
+        )?;
         Ok(ResolvedSpec {
             requested: self.requested.clone(),
             name: self.name.clone(),
@@ -202,9 +207,10 @@ mod test {
     use crate::utils::zstd_json_mock;
     use crate::Pep508Environment;
     use install_wheel_rs::{compatible_tags, Arch, Os};
+    use mockito::Server;
     use std::path::Path;
 
-    fn manylinux_url(package: &str) -> anyhow::Result<ResolvedSpec> {
+    fn manylinux_url(host: &str, package: &str) -> anyhow::Result<ResolvedSpec> {
         let os = Os::Manylinux {
             major: 2,
             minor: 27,
@@ -226,14 +232,14 @@ mod test {
             .iter()
             .find(|spec| spec.name == package)
             .unwrap()
-            .resolve(&compatible_tags)
+            .resolve(host, &compatible_tags)
     }
 
     #[test]
     fn test_manylinux_url() {
-        let _mock = zstd_json_mock("/pypi/cffi/json", "test-data/pypi/cffi.json.zstd");
+        let (server, _mock) = zstd_json_mock("/pypi/cffi/json", "test-data/pypi/cffi.json.zstd");
         assert_eq!(
-            manylinux_url("cffi").unwrap().location,
+            manylinux_url(&server.url(), "cffi").unwrap().location,
             FileOrUrl::Url {
                 url: "https://files.pythonhosted.org/packages/93/d0/2e2b27ea2f69b0ec9e481647822f8f77f5fc23faca2dd00d1ff009940eb7/cffi-1.15.1-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl".to_string(),
                 filename: "cffi-1.15.1-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl".to_string()
@@ -243,8 +249,9 @@ mod test {
 
     #[test]
     fn test_pypi_no_internet() {
+        let server = Server::new();
         // We must use a different package here or we race with the other mock
-        let err = manylinux_url("certifi").unwrap_err();
+        let err = manylinux_url(&server.url(), "certifi").unwrap_err();
         let errors = err.chain().map(|e| e.to_string()).collect::<Vec<_>>();
         // the second message has the mockito url in it
         assert_eq!(

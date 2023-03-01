@@ -747,14 +747,13 @@ pub fn run_command_finder_data(
         .collect();
         debug!("launching (python) {:?}", args);
 
-        let exit_code = inject_and_run_python(
+        inject_and_run_python(
             &python_home,
             python_context.version,
             &sys_executable,
             &args,
             &serde_json::to_string(&finder_data).unwrap(),
-        )?;
-        exit_code as i32
+        )?
     } else {
         debug!("launching (execv) {}", script_path.display());
         #[cfg(unix)]

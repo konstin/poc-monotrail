@@ -135,7 +135,7 @@ fn generate_ppipx_entry(
     let resolve_dir = TempDir::new()?;
     fs::write(
         resolve_dir.path().join("pyproject.toml"),
-        toml::to_vec(&pyproject_toml).context("Failed to serialize pyproject.toml for ppipx")?,
+        toml::to_string(&pyproject_toml).context("Failed to serialize pyproject.toml for ppipx")?,
     )?;
     poetry_resolve_from_dir(&resolve_dir, &python_context)?;
     fs::copy(

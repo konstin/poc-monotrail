@@ -111,6 +111,8 @@ fn test_pipx_black_version() {
             "--version",
             "22.3.0",
             "black",
+            // This is unfortunately needed with clap
+            ".",
             "--version",
         ])
         .output();

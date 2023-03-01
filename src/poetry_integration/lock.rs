@@ -65,7 +65,7 @@ pub fn poetry_resolve(
     let pyproject_toml_path = resolve_dir.path().join("pyproject.toml");
     fs::write(
         &pyproject_toml_path,
-        toml::to_vec(&pyproject_toml_content).context("Failed to write pyproject.toml")?,
+        toml::to_string(&pyproject_toml_content).context("Failed to write pyproject.toml")?,
     )?;
     // If we have a previous lockfile, we want to reuse it for two reasons:
     // * if there wasn't any change in requirements, we don't need to do any resolution

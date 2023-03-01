@@ -3,6 +3,7 @@
 use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::{compatible_tags, WheelFilename};
 use crate::{Arch, Os, WheelInstallerError};
+use base64::Engine;
 use configparser::ini::Ini;
 use fs_err as fs;
 use fs_err::{DirEntry, File};
@@ -215,7 +216,11 @@ pub fn copy_and_hash(reader: &mut impl Read, writer: &mut impl Write) -> io::Res
         written,
         format!(
             "sha256={}",
-            base64::encode_config(&hasher.finalize(), base64::URL_SAFE_NO_PAD)
+            base64::engine::GeneralPurpose::new(
+                &base64::alphabet::URL_SAFE,
+                base64::engine::general_purpose::NO_PAD
+            )
+            .encode(&hasher.finalize())
         ),
     ))
 }
@@ -900,7 +905,11 @@ fn write_file_recorded(
     let hash = Sha256::new().chain_update(content.as_ref()).finalize();
     let encoded_hash = format!(
         "sha256={}",
-        base64::encode_config(&hash, base64::URL_SAFE_NO_PAD)
+        base64::engine::GeneralPurpose::new(
+            &base64::alphabet::URL_SAFE,
+            base64::engine::general_purpose::NO_PAD
+        )
+        .encode(&hash)
     );
     record.push(RecordEntry {
         path: relative_path.display().to_string(),

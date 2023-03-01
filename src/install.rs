@@ -2,6 +2,7 @@
 
 use crate::cli::download_distribution_cached;
 use crate::monotrail::filter_installed_monotrail;
+use crate::package_index::PYPI_HOST;
 use crate::source_distribution::build_source_distribution_to_wheel_cached;
 use crate::spec::{DistributionType, FileOrUrl, RequestedSpec};
 use anyhow::{bail, Context};
@@ -361,7 +362,7 @@ fn download_and_install(
     no_compile: bool,
     sys_executable: &Path,
 ) -> anyhow::Result<(String, String, String)> {
-    let spec = requested_spec.resolve(compatible_tags)?;
+    let spec = requested_spec.resolve(PYPI_HOST, compatible_tags)?;
     trace!("requested: {:?}, resolved: {:?}", requested_spec, spec);
 
     let (wheel_path, distribution_type) = match spec.location.clone() {

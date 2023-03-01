@@ -94,10 +94,7 @@ pub struct PoetrySection {
     pub version: String,
     pub description: String,
     pub authors: Vec<String>,
-    // https://github.com/alexcrichton/toml-rs/issues/142#issuecomment-279009115
-    #[serde(serialize_with = "toml::ser::tables_last")]
     pub dependencies: BTreeMap<String, Dependency>,
-    #[serde(serialize_with = "toml::ser::tables_last")]
     pub dev_dependencies: BTreeMap<String, Dependency>,
     pub extras: Option<BTreeMap<String, Vec<String>>>,
     pub scripts: Option<BTreeMap<String, String>>,

@@ -4,7 +4,7 @@ use fs_err as fs;
 use fs_err::DirEntry;
 use install_wheel_rs::WheelInstallerError;
 #[cfg(test)]
-use mockito::Mock;
+use mockito::{Mock, ServerGuard};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -58,11 +58,14 @@ pub fn assert_cli_error(cli: Cli, venv: Option<&Path>, expected: &[&str]) {
 
 /// Adds the mock response for a prerecorded .json.zstd response
 #[cfg(test)]
-pub fn zstd_json_mock(url: &str, fixture: impl Into<PathBuf>) -> Mock {
+pub fn zstd_json_mock(url: &str, fixture: impl Into<PathBuf>) -> (ServerGuard, Mock) {
     use fs_err::File;
 
-    mockito::mock("GET", url)
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("GET", url)
         .with_header("content-type", "application/json")
         .with_body(zstd::stream::decode_all(File::open(fixture).unwrap()).unwrap())
-        .create()
+        .create();
+    (server, mock)
 }

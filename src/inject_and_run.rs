@@ -390,7 +390,7 @@ pub fn run_python_args_finder_data(
     if exit_code != 0 {
         debug!("Python didn't exit with code 0: {}", exit_code);
     }
-    Ok(exit_code as i32)
+    Ok(exit_code)
 }
 
 /// There are three possible sources of a python version:

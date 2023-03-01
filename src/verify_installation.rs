@@ -3,6 +3,7 @@
 use crate::monotrail::list_installed;
 use crate::utils::get_dir_content;
 use anyhow::{bail, format_err, Context};
+use base64::Engine;
 use fs_err as fs;
 use fs_err::File;
 use indicatif::ProgressBar;
@@ -60,7 +61,7 @@ fn verify_package(
                 site_packages.display()
             );
         }
-        &[ref dist_info] => dist_info.clone(),
+        [dist_info] => dist_info.clone(),
         more => {
             bail!(
                 "Multiple .dist-info found for {} {} {} in {}: {:?}",
@@ -89,7 +90,11 @@ fn verify_package(
         io::copy(&mut file, &mut hasher).context("Failed to read file for hashing")?;
         let hash = format!(
             "sha256={}",
-            base64::encode_config(&hasher.finalize(), base64::URL_SAFE_NO_PAD)
+            base64::engine::GeneralPurpose::new(
+                &base64::alphabet::URL_SAFE,
+                base64::engine::general_purpose::NO_PAD
+            )
+            .encode(&hasher.finalize())
         );
         let record_path = relative_to(&entry.path(), &site_packages)?;
         let file_name = record_path

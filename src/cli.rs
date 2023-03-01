@@ -11,7 +11,7 @@ use crate::utils::cache_dir;
 use crate::venv_parser::get_venv_python_version;
 use crate::verify_installation::verify_installation;
 use anyhow::{bail, Context};
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -38,27 +38,6 @@ pub struct PoetryOptions {
     /// Don't bytecode compile python sources
     #[clap(long)]
     no_compile: bool,
-}
-
-/// Hack around clap's insufficiencies about "do not parse those argument
-/// <https://github.com/clap-rs/clap/discussions/3766>
-#[derive(Subcommand, Clone, Debug)]
-pub enum ExternalArgs {
-    #[clap(external_subcommand)]
-    Args(Vec<String>),
-}
-
-impl Default for ExternalArgs {
-    fn default() -> Self {
-        Self::Args(vec![])
-    }
-}
-
-impl ExternalArgs {
-    fn args(&self) -> &[String] {
-        let Self::Args(args) = &self;
-        &args
-    }
 }
 
 /// Either `python ...` or `command ...`
@@ -124,12 +103,11 @@ pub enum Cli {
         /// extras to enable on the package e.g. `jupyter` for `black` to get `black[jupyter]`
         #[clap(long)]
         extras: Vec<String>,
-        /// command to run (e.g. `black` or `pytest`), will also be used as package name unless
-        /// --package is set
-        command: String,
-        /// arguments to be passed verbatim to the command
-        #[clap(subcommand)]
-        args: Option<ExternalArgs>,
+        /// This contains first the command to run (e.g. `black` or `pytest`), which will also be
+        /// used as package name unless --package is set, and then the arguments to be passed
+        /// verbatim to the command. This is just `args` and not `command` and `args` due to
+        /// limitations in clap (https://github.com/clap-rs/clap/discussions/3766)
+        args: Vec<String>,
     },
     /// Like `git pull <repo> <tmpdir> && cd <tmpdir> && git checkout <rev> && monotrail run <...>`,
     /// mostly here to mirror the python `monotrail.from_git()` function
@@ -331,16 +309,18 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             python_version,
             version,
             extras,
-            command,
             args,
-        } => Ok(Some(ppipx::ppipx(
-            package.as_deref(),
-            python_version.as_deref(),
-            version.as_deref(),
-            &extras,
-            &command,
-            args.unwrap_or_default().args(),
-        )?)),
+        } => {
+            dbg!(&args);
+            Ok(Some(ppipx::ppipx(
+                package.as_deref(),
+                python_version.as_deref(),
+                version.as_deref(),
+                &extras,
+                &args[0],
+                &args,
+            )?))
+        }
         Cli::VerifyInstallation { verbose } => {
             let root = monotrail_root().context("Couldn't determine root")?;
 

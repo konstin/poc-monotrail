@@ -16,13 +16,13 @@ name = "monotrail"
 
 [dependencies]
 anyhow = "1.0.65"
-base64 = "0.13.0"
+base64 = "0.21.0"
 clap = { version = "4.0.2", features = ["derive"] }
 cpufeatures = "0.2.5"
 dirs = "4.0.0"
 fs-err = "2.8.1"
 fs2 = "0.4.3"
-git2 = "0.15.0"
+git2 = "0.16.1"
 indicatif = "0.17.1"
 install-wheel-rs = { version = "0.0.3", path = "install-wheel-rs" }
 libc = "0.2.133"
@@ -31,7 +31,7 @@ libloading = "0.7.3"
 libz-sys = { version = "1.1.8", features = ["static"] }
 nix = { version = "0.26.1", features = ["process"] }
 pep440 = "0.2.0"
-pyo3 = { version = "0.17.1", features = ["extension-module", "abi3-py37"], optional = true }
+pyo3 = { version = "0.18.1", features = ["extension-module", "abi3-py37"], optional = true }
 rayon = "1.5.3"
 regex = "1.6.0"
 requirements = "0.3.0"
@@ -42,7 +42,7 @@ tar = "0.4.38"
 target-lexicon = "0.12.4"
 tempfile = "3.3.0"
 thiserror = "1.0.37"
-toml = "0.5.9"
+toml = "0.7.2"
 tracing = "0.1.36"
 tracing-subscriber = "0.3.15"
 ureq = { version = "2.5.0", features = ["json"] }
@@ -68,7 +68,7 @@ inherits = "release"
 debug = 1
 
 [dev-dependencies]
-indoc = "1.0.7"
-mockito = "0.31.0"
+indoc = "2.0.0"
+mockito = "0.32.3"
 tempfile = "3.3.0"
 which = "4.3.0"

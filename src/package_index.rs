@@ -11,8 +11,7 @@ use std::path::Path;
 use std::str::FromStr;
 use tracing::debug;
 
-#[cfg_attr(test, allow(dead_code))]
-const PYPI_DOMAIN: &str = "https://pypi.org";
+pub(crate) const PYPI_HOST: &str = "https://pypi.org";
 
 /// <https://warehouse.pypa.io/api-reference/json.html#get--pypi--project_name--json>
 #[derive(Deserialize, Clone, Debug)]
@@ -84,15 +83,12 @@ fn matching_package_for_version(
 ///
 /// <https://warehouse.pypa.io/api-reference/json.html>
 pub fn search_release(
+    host: &str,
     name: &str,
     version: Option<String>,
     compatible_tags: &[(String, String, String)],
 ) -> Result<(PypiRelease, DistributionType, String)> {
     debug!("Getting Releases");
-    #[cfg(not(test))]
-    let host = PYPI_DOMAIN;
-    #[cfg(test)]
-    let host = &mockito::server_url();
     let url = format!("{}/pypi/{}/json", host, name);
     let pypi_project: PypiProject = ureq::get(&url)
         .set("User-Agent", "monotrail (konstin@mailbox.org)")
