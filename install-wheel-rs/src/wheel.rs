@@ -2,7 +2,7 @@
 
 use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::{compatible_tags, WheelFilename};
-use crate::{Arch, Os, WheelInstallerError};
+use crate::{normalize_name, Arch, Os, WheelInstallerError};
 use base64::Engine;
 use configparser::ini::Ini;
 use fs_err as fs;
@@ -1038,7 +1038,7 @@ pub fn install_wheel(
         InstallLocation::Venv { venv_base, .. } => (None, venv_base.to_path_buf()),
         InstallLocation::Monotrail { monotrail_root, .. } => {
             let name_version_dir = monotrail_root
-                .join(name.to_lowercase().replace('.', "-").replace('_', "-"))
+                .join(normalize_name(name))
                 .join(unique_version);
             fs::create_dir_all(&name_version_dir)?;
             let final_location = name_version_dir.join(filename.get_tag());

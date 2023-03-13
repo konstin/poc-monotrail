@@ -177,11 +177,7 @@ fn get_root_info(
             .dependencies
             .clone()
             .into_iter()
-            .chain(
-                poetry_section
-                    .dev_dependencies
-                    .clone().unwrap_or_default(),
-            )
+            .chain(poetry_section.dev_dependencies.clone().unwrap_or_default())
             .collect()
     };
 

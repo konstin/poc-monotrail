@@ -17,7 +17,7 @@ const MONOTRAIL_LOCKFILE: &str = "monotrail.lock";
 ///
 /// Keep in sync with `find_distributions`
 pub fn normalize_name(dep_name: &str) -> String {
-    dep_name.to_lowercase().replace('.', "-").replace('_', "-")
+    dep_name.to_lowercase().replace(['.', '_'], "-")
 }
 
 /// A directory for which we acquired a monotrail.lock lockfile
