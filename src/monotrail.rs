@@ -647,7 +647,7 @@ pub fn find_scripts(
     trace!(
         "Found {} scripts: {:?}",
         scripts.keys().len(),
-        scripts.keys().into_iter().collect::<Vec<_>>()
+        scripts.keys().collect::<Vec<_>>()
     );
     Ok(scripts)
 }

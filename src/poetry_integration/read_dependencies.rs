@@ -180,8 +180,7 @@ fn get_root_info(
             .chain(
                 poetry_section
                     .dev_dependencies
-                    .clone()
-                    .unwrap_or_else(|| BTreeMap::new()),
+                    .clone().unwrap_or_default(),
             )
             .collect()
     };

@@ -12,7 +12,7 @@ use tracing::debug;
 /// otherwise does the normal cli run
 fn run() -> anyhow::Result<Option<i32>> {
     // Notably, we can't use env::current_exe() here because it resolves the symlink
-    let args: Vec<String> = args().into_iter().collect();
+    let args: Vec<String> = args().collect();
     let filename = Path::new(
         args.first()
             .context("No first argument, this should always be set 🤨")?,
