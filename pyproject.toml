@@ -9,6 +9,7 @@ monotrail_script = "monotrail.run_script:main"
 [tool.maturin]
 features = ["python_bindings"]
 bindings = "pyo3"
+python-source = "python"
 
 [tool.pytest.ini_options]
 minversion = "7.0"

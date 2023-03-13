@@ -11,7 +11,7 @@ def test_namespace_init_py(pytestconfig):
             finder_data.sprawl_root
             + "/poetry/1.1.13/py2.py3-none-any/lib/python/site-packages/poetry",
             finder_data.sprawl_root
-            + "/poetry_core/1.0.8/py2.py3-none-any/lib/python/site-packages/poetry",
+            + "/poetry-core/1.0.8/py2.py3-none-any/lib/python/site-packages/poetry",
         ],
     )
 
@@ -34,7 +34,7 @@ def test_namespace_no_init_py(pytestconfig):
             finder_data.sprawl_root
             + "/poetry/1.2.0b1/py3-none-any/lib/python/site-packages/poetry",
             finder_data.sprawl_root
-            + "/poetry_core/1.1.0b2/py3-none-any/lib/python/site-packages/poetry",
+            + "/poetry-core/1.1.0b2/py3-none-any/lib/python/site-packages/poetry",
         ],
     )
 
