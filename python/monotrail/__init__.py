@@ -1,5 +1,6 @@
 """
-Loading this module will run monotrail, installing all required packages and making them loadable
+Loading this module will run monotrail, installing all required packages and making
+them loadable
 """
 import os
 import sys
@@ -26,8 +27,8 @@ __all__ = [
     "MonotrailFinder",
 ]
 
-# checks for MONOTRAIL=1, but we can't use project_name here because we don't want to load the rust part if
-# it's not requested
+# checks for MONOTRAIL=1, but we can't use project_name here because we don't want to
+# load the rust part if it's not requested
 if os.environ.get(sys.modules[__name__].__name__.upper()):
     from ._load_monotrail import load_monotrail
 
@@ -35,7 +36,8 @@ if os.environ.get(sys.modules[__name__].__name__.upper()):
 
 
 def interactive(**kwargs):
-    """For use in e.g. jupyter notebook: Use the first cell to define what you need and add stuff as you go.
+    """For use in e.g. jupyter notebook: Use the first cell to define what you need and
+    add stuff as you go.
 
     ```python
     import monotrail
@@ -57,14 +59,15 @@ def interactive(**kwargs):
 
 
 def from_git(repo_url: str, revision: str, extras: Optional[List[str]] = None):
-    """For deploying repositories in e.g. jupyter notebook: Use the first cell with the repository and a tag and you'll
-    have all deps and repo code available
+    """For deploying repositories in e.g. jupyter notebook: Use the first cell with the
+    repository and a tag and you'll have all deps and repo code available
 
     ```python
     import monotrail
 
     monotrail.from_git(
-        "https://github.com/sokrypton/ColabFold", "63b42b8f5b5da418efecf6c4d11490a96595020d"
+        "https://github.com/sokrypton/ColabFold",
+        "63b42b8f5b5da418efecf6c4d11490a96595020d"
     )
     ```
     """

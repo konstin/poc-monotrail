@@ -310,17 +310,14 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             version,
             extras,
             args,
-        } => {
-            dbg!(&args);
-            Ok(Some(ppipx::ppipx(
-                package.as_deref(),
-                python_version.as_deref(),
-                version.as_deref(),
-                &extras,
-                &args[0],
-                &args,
-            )?))
-        }
+        } => Ok(Some(ppipx::ppipx(
+            package.as_deref(),
+            python_version.as_deref(),
+            version.as_deref(),
+            &extras,
+            &args[0],
+            &args,
+        )?)),
         Cli::VerifyInstallation { verbose } => {
             let root = monotrail_root().context("Couldn't determine root")?;
 

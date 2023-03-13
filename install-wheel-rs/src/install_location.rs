@@ -10,6 +10,16 @@ use tracing::{error, warn};
 
 const MONOTRAIL_LOCKFILE: &str = "monotrail.lock";
 
+/// I'm not sure that's the right way to normalize here, but it's a single place to change
+/// everything.
+///
+/// For displaying to the user, `-` is better, and it's also what poetry lockfile 2.0 does
+///
+/// Keep in sync with `find_distributions`
+pub fn normalize_name(dep_name: &str) -> String {
+    dep_name.to_lowercase().replace('.', "-").replace('_', "-")
+}
+
 /// A directory for which we acquired a monotrail.lock lockfile
 pub struct LockedDir {
     /// The directory to lock
@@ -113,6 +123,7 @@ impl<T: Deref<Target = Path>> InstallLocation<T> {
         }
     }
 
+    /// TODO: This function is unused?
     pub fn is_installed(&self, normalized_name: &str, version: &str) -> bool {
         match self {
             InstallLocation::Venv {

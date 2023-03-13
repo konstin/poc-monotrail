@@ -11,7 +11,7 @@ features = ["python_bindings"]
 bindings = "pyo3"
 
 [tool.pytest.ini_options]
-minversion = "6.0"
+minversion = "7.0"
 addopts = "--tb=short"
 
 [build-system]

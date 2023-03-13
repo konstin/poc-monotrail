@@ -77,7 +77,8 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         r"setuptools",
         r"pkg_resources",
         r"_distutils_hack/__pycache__",
-        r"[^/]+/direct_url.json",  # Doesn't make sense in our case to enforce this strictly
+        # Doesn't make sense in our case to enforce this strictly
+        r"[^/]+/direct_url.json",
     ]
     pattern = (
         (

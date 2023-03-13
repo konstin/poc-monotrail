@@ -1038,7 +1038,7 @@ pub fn install_wheel(
         InstallLocation::Venv { venv_base, .. } => (None, venv_base.to_path_buf()),
         InstallLocation::Monotrail { monotrail_root, .. } => {
             let name_version_dir = monotrail_root
-                .join(name.to_lowercase().replace('-', "_"))
+                .join(name.to_lowercase().replace('.', "-").replace('_', "-"))
                 .join(unique_version);
             fs::create_dir_all(&name_version_dir)?;
             let final_location = name_version_dir.join(filename.get_tag());

@@ -10,7 +10,9 @@ use fs_err as fs;
 use fs_err::{DirEntry, File};
 use git2::{Direction, Repository};
 use indicatif::{ProgressBar, ProgressStyle};
-use install_wheel_rs::{install_wheel, parse_key_value_file, InstallLocation, LockedDir};
+use install_wheel_rs::{
+    install_wheel, normalize_name, parse_key_value_file, InstallLocation, LockedDir,
+};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
 use std::io;
@@ -104,7 +106,7 @@ pub fn filter_installed_venv(
         .filter_map(|entry| {
             let filename = entry.file_name().to_string_lossy().to_string();
             let (name, version) = filename.strip_suffix(".dist-info")?.split_once('-')?;
-            let name = name.to_lowercase().replace('-', "_");
+            let name = normalize_name(&name.to_lowercase());
             Some((entry, name, version.to_string()))
         })
         .map(|(entry, name, version)| {

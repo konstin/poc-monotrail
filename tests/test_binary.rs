@@ -14,10 +14,10 @@ fn handle_output(output: io::Result<Output>) -> anyhow::Result<Vec<String>> {
         Ok(output) => {
             if !output.status.success() {
                 bail!(
-                    "Command failed: {}\n---stdout:\n{}\n---stderr:\n{}",
+                    "Command failed: {}\n---stdout:\n{}\n---stderr:\n{}\n---",
                     output.status,
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
+                    String::from_utf8_lossy(&output.stdout).trim(),
+                    String::from_utf8_lossy(&output.stderr).trim()
                 );
             }
             let stdout = str::from_utf8(&output.stdout)?;

@@ -61,11 +61,11 @@ pub fn build_to_wheel(
         return Err(WheelInstallerError::PythonSubcommandError(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "Failed to run `pip wheel --no-deps {}`: {}\n---stdout:\n{}---stderr:\n{}",
+                "Failed to run `pip wheel --no-deps {}`: {}\n---stdout:\n{}---stderr:\n{}\n---",
                 sdist_or_dir.display(),
                 output.status,
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
+                String::from_utf8_lossy(&output.stdout).trim(),
+                String::from_utf8_lossy(&output.stderr).trim()
             ),
         ))
         .into());

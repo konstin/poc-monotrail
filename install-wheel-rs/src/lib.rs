@@ -1,7 +1,7 @@
 //! Takes a wheel and installs it, either in a venv or for monotrail
 
 // The pub ones are reused by monotrail
-pub use install_location::{InstallLocation, LockedDir};
+pub use install_location::{normalize_name, InstallLocation, LockedDir};
 use std::io;
 use thiserror::Error;
 pub use wheel::{

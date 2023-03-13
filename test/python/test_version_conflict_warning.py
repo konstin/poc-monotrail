@@ -6,7 +6,7 @@ def test_version_conflict_warning(caplog):
     # Not a problem, tqdm is not yet loaded
     monotrail.interactive(tqdm="4.63.0")
     # noinspection PyUnresolvedReferences
-    import tqdm
+    import tqdm  # noqa: F401
 
     # Now it's a problem
     monotrail.interactive(tqdm="4.64.0")

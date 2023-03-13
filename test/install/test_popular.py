@@ -24,7 +24,7 @@ def test_popular():
             ]
         )
     bin = get_bin()
-    wheels_paths = list(wheels_dir.glob(f"*.whl"))
+    wheels_paths = list(wheels_dir.glob("*.whl"))
     compare_with_pip("popular", wheels_paths, bin)
 
 

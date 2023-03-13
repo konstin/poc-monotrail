@@ -43,7 +43,7 @@ pub fn dummy_poetry_pyproject_toml(
                 description: "monotrail generated this dummy pyproject.toml to call poetry and let it do the dependency resolution".to_string(),
                 authors: vec!["konstin <konstin@mailbox.org>".to_string()],
                 dependencies,
-                dev_dependencies: BTreeMap::new(),
+                dev_dependencies: None,
                 extras: Some(BTreeMap::new()),
                 scripts: None,
             }),

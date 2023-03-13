@@ -11,7 +11,7 @@ use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
-use install_wheel_rs::{Script, WheelFilename, WheelInstallerError};
+use install_wheel_rs::{normalize_name, Script, WheelFilename, WheelInstallerError};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -99,8 +99,8 @@ pub fn filename_and_url(
 fn parse_dep_extra(
     dep_spec: &str,
 ) -> Result<(String, HashSet<String>, Option<String>), WheelInstallerError> {
-    let re = Regex::new(r"(?P<name>[\w\d_-]+)(?:\[(?P<extras>.*)\])? ?(?:\((?P<version>.+)\))?")
-        .unwrap();
+    let re =
+        Regex::new(r"(?P<name>[\w\d_-]+)(?:\[(?P<extras>.*)])? ?(?:\((?P<version>.+)\))?").unwrap();
     let captures = re.captures(dep_spec).ok_or_else(|| {
         WheelInstallerError::InvalidWheel(format!(
             "Invalid dependency specification in poetry.lock: {}",
@@ -128,22 +128,20 @@ fn parse_dep_extra(
 
 fn resolution_to_specs(
     packages: HashMap<String, poetry_lock::Package>,
-    deps_with_extras: HashMap<String, HashSet<String>>,
+    deps_with_extras: BTreeMap<String, HashSet<String>>,
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     let mut specs = Vec::new();
     for (dep_name, dep_extras) in deps_with_extras {
-        let package = if let Some(package) = packages
-            // search by normalized name
-            .get(&dep_name.to_lowercase().replace('-', "_"))
-        {
+        let norm_name = normalize_name(&dep_name);
+        let package = if let Some(package) = packages.get(&norm_name) {
             package
         } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
             continue;
         } else {
-            debug!("Packages: {:?}", packages);
+            debug!("Packages: {:?}", packages.keys().collect::<Vec<_>>());
             bail!(
                 "Lockfile outdated (run `poetry update`): {} is missing",
-                dep_name
+                norm_name
             )
         };
         let spec = RequestedSpec {
@@ -179,7 +177,12 @@ fn get_root_info(
             .dependencies
             .clone()
             .into_iter()
-            .chain(poetry_section.dev_dependencies.clone())
+            .chain(
+                poetry_section
+                    .dev_dependencies
+                    .clone()
+                    .unwrap_or_else(|| BTreeMap::new()),
+            )
             .collect()
     };
 
@@ -219,7 +222,7 @@ fn get_packages_from_lockfile(
         .package
         .clone()
         .into_iter()
-        .map(|package| (package.name.to_lowercase().replace('-', "_"), package))
+        .map(|package| (normalize_name(&package.name), package))
         .collect();
     Ok(packages)
 }
@@ -254,12 +257,12 @@ pub fn read_poetry_specs(
 
     // This is the thing we want to build: a list with all transitive dependencies and
     // all their (transitively activated) features
-    let mut deps_with_extras: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut deps_with_extras: BTreeMap<String, HashSet<String>> = BTreeMap::new();
     // (dep, dep->extra) combinations we still need to process
     let mut queue: VecDeque<(String, HashSet<String>)> = VecDeque::new();
     // Since we have no explicit root package, prime manually
     for (dep_name, dep_spec) in root_deps {
-        let dep_name_norm = dep_name.to_lowercase().replace('-', "_");
+        let dep_name_norm = normalize_name(&dep_name.to_lowercase());
 
         queue.push_back((
             dep_name_norm.clone(),
@@ -274,18 +277,19 @@ pub fn read_poetry_specs(
     // resolve the dependencies-extras tree
     // (dep, dep->extra)
     while let Some((dep_name, self_extras)) = queue.pop_front() {
+        let norm_name = normalize_name(&dep_name);
         let package = if let Some(package) = packages
             // search by normalized name
-            .get(&dep_name.to_lowercase().replace('-', "_"))
+            .get(&norm_name)
         {
             package
         } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
             continue;
         } else {
-            debug!("Packages: {:?}", packages);
+            debug!("Packages: {:?}", packages.keys().collect::<Vec<_>>());
             bail!(
                 "Lockfile outdated (run `poetry update`): {} is missing",
-                dep_name
+                norm_name
             )
         };
         // descend one level into the dep tree

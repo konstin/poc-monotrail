@@ -2,7 +2,7 @@
 //! ([ResolvedSpec]).
 
 use crate::package_index::search_release;
-use install_wheel_rs::{WheelFilename, WheelInstallerError};
+use install_wheel_rs::{normalize_name, WheelFilename, WheelInstallerError};
 use regex::Regex;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -45,7 +45,7 @@ pub struct RequestedSpec {
 
 impl RequestedSpec {
     pub fn normalized_name(&self) -> String {
-        self.name.to_lowercase().replace('-', "_")
+        normalize_name(&self.name)
     }
 
     pub fn get_unique_version(&self) -> Option<String> {

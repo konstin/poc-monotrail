@@ -44,21 +44,25 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
     sprawl_root: Path
     # All resolved and installed packages indexed by name
     sprawl_packages: Dict[str, "InstalledPackage"]
-    # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
+    # Given a module name, where's the corresponding module file and  what are the
+    # submodule_search_locations?
     spec_paths: Dict[str, Tuple[str, List[str]]]
-    # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
+    # In from git mode where we check out a repository and make it available for import
+    # as if it was added to sys.path
     project_dir: Optional[str]
-    # Last part of project dir (though this should be overwritten by https://peps.python.org/pep-0621/#name in the
-    # future), used with the flat src layout
+    # Last part of project dir (though this should be overwritten by
+    # https://peps.python.org/pep-0621/#name in the future), used with the flat src
+    # layout
     project_name: Optional[str]
-    # The contents of the last poetry.lock, used a basis for the next resolution when requirements
-    # change at runtime, both for faster resolution and in hopes the exact version stay the same
-    # so the user doesn't need to reload python
+    # The contents of the last poetry.lock, used a basis for the next resolution when
+    # requirements change at runtime, both for faster resolution and in hopes the exact
+    # version stay the same so the user doesn't need to reload python
     lockfile: Optional[str]
 
     def __init__(self):
         """dummy, actual initializer is update_and_activate"""
-        # TODO: This dummy is unsound typing-wise. First init should always also set path and packages
+        # TODO: This dummy is unsound typing-wise. First init should always also set
+        #  path and packages
         self.sprawl_packages = {}
         self.spec_paths = {}
         self.project_dir = None
@@ -82,8 +86,8 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
             package.name: package for package in finder_data.sprawl_packages
         }
 
-        # python adds this be default to make the current directory importable, but we don't want that,
-        # instead we want the root from the rust code
+        # python adds this be default to make the current directory importable, but we
+        # don't want that, instead we want the root from the rust code
         if "" in sys.path:
             sys.path.remove("")
         # Support "" as value for "current directory"
@@ -94,16 +98,18 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         self.project_dir = finder_data.project_dir
         if self.project_dir:
             name = Path(self.project_dir).name
-            assert (
-                name
-            ), f"Invalid project directory '{self.project_dir}': no or empty final path component"
+            assert name, (
+                f"Invalid project directory '{self.project_dir}': "
+                f"no or empty final path component"
+            )
             self.project_name = name
         self.spec_paths = finder_data.spec_paths
 
         # patch pkg resources so it can also find the distributions
         self._patch_pkg_resources(finder_data)
         # hackery hack hack
-        # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
+        # we need to run .pth files because some project such as matplotlib 3.5.1 use
+        # them to commit packaging crimes
         for pth in finder_data.pth_files:
             pth = Path(pth)
             site.addpackage(pth.parent, pth.name, None)
@@ -131,9 +137,10 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         existing_packages: Dict[str, "InstalledPackage"],
         new_packages: List["InstalledPackage"],
     ):
-        """if we already have a different version loaded that version will stay loaded, so we have a conflict,
-        and the only solution is really to restart python. We could remove it from sys.modules, but anything
-        already imported from the module will stay loaded and cause strange undebuggable conflicts
+        """if we already have a different version loaded that version will stay loaded,
+        so we have a conflict, and the only solution is really to restart python. We
+        could remove it from sys.modules, but anything already imported from the module
+        will stay loaded and cause strange undebuggable conflicts
         """
         imported_versions = {}
         # copy the dict size will otherwise change during iteration
@@ -155,27 +162,32 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
             if existing:
                 if new.unique_version != existing.unique_version:
                     logger.warning(
-                        f"Version conflict: {existing.name} {existing.unique_version} is loaded, "
+                        f"Version conflict: "
+                        f"{existing.name} {existing.unique_version} is loaded, "
                         f"but {new.unique_version} is now required. "
                         f"Please restart your jupyter kernel or python interpreter"
                     )
             else:
                 if imported_version != new.unique_version:
                     logger.warning(
-                        f"Version conflict: {new.name} {imported_version} was already imported, "
+                        f"Version conflict: "
+                        f"{new.name} {imported_version} was already imported, "
                         f"even though {new.unique_version} is now required. "
-                        f"Is there any other loading mechanism with higher precedence than {project_name}?"
+                        f"Is there any other loading mechanism with higher precedence "
+                        f"than {project_name}?"
                     )
 
     def find_spec(self, fullname, path=None, target=None):
-        # We need to pass all packages because package names are lies, packages may contain whatever and nobody uses
+        # We need to pass all packages because package names are lies, packages may
+        # contain whatever and nobody uses
         # https://packaging.python.org/en/latest/specifications/core-metadata/#provides-dist-multiple-use
-        # e.g. "python-dateutil" actually ships a module "dateutil" but there's no indication about that
+        # e.g. "python-dateutil" actually ships a module "dateutil" but there's no
+        # indication about that
 
         # handle flat src case first
         if fullname == self.project_name:
-            # To be in line with normal python imports we need to check this in find_spec and can't cache this
-            # in update_and_activate
+            # To be in line with normal python imports we need to check this in
+            # find_spec and can't cache this in update_and_activate
             init_py = Path(self.project_dir).joinpath("src").joinpath("__init__.py")
             if init_py.is_file():
                 return spec_from_file_location(fullname, init_py)
@@ -188,8 +200,9 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         # flat src layout: we want to allow to import from project_dir/src/__init__.py
         # To match what python import is doing, we checking for the existence
 
-        # namespace packages, i.e. directory modules without an __init__.py. We don't actually no whether these
-        # are python modules or just random folders, but just like vanilla python we're just treating them like it.
+        # namespace packages, i.e. directory modules without an __init__.py. We don't
+        # actually know whether these are python modules or just random folders, but
+        # just like vanilla python we're just treating them like it.
         # ModuleSpec construction is what importlib's FileFinder.find_spec() also does
         if not location:
             spec = ModuleSpec(fullname, loader=None)
@@ -197,10 +210,10 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
             return spec
 
         if len(submodule_search_locations) <= 1:
-            # We must set submodule_search_locations in the base case otherwise we can't launch single file modules
-            # such as ipykernel_launcher:
-            # > No module named ipykernel_launcher.__main__; 'ipykernel_launcher' is a package and cannot be directly
-            # > executed"
+            # We must set submodule_search_locations in the base case otherwise we can't
+            # launch single file modules such as ipykernel_launcher:
+            # > No module named ipykernel_launcher.__main__; 'ipykernel_launcher' is a
+            # > package and cannot be directly executed"
             spec = spec_from_file_location(fullname, location)
         else:
             # namespace package
@@ -213,7 +226,8 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         return spec
 
     def _single_distribution(self, package: "InstalledPackage") -> PathDistribution:
-        # TODO: Don't glob, but somehow handle that package can use the non-canonical name here
+        # TODO: Don't glob, but somehow handle that package can use the non-canonical
+        #  name here
         site_packages = Path(
             package.monotrail_site_packages(
                 self.sprawl_root, (sys.version_info.major, sys.version_info.minor)
@@ -230,10 +244,12 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         assert dist_info_dir.is_dir(), f"Not a directory: {dist_info_dir}"
 
         # https://github.com/pypa/setuptools/issues/3319
-        # setuptools is adamant on haying _normalized_name on PathDistributions but as of 3.8 that only exists in
-        # importlib_metadata. Specifically, it wants to use functions only available in its own vendored
-        # importlib_metadata and not in importlib.metadata.
-        # hacky fixup: If setuptools is the caller, the below import will also work and we'll return the thing it wants.
+        # setuptools is adamant on haying _normalized_name on PathDistributions but as
+        # of 3.8 that only exists in importlib_metadata. Specifically, it wants to use
+        # functions only available in its own vendored importlib_metadata and not in
+        # importlib.metadata.
+        # hacky fixup: If setuptools is the caller, the below import will also work
+        # and we'll return the thing it wants.
         # Other tools are also fine with importlib_metadata so far.
         try:
             # noinspection PyUnresolvedReferences,PyProtectedMember
@@ -248,18 +264,20 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
     ):
         """https://docs.python.org/3/library/importlib.metadata.html#extending-the-search-algorithm
 
-        Essentially, context has a name and a path attribute and we need to return an iterator with
-        our Distribution object"""
+        Essentially, context has a name and a path attribute and we need to return an
+        iterator with our Distribution object"""
         if context.name is None:
-            # return all packages, this is used e.g. by pytest -> pluggy for plugin discovery
+            # return all packages, this is used e.g. by pytest -> pluggy for plugin
+            # discovery
             return (
                 self._single_distribution(package)
                 for package in self.sprawl_packages.values()
             )
 
-        # e.g. poetry-plugin-export will be normalized to poetry_plugin_export
+        # e.g. poetry_plugin_export will be normalized to poetry-plugin-export
         # TODO: Do we also need to normalize letter case?
-        name = context.name.replace("-", "_")
+        # keep in sync with `normalize_name`
+        name = context.name.replace("_", "-")
         if name in self.sprawl_packages:
             package = self.sprawl_packages[name]
             # oddity of the api: you must return an iterator

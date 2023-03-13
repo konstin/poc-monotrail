@@ -8,7 +8,8 @@ from ._monotrail_finder import MonotrailFinder
 def load_monotrail():
     """Small wrapper that calls into rust and instantiates the finder"""
     # for some reason the last argument is missing with -m pytest (becomes -m),
-    # and I have no idea how to debug where it went. esp since we sometimes cut the first arguments, but never the last
+    # and I have no idea how to debug where it went. esp since we sometimes cut the
+    # first arguments, but never the last
     # https://stackoverflow.com/a/62087608/3549270
     if sys.platform == "linux":
         args = (
@@ -27,7 +28,8 @@ def load_monotrail():
         return
     except BaseException as e:  # Rust panic
         print(
-            f"{project_name.upper()} CRASH (RUST PANIC): PACKAGES WILL NOT BE AVAILABLE: {e}",
+            f"{project_name.upper()} CRASH (RUST PANIC): "
+            f"PACKAGES WILL NOT BE AVAILABLE: {e}",
             file=sys.stderr,
         )
         return

@@ -95,7 +95,7 @@ pub struct PoetrySection {
     pub description: String,
     pub authors: Vec<String>,
     pub dependencies: BTreeMap<String, Dependency>,
-    pub dev_dependencies: BTreeMap<String, Dependency>,
+    pub dev_dependencies: Option<BTreeMap<String, Dependency>>,
     pub extras: Option<BTreeMap<String, Vec<String>>>,
     pub scripts: Option<BTreeMap<String, String>>,
 }

@@ -39,7 +39,8 @@ def main():
             for attr in script.function.split("."):
                 obj = getattr(obj, attr)
         # noinspection PyCallingNonCallable
-        # it's required to be a callable module if no function name is provided, otherwise we error
+        # it's required to be a callable module if no function name is provided,
+        # otherwise we error
         sys.exit(obj())
 
     scripts = monotrail_find_scripts(

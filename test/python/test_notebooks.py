@@ -24,7 +24,8 @@ def test_interactive(notebook, pytestconfig):
         },
     )
 
-    # clear output; the execution by itself doesn't write output, but this also needs to be done after-edit pre-commit
+    # clear output; the execution by itself doesn't write output, but this also needs
+    # to be done after-edit pre-commit
     ClearOutputPreprocessor().preprocess(nb, {})
     ClearMetadataPreprocessor().preprocess(nb, {})
     with notebook_dir.joinpath(notebook).open("w", encoding="utf-8") as f:

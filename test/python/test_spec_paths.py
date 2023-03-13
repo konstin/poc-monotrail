@@ -1,6 +1,6 @@
 def test_namespace_init_py(pytestconfig):
     # noinspection PyUnresolvedReferences
-    from monotrail.monotrail import monotrail_spec_paths, monotrail_from_dir
+    from monotrail.monotrail import monotrail_from_dir
 
     poetry_self_toml_dir = pytestconfig.rootpath.joinpath("test-data/poetry-1.1.13")
     finder_data = monotrail_from_dir(poetry_self_toml_dir, [])
@@ -23,7 +23,7 @@ def test_namespace_init_py(pytestconfig):
 
 def test_namespace_no_init_py(pytestconfig):
     # noinspection PyUnresolvedReferences
-    from monotrail.monotrail import monotrail_spec_paths, monotrail_from_dir
+    from monotrail.monotrail import monotrail_from_dir
 
     poetry_self_toml_dir = pytestconfig.rootpath.joinpath("test-data/poetry-1.2.0b1")
     finder_data = monotrail_from_dir(poetry_self_toml_dir, [])

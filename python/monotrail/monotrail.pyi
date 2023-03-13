@@ -20,21 +20,25 @@ class Script:
     function: str
 
 class FinderData:
-    """The packaging and import data that is resolved by the rust part and deployed by the finder"""
+    """The packaging and import data that is resolved by the rust part and deployed by
+    the finder"""
 
     # The location where all packages are installed
     sprawl_root: str
     # All resolved and installed packages indexed by name
     sprawl_packages: List[InstalledPackage]
-    # Given a module name, where's the corresponding module file and what are the submodule_search_locations?
+    # Given a module name, where's the corresponding module file and what are the
+    # submodule_search_locations?
     spec_paths: Dict[str, Tuple[Optional[str], List[str]]]
-    # In from git mode where we check out a repository and make it available for import as if it was added to sys.path
+    # In from git mode where we check out a repository and make it available for import
+    # as if it was added to sys.path
     project_dir: Optional[str]
-    # we need to run .pth files because some project such as matplotlib 3.5.1 use them to commit packaging crimes
+    # we need to run .pth files because some project such as matplotlib 3.5.1 use them
+    # to commit packaging crimes
     pth_files: List[str]
-    # The contents of the last poetry.lock, used a basis for the next resolution when requirements
-    # change at runtime, both for faster resolution and in hopes the exact version stay the same
-    # so the user doesn't need to reload python
+    # The contents of the last poetry.lock, used a basis for the next resolution when
+    # requirements change at runtime, both for faster resolution and in hopes the exact
+    # version stay the same so the user doesn't need to reload python
     lockfile: Optional[str]
     # The scripts in pyproject.toml
     root_scripts: Dict[str, Script]

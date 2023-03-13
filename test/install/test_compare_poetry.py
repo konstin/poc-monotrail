@@ -54,10 +54,6 @@ def compare_with_poetry(
         if extras:
             for extra in extras:
                 call.extend(["-E", extra])
-        # print(" ".join(call))
-        # print(project_dir)
-        # # noinspection PyTypeChecker
-        # print(" ".join(f"{key}='{value}'" for key, value in dict(sorted(venv_env_vars.items())).items()))
         check_call(call, env=venv_env_vars, cwd=project_dir)
         env.rename(env_poetry)
         stop_pip = time.time()

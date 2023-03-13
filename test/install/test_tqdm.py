@@ -1,7 +1,6 @@
 import os
 import platform
 import shutil
-from pathlib import Path
 from subprocess import check_call, SubprocessError, DEVNULL, CalledProcessError
 
 from test.install.utils import get_bin, get_root
