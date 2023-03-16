@@ -173,6 +173,7 @@ pub fn install_all(
     compatible_tags: &[(String, String, String)],
     no_compile: bool,
     background: bool,
+    no_parallel: bool,
 ) -> anyhow::Result<Vec<InstalledPackage>> {
     match specs {
         // If everything is already installed, return silently
@@ -215,52 +216,61 @@ pub fn install_all(
                     .unwrap(), // We know the template, it's correct
             );
             let current: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-            let installed = specs
-                .par_iter()
-                .map(|spec| {
-                    current.lock().unwrap().push(spec.name.clone());
-                    pb.set_message(current.lock().unwrap().join(","));
-                    if pb.is_hidden() {
-                        if let Some(source) = &spec.source {
-                            info!(
-                                "Installing {} ({})",
-                                spec.requested, source.resolved_reference
-                            );
-                        } else {
-                            info!("Installing {}", spec.requested);
-                        }
+            let install_closure = |spec: &RequestedSpec| {
+                current.lock().unwrap().push(spec.name.clone());
+                pb.set_message(current.lock().unwrap().join(","));
+                if pb.is_hidden() {
+                    if let Some(source) = &spec.source {
+                        info!(
+                            "Installing {} ({})",
+                            spec.requested, source.resolved_reference
+                        );
+                    } else {
+                        info!("Installing {}", spec.requested);
                     }
+                }
 
-                    let start = Instant::now();
-                    let (python_version, unique_version, tag) = download_and_install(
-                        spec,
-                        &location,
-                        compatible_tags,
-                        no_compile,
-                        &location.get_python(),
-                    )?;
-                    debug!(
-                        "Installed {} {} in {:.1}s",
-                        spec.name,
-                        unique_version,
-                        start.elapsed().as_secs_f32()
-                    );
-                    {
-                        let mut current = current.lock().unwrap();
-                        current.retain(|x| x != &spec.name);
-                        pb.set_message(current.join(", "));
-                        pb.inc(1);
-                    }
+                let start = Instant::now();
+                let (python_version, unique_version, tag) = download_and_install(
+                    spec,
+                    &location,
+                    compatible_tags,
+                    no_compile,
+                    &location.get_python(),
+                )?;
+                debug!(
+                    "Installed {} {} in {:.1}s",
+                    spec.name,
+                    unique_version,
+                    start.elapsed().as_secs_f32()
+                );
+                {
+                    let mut current = current.lock().unwrap();
+                    current.retain(|x| x != &spec.name);
+                    pb.set_message(current.join(", "));
+                    pb.inc(1);
+                }
 
-                    let installed_package = InstalledPackage {
-                        name: spec.normalized_name(),
-                        python_version,
-                        unique_version,
-                        tag,
-                    };
-                    Ok(installed_package)
-                })
-                .collect::<Result<Vec<InstalledPackage>, anyhow::Error>>()?;
+                let installed_package = InstalledPackage {
+                    name: spec.normalized_name(),
+                    python_version,
+                    unique_version,
+                    tag,
+                };
+                Ok(installed_package)
+            };
+
+            let installed = if no_parallel {
+                specs
+                    .iter()
+                    .map(install_closure)
+                    .collect::<Result<Vec<InstalledPackage>, anyhow::Error>>()?
+            } else {
+                specs
+                    .par_iter()
+                    .map(install_closure)
+                    .collect::<Result<Vec<InstalledPackage>, anyhow::Error>>()?
+            };
             pb.finish_and_clear();
             info!(
                 "Installed {} packages in {:.1}s",

@@ -275,7 +275,14 @@ pub fn install_missing(
     let (to_install_specs, installed_done) =
         filter_installed_monotrail(specs, Path::new(&monotrail_root), &compatible_tags)?;
 
-    let mut installed = install_all(&to_install_specs, &location, &compatible_tags, false, true)?;
+    let mut installed = install_all(
+        &to_install_specs,
+        &location,
+        &compatible_tags,
+        false,
+        true,
+        false,
+    )?;
 
     installed.extend(installed_done);
     // Helps debugging

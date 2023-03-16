@@ -146,6 +146,9 @@ pub enum Cli {
         /// skip pyc compilation
         #[clap(long)]
         no_compile: bool,
+        /// run single threaded (mostly for profiling)
+        #[clap(long)]
+        no_parallel: bool,
     },
     /// Faster reimplementation of "poetry install" for both venvs and monotrail
     PoetryInstall {
@@ -244,6 +247,7 @@ fn poetry_install(
         &location,
         &compatible_tags,
         options.no_compile,
+        false,
         false,
     )?;
     installed_done.append(&mut installed_new);
@@ -349,6 +353,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
         Cli::VenvInstall {
             targets,
             no_compile,
+            no_parallel,
         } => {
             let venv = if let Some(venv) = venv {
                 venv.to_path_buf()
@@ -375,7 +380,14 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                 .map(|target| RequestedSpec::from_requested(target, &[]))
                 .collect::<Result<Vec<RequestedSpec>, WheelInstallerError>>()?;
 
-            install_all(&specs, &location, &compatible_tags, no_compile, false)?;
+            install_all(
+                &specs,
+                &location,
+                &compatible_tags,
+                no_compile,
+                false,
+                no_parallel,
+            )?;
             Ok(None)
         }
         Cli::PoetryInstall { options } => {
