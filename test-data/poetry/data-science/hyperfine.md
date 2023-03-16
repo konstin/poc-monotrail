@@ -1,7 +1,7 @@
 | Command | Mean [s] | Min [s] | Max [s] | Relative |
 |:---|---:|---:|---:|---:|
-| `.venv/bin/pip install --no-compile -q -r requirements-benchmark.txt` | 6.238 ± 0.172 | 6.070 | 6.413 | 3.01 ± 0.34 |
-| `poetry install -q --no-root --only main -E tqdm_feature` | 10.266 ± 0.008 | 10.259 | 10.275 | 4.96 ± 0.54 |
-| `poetry@installer install -q --no-root --only main -E tqdm_feature` | 3.560 ± 0.081 | 3.495 | 3.650 | 1.72 ± 0.19 |
-| `/home/konsti/monotrail/target/release/monotrail poetry-install -E tqdm_feature` | 5.648 ± 1.659 | 3.872 | 7.157 | 2.73 ± 0.85 |
-| `/home/konsti/monotrail/target/release/monotrail poetry-install --no-compile -E tqdm_feature` | 2.070 ± 0.226 | 1.935 | 2.330 | 1.00 |
+| `.venv/bin/pip install --no-compile -q -r requirements-benchmark.txt` | 6.550 ± 0.388 | 6.210 | 6.973 | 4.56 ± 0.29 |
+| `poetry install --compile -q --no-root --only main -E tqdm_feature` | 10.204 ± 0.262 | 10.013 | 10.502 | 7.11 ± 0.23 |
+| `poetry install -q --no-root --only main -E tqdm_feature` | 4.399 ± 0.281 | 4.185 | 4.717 | 3.07 ± 0.21 |
+| `/home/konsti/monotrail/target/release/monotrail poetry-install -E tqdm_feature` | 5.288 ± 0.086 | 5.223 | 5.386 | 3.69 ± 0.10 |
+| `/home/konsti/monotrail/target/release/monotrail poetry-install --no-compile -E tqdm_feature` | 1.435 ± 0.029 | 1.402 | 1.453 | 1.00 |

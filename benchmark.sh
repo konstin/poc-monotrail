@@ -23,6 +23,7 @@ VIRTUAL_ENV=$(pwd)/.venv PATH="../../../target/release/:$(pwd)/.venv/bin:$PATH" 
   --export-json hyperfine.json \
   --export-markdown hyperfine.md \
   ".venv/bin/pip install --no-compile -q -r requirements-benchmark.txt" \
+  "poetry install --compile -q --no-root --only main $BENCHMARK_OPTIONS" \
   "poetry install -q --no-root --only main $BENCHMARK_OPTIONS" \
   "/home/konsti/monotrail/target/release/monotrail poetry-install $BENCHMARK_OPTIONS" \
   "/home/konsti/monotrail/target/release/monotrail poetry-install --no-compile $BENCHMARK_OPTIONS"

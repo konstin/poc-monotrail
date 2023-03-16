@@ -27,12 +27,12 @@ def test_tqdm():
             stdout=DEVNULL,
             stderr=DEVNULL,
         )
-        assert False
+        raise AssertionError()
     except SubprocessError:
         pass
     try:
         check_call([python, tqdm, "--version"], env=env, stdout=DEVNULL, stderr=DEVNULL)
-        assert False
+        raise AssertionError()
     except CalledProcessError:
         pass
 

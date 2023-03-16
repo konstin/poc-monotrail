@@ -2,7 +2,6 @@
 """
 Test with the top 100 pypi wheels and some more
 """
-from pathlib import Path
 from subprocess import check_call
 
 from test.install.test_compare_pip import compare_with_pip
@@ -20,7 +19,7 @@ def test_popular():
                 "-d",
                 wheels_dir,
                 "-r",
-                Path(__file__).parent.parent.joinpath("popular100.txt"),
+                get_root().joinpath("test-data").joinpath("popular.txt"),
             ]
         )
     bin = get_bin()

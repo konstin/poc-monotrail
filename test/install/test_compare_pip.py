@@ -52,7 +52,6 @@ def compare_with_pip(
     start_rs = time.time()
     check_call(
         [monotrail, "venv-install", *wheels],
-        # stdout=DEVNULL,
         env=dict(os.environ, VIRTUAL_ENV=str(env)),
     )
     stop_rs = time.time()
@@ -70,7 +69,7 @@ def compare_with_pip(
 def diff_envs(env_name: str, env_py: Path, env_rs: Path):
     # Filter out paths created by invoking pip and pip itself with on oh horrible regex
     # Better matching suggestions welcome 😬
-    dirs = [
+    site_ignores = [
         r"__pycache__",
         r"pip",
         r"pip-[^/]+.dist-info",
@@ -78,16 +77,23 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         r"pkg_resources",
         r"_distutils_hack/__pycache__",
         # Doesn't make sense in our case to enforce this strictly
-        r"[^/]+/direct_url.json",
+        r"[a-zA-Z0-9\.\-_]+\.dist-info/direct_url.json",
+        # poetry doesn't seem to do this (we do currently)
+        r"[a-zA-Z0-9\.\-_]+\.dist-info/REQUESTED",
     ]
+    if platform.system() == "Windows":
+        site_packages = "Lib/site-packages/"
+    else:
+        py_version = rf"{sys.version_info.major}\.{sys.version_info.minor}"
+        site_packages = rf"lib/python{py_version}/site-packages/"
     pattern = (
-        (
-            r"^(Lib/site-packages/("
-            if platform.system() == "Windows"
-            else r"^(lib/python3\.8/site-packages/("
-        )
-        + "|".join(dirs)
-        + r")|bin/__pycache__|Scripts/__pycache__|monotrail.lock|.*/__pycache__(/.*)?)"
+        "^("
+        + site_packages
+        + "("
+        + "|".join(site_ignores)
+        + ")"
+        + "|bin/__pycache__|Scripts/__pycache__|monotrail.lock|.*/__pycache__(/.*)?"
+        + ")"
     )
     if platform.system() == "Windows":
         # -.-
@@ -105,7 +111,8 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         env_py_entries.add(i.relative_to(env_py))
     symmetric_difference = env_rs_entries ^ env_py_entries
     if symmetric_difference:
-        print(env_name, symmetric_difference)
+        print("PATTERN", pattern)
+        print("DIFF", env_name, symmetric_difference)
         sys.exit(1)
 
 

@@ -244,6 +244,7 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         assert dist_info_dir.is_dir(), f"Not a directory: {dist_info_dir}"
 
         # https://github.com/pypa/setuptools/issues/3319
+        # This bug has been fixed but nees to propagate into our python builds
         # setuptools is adamant on haying _normalized_name on PathDistributions but as
         # of 3.8 that only exists in importlib_metadata. Specifically, it wants to use
         # functions only available in its own vendored importlib_metadata and not in

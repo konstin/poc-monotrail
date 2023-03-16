@@ -154,7 +154,7 @@ pub fn inject_and_run_python(
     finder_data: &str,
 ) -> anyhow::Result<c_int> {
     trace!(
-        "Loading libpython {} {}",
+        "Loading libpython {}.{}",
         python_version.0,
         python_version.1
     );
@@ -615,7 +615,6 @@ mod tests {
             #[cfg(unix)]
             {
                 let python3 = which::which("python3").unwrap();
-
                 fs_err::os::unix::fs::symlink(python3, bin)
                     .context("Failed to create symlink for scripts PATH")
                     .unwrap();
