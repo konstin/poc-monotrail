@@ -234,17 +234,3 @@ Summary
   'python numpy_version.py' ran
     2.86 ± 0.04 times faster than '../target/release/monotrail run python numpy_version.py'
 ```
-
-
-# Dev setup
-
-I use two venvs, the one I have activated is called `.venv-b` and another `.venv` where I install monotrail. Setup is
-
-```bash
-virtualenv .venv-b
-. .venv-b/bin/activate
-pip install -U maturin[zig] black pip pytest ipython
-virtualenv .venv
-# pytest runs the tests, jupyter nbconvert is for testing the notebook
-.venv/bin/pip install pytest jupyter nbconvert
-```
