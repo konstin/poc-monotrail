@@ -90,6 +90,10 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         # don't want that, instead we want the root from the rust code
         if "" in sys.path:
             sys.path.remove("")
+        # TODO(konstin): Move the other removes into sys_path_removes too
+        for sys_path_remove in finder_data.sys_path_removes:
+            if sys_path_remove in sys.path:
+                sys.path.remove(sys_path_remove)
         # Support "" as value for "current directory"
         if self.project_dir is not None and self.project_dir in sys.path:
             sys.path.remove(self.project_dir)
@@ -213,7 +217,7 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
             # We must set submodule_search_locations in the base case otherwise we can't
             # launch single file modules such as ipykernel_launcher:
             # > No module named ipykernel_launcher.__main__; 'ipykernel_launcher' is a
-            # > package and cannot be directly executed"
+            # > package and cannot be directly executed
             spec = spec_from_file_location(fullname, location)
         else:
             # namespace package

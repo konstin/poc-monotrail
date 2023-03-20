@@ -42,6 +42,9 @@ class FinderData:
     lockfile: Optional[str]
     # The scripts in pyproject.toml
     root_scripts: Dict[str, Script]
+    # For some reason on windows the location of the monotrail containing folder gets
+    # inserted into `sys.path` so we need to remove it manually
+    sys_path_removes: List[str]
 
 def monotrail_from_args(args: List[str]) -> FinderData: ...
 def monotrail_from_requested(requested: str, lockfile: Optional[str]) -> FinderData: ...

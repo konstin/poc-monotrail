@@ -197,16 +197,24 @@ pub fn inject_and_run_python(
 
         pre_init(&lib)?;
 
-        trace!("Py_SetPythonHome");
+        trace!("Py_SetPythonHome {}", python_home.display());
         // https://docs.python.org/3/c-api/init.html#c.Py_SetPythonHome
         // void Py_SetPythonHome(const wchar_t *name)
         // Otherwise we get an error that it can't find encoding that tells us to set PYTHONHOME
         let set_python_home: libloading::Symbol<unsafe extern "C" fn(*const wchar_t) -> c_void> =
             lib.get(b"Py_SetPythonHome")?;
-        let python_home_wchat_t = WideCString::from_str(python_home.to_string_lossy()).unwrap();
-        set_python_home(python_home_wchat_t.as_ptr() as *const wchar_t);
+        let python_home_wchar_t = WideCString::from_str(python_home.to_string_lossy()).unwrap();
+        set_python_home(python_home_wchar_t.as_ptr() as *const wchar_t);
 
-        trace!("Py_SetProgramName");
+        if !sys_executable.is_file() {
+            bail!(
+                "Can't launch python, \
+                {} does not exist even though it should have been just created",
+                sys_executable.display()
+            );
+        }
+
+        trace!("Py_SetProgramName {}", sys_executable.display());
         // https://docs.python.org/3/c-api/init.html#c.Py_SetProgramName
         // void Py_SetProgramName(const wchar_t *name)
         // To set sys.executable
@@ -262,6 +270,10 @@ pub fn inject_and_run_python(
             debug!("Failing inject code:\n---\n{}---", command_str);
             bail!("Injecting monotrail failed. Try RUST_LOG=debug for more info")
         }
+        // let command =
+        //     CString::new("import sys; print(sys.path); print(sys.argv); print(sys.executable)")
+        //         .unwrap();
+        // run_string(command.as_ptr() as *const char);
 
         debug!("Running Py_Main: {}", args.join(" "));
         // run python interpreter as from the cli
@@ -435,6 +447,34 @@ pub fn determine_python_version(
     Ok((args, python_version))
 }
 
+/// On unix, we can just symlink to the binary, on windows we need to use a batch file as redirect
+fn launcher_indirection(original: impl AsRef<Path>, link: impl AsRef<Path>) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        fs_err::os::unix::fs::symlink(original, link)
+            .context("Failed to create symlink for scripts PATH")?;
+    }
+    #[cfg(windows)]
+    {
+        // On windows, we can't symlink without being root for an unknown reason
+        // (see [std::os::windows::fs::symlink_file]), so instead we create batch files that
+        // redirect
+        // <https://stackoverflow.com/a/14323360>
+        if original.as_ref().display().to_string().contains('"') {
+            unimplemented!(
+                "path contains quotation marks, escaping for batch scripts needs \
+                    to be implemented"
+            )
+        }
+        let batch_script = format!(r#"start /b cmd /c "{}" %*"#, original.as_ref().display());
+        fs::write(link, batch_script)
+            .context("Failed to create batch script as launcher for python script")?;
+    }
+    #[cfg(not(any(unix, windows)))]
+    compile_error!("launcher_indirection implementation missing");
+    Ok(())
+}
+
 /// Extends PATH with a directory containing all the scripts we found. This is because many tools
 /// such as jupyter depend on scripts being in path instead of using the python api. It also adds
 /// monotrail as python so execve with other scripts works (required e.g. by jupyter)
@@ -468,26 +508,7 @@ pub fn prepare_execve_environment(
     debug!("Preparing execve environment in {}", path_dir.display());
     fs::create_dir_all(&path_dir).context("Failed to create scripts PATH dir")?;
     for (script_name, script_path) in scripts {
-        #[cfg(unix)]
-        {
-            fs_err::os::unix::fs::symlink(&script_path, path_dir.join(script_name))
-                .context("Failed to create symlink for scripts PATH")?;
-        }
-        #[cfg(windows)]
-        {
-            // On windows, we can't symlink without being root for an unknown reason
-            // (see [std::os::windows::fs::symlink_file]), so instead we create batch files that
-            // redirect
-            if script_path.display().to_string().contains('"') {
-                unimplemented!(
-                    "path contains quotation marks, escaping for batch scripts needs \
-                    to be implemented"
-                )
-            }
-            let batch_script = format!(r#"start /b cmd /c "{}" %*"#, script_path.display());
-            fs::write(path_dir.join(script_name), batch_script)
-                .context("Failed to create batch script as launcher for python script")?;
-        }
+        launcher_indirection(script_path, path_dir.join(script_name))?;
     }
 
     // The scripts of the root project, i.e. those in the current pyproject.toml. Since we don't
@@ -500,8 +521,11 @@ pub fn prepare_execve_environment(
             .with_context(|| format!("Failed to write launcher for {}", script_name))?;
     }
 
-    #[cfg(unix)]
-    {
+    let sys_executable = if cfg!(windows) {
+        let python_exe = path_dir.join("python.exe");
+        launcher_indirection(env::current_exe()?, &python_exe)?;
+        python_exe
+    } else if cfg!(unix) {
         // We need to allow execve & friends with python scripts, because that's how e.g. jupyter
         // launches the server and kernels. We can't inject monotrail as python through a wrapper
         // script due to https://www.in-ulm.de/~mascheck/various/shebang/#interpreter-script .
@@ -514,11 +538,12 @@ pub fn prepare_execve_environment(
             format!("python{}.{}", python_version.0, python_version.1),
         ];
         for python in pythons {
-            fs_err::os::unix::fs::symlink(&env::current_exe()?, path_dir.join(python))
-                .context("Failed to create symlink for current exe")?;
+            launcher_indirection(env::current_exe()?, path_dir.join(python))?;
         }
-    }
-    let sys_executable = path_dir.join("python");
+        path_dir.join("python")
+    } else {
+        unreachable!();
+    };
 
     // venv/bin/activate also puts venv scripts first. Our python launcher we have to put first
     // anyway to overwrite system python

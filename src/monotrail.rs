@@ -78,6 +78,9 @@ pub struct FinderData {
     pub lockfile: String,
     /// The scripts in pyproject.toml
     pub root_scripts: BTreeMap<String, Script>,
+    /// For some reason on windows the location of the monotrail containing folder gets
+    /// inserted into `sys.path` so we need to remove it manually
+    pub sys_path_removes: Vec<String>,
 }
 
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
@@ -101,6 +104,8 @@ pub struct FinderData {
     pub lockfile: String,
     #[pyo3(get)]
     pub root_scripts: BTreeMap<String, Script>,
+    #[pyo3(get)]
+    pub sys_path_removes: Vec<String>,
 }
 
 #[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
@@ -603,6 +608,14 @@ pub fn install(
         env::set_var("JUPYTER_PATH", jupyter_path);
     }
 
+    let current_exe_path = current_exe()
+        .context("Couldn't determine currently running program 🤨")?
+        .parent()
+        .context("Currently running program has no parent")?
+        .to_string_lossy()
+        .to_string();
+    let sys_path_removes = vec![current_exe_path];
+
     let finder_data = FinderData {
         sprawl_root,
         sprawl_packages,
@@ -611,6 +624,7 @@ pub fn install(
         pth_files,
         lockfile,
         root_scripts,
+        sys_path_removes,
     };
 
     Ok(finder_data)

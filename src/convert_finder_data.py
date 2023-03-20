@@ -79,6 +79,9 @@ class FinderData:
     lockfile: Optional[str]
     # The scripts from pyproject.toml
     root_scripts: Dict[str, Any]
+    # For some reason on windows the location of the monotrail containing folder gets
+    # inserted into `sys.path` so we need to remove it manually
+    sys_path_removes: List[str]
 
     @classmethod
     def from_json(cls, data: str) -> "FinderData":
