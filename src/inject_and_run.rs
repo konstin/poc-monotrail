@@ -1,6 +1,6 @@
 //! Communication with libpython
 
-use crate::monotrail::{find_scripts, install, load_specs, FinderData, PythonContext};
+use crate::monotrail::{find_scripts, install, load_specs, FinderData, InjectData, PythonContext};
 use crate::standalone_python::provision_python;
 use crate::DEFAULT_PYTHON_VERSION;
 use anyhow::{bail, format_err, Context};
@@ -10,6 +10,7 @@ use libc::{c_int, c_void, wchar_t};
 use libloading::Library;
 use std::collections::BTreeMap;
 use std::env;
+use std::env::current_exe;
 use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
@@ -151,7 +152,7 @@ pub fn inject_and_run_python(
     python_version: (u8, u8),
     sys_executable: &Path,
     args: &[String],
-    finder_data: &str,
+    finder_data: &FinderData,
 ) -> anyhow::Result<c_int> {
     trace!(
         "Loading libpython {}.{}",
@@ -206,21 +207,25 @@ pub fn inject_and_run_python(
         let python_home_wchar_t = WideCString::from_str(python_home.to_string_lossy()).unwrap();
         set_python_home(python_home_wchar_t.as_ptr() as *const wchar_t);
 
+        let sys_executable_str = sys_executable.to_str().context(format!(
+            "The path to python must be utf-8, but isn't: {}",
+            sys_executable.display()
+        ))?;
         if !sys_executable.is_file() {
             bail!(
                 "Can't launch python, \
                 {} does not exist even though it should have been just created",
-                sys_executable.display()
+                sys_executable_str
             );
         }
 
-        trace!("Py_SetProgramName {}", sys_executable.display());
+        trace!("Py_SetProgramName {}", sys_executable_str);
         // https://docs.python.org/3/c-api/init.html#c.Py_SetProgramName
         // void Py_SetProgramName(const wchar_t *name)
         // To set sys.executable
         let set_program_name: libloading::Symbol<unsafe extern "C" fn(*const wchar_t) -> c_void> =
             lib.get(b"Py_SetProgramName")?;
-        let sys_executable = WideCString::from_str(sys_executable.to_string_lossy()).unwrap();
+        let sys_executable = WideCString::from_str(sys_executable_str).unwrap();
         set_program_name(sys_executable.as_ptr() as *const wchar_t);
 
         trace!("Py_Initialize");
@@ -237,15 +242,28 @@ pub fn inject_and_run_python(
         let run_string: libloading::Symbol<unsafe extern "C" fn(*const char) -> c_int> =
             lib.get(b"PyRun_SimpleString")?;
 
+        let current_exe_path = current_exe()
+            .context("Couldn't determine currently running program 🤨")?
+            .parent()
+            .context("Currently running program has no parent")?
+            .to_string_lossy()
+            .to_string();
+
+        let inject_data = InjectData {
+            finder_data: finder_data.clone(),
+            sys_path_removes: vec![current_exe_path],
+            sys_executable: sys_executable_str.to_string(),
+        };
+
         // This is a really horrible way to inject that information and it should be done with
         // PyRun_StringFlags instead
-        let finder_data_json = format!(
-            "finder_data_str=r'{}'",
-            finder_data.replace('\'', r"\u0027")
+        let inject_data_json = format!(
+            "inject_data_str=r'{}'",
+            serde_json::to_string(&inject_data)?.replace('\'', r"\u0027")
         );
-        let read_json = "finder_data = FinderData.from_json(finder_data_str)";
+        let read_json = "inject_data = InjectData.from_json(inject_data_str)";
         let update_and_activate =
-            "MonotrailFinder.get_singleton().update_and_activate(finder_data)";
+            "MonotrailFinder.get_singleton().update_and_activate(inject_data)";
         // First, we inject our Finder class. Next we add the conversion code that's specific to
         // coming from rust without haying pyo3. Third, we serialize the information for the finder
         // as one long json line. We read that data using the python types and
@@ -259,7 +277,7 @@ pub fn inject_and_run_python(
             // TODO: actual encoding strings
             // This just hopefully works because json uses double quotes so there shouldn't
             // be any escaped single quotes in there
-            finder_data_json,
+            inject_data_json,
             read_json,
             update_and_activate
         );
@@ -270,10 +288,6 @@ pub fn inject_and_run_python(
             debug!("Failing inject code:\n---\n{}---", command_str);
             bail!("Injecting monotrail failed. Try RUST_LOG=debug for more info")
         }
-        // let command =
-        //     CString::new("import sys; print(sys.path); print(sys.argv); print(sys.executable)")
-        //         .unwrap();
-        // run_string(command.as_ptr() as *const char);
 
         debug!("Running Py_Main: {}", args.join(" "));
         // run python interpreter as from the cli
@@ -396,7 +410,7 @@ pub fn run_python_args_finder_data(
         python_context.version,
         &sys_executable,
         &args,
-        &serde_json::to_string(&finder_data).unwrap(),
+        &finder_data,
     )
     .context("inject and run failed")?;
     if exit_code != 0 {
@@ -523,7 +537,7 @@ pub fn prepare_execve_environment(
 
     let sys_executable = if cfg!(windows) {
         let python_exe = path_dir.join("python.exe");
-        launcher_indirection(env::current_exe()?, &python_exe)?;
+        launcher_indirection(current_exe()?, &python_exe)?;
         python_exe
     } else if cfg!(unix) {
         // We need to allow execve & friends with python scripts, because that's how e.g. jupyter
@@ -538,7 +552,7 @@ pub fn prepare_execve_environment(
             format!("python{}.{}", python_version.0, python_version.1),
         ];
         for python in pythons {
-            launcher_indirection(env::current_exe()?, path_dir.join(python))?;
+            launcher_indirection(current_exe()?, path_dir.join(python))?;
         }
         path_dir.join("python")
     } else {

@@ -1,3 +1,4 @@
+import platform
 import sys
 
 if sys.version_info < (3, 8):
@@ -25,7 +26,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 if typing.TYPE_CHECKING:
-    from .monotrail import FinderData, InstalledPackage
+    from .monotrail import InjectData, InstalledPackage, FinderData
 
 # modularity fallback
 try:
@@ -78,8 +79,24 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
             sys.meta_path.append(_finder_singleton)
         return _finder_singleton
 
-    def update_and_activate(self, finder_data: "FinderData"):
+    def update_and_activate(self, inject_data: "InjectData"):
         """Update the set of installed/available packages on the fly"""
+        # TODO(konstin): Move the other removes into sys_path_removes too
+        for sys_path_remove in inject_data.sys_path_removes:
+            if sys_path_remove in sys.path:
+                sys.path.remove(sys_path_remove)
+
+        if platform.system() == "Windows":
+            # Windows for some reason ignores `Py_SetProgramName`, so we need to set
+            # `sys.executable` manually
+            sys.executable = inject_data.sys_executable
+        else:
+            assert (
+                sys.executable == inject_data.sys_executable
+            ), "sys.executable doesn't have the expected value: '{}' vs '{}'"
+
+        finder_data = inject_data.finder_data
+
         self.sprawl_root = Path(finder_data.sprawl_root)
         self.warn_on_conflicts(self.sprawl_packages, finder_data.sprawl_packages)
         self.sprawl_packages = {
@@ -90,10 +107,6 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
         # don't want that, instead we want the root from the rust code
         if "" in sys.path:
             sys.path.remove("")
-        # TODO(konstin): Move the other removes into sys_path_removes too
-        for sys_path_remove in finder_data.sys_path_removes:
-            if sys_path_remove in sys.path:
-                sys.path.remove(sys_path_remove)
         # Support "" as value for "current directory"
         if self.project_dir is not None and self.project_dir in sys.path:
             sys.path.remove(self.project_dir)

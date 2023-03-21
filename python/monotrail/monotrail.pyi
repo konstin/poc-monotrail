@@ -42,9 +42,19 @@ class FinderData:
     lockfile: Optional[str]
     # The scripts in pyproject.toml
     root_scripts: Dict[str, Script]
+
+class InjectData:
+    """The FinderData is made by the installation system, the other fields are made by
+    the inject system"""
+
+    # The location of packages and imports
+    finder_data: FinderData
     # For some reason on windows the location of the monotrail containing folder gets
     # inserted into `sys.path` so we need to remove it manually
     sys_path_removes: List[str]
+    # Windows for some reason ignores `Py_SetProgramName`, so we need to set
+    # `sys.executable` manually
+    sys_executable: str
 
 def monotrail_from_args(args: List[str]) -> FinderData: ...
 def monotrail_from_requested(requested: str, lockfile: Optional[str]) -> FinderData: ...

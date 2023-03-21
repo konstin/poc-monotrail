@@ -58,8 +58,25 @@ pub struct PythonContext {
 /// Name of the import -> (`__init__.py`, submodule import dirs)
 pub type SpecPaths = BTreeMap<String, (Option<PathBuf>, Vec<PathBuf>)>;
 
+/// The [FinderData] is made by the installation system, the other fields are made by the inject
+/// system
+#[cfg_attr(feature = "python_bindings", pyo3::pyclass(dict, get_all))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct InjectData {
+    /// The location of packages and imports
+    pub finder_data: FinderData,
+    /// For some reason on windows the location of the monotrail containing folder gets
+    /// inserted into `sys.path` so we need to remove it manually
+    pub sys_path_removes: Vec<String>,
+    /// Windows for some reason ignores `Py_SetProgramName`, so we need to set `sys.executable`
+    /// manually
+    pub sys_executable: String,
+}
+
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
-#[cfg(not(feature = "python_bindings"))]
+///
+/// Keep in sync with its python counterparts in convert_finder_data.py and monotrail.pyi
+#[cfg_attr(feature = "python_bindings", pyo3::pyclass(dict, get_all))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FinderData {
     /// The location where all packages are installed
@@ -78,34 +95,6 @@ pub struct FinderData {
     pub lockfile: String,
     /// The scripts in pyproject.toml
     pub root_scripts: BTreeMap<String, Script>,
-    /// For some reason on windows the location of the monotrail containing folder gets
-    /// inserted into `sys.path` so we need to remove it manually
-    pub sys_path_removes: Vec<String>,
-}
-
-/// The packaging and import data that is resolved by the rust part and deployed by the finder
-///
-/// TODO: write a pyo3 bug report to parse through cfg attr
-#[cfg(feature = "python_bindings")]
-#[pyo3::pyclass(dict)]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct FinderData {
-    #[pyo3(get)]
-    pub sprawl_root: String,
-    #[pyo3(get)]
-    pub sprawl_packages: Vec<InstalledPackage>,
-    #[pyo3(get)]
-    pub spec_paths: SpecPaths,
-    #[pyo3(get)]
-    pub project_dir: Option<PathBuf>,
-    #[pyo3(get)]
-    pub pth_files: Vec<PathBuf>,
-    #[pyo3(get)]
-    pub lockfile: String,
-    #[pyo3(get)]
-    pub root_scripts: BTreeMap<String, Script>,
-    #[pyo3(get)]
-    pub sys_path_removes: Vec<String>,
 }
 
 #[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
@@ -608,14 +597,6 @@ pub fn install(
         env::set_var("JUPYTER_PATH", jupyter_path);
     }
 
-    let current_exe_path = current_exe()
-        .context("Couldn't determine currently running program 🤨")?
-        .parent()
-        .context("Currently running program has no parent")?
-        .to_string_lossy()
-        .to_string();
-    let sys_path_removes = vec![current_exe_path];
-
     let finder_data = FinderData {
         sprawl_root,
         sprawl_packages,
@@ -624,7 +605,6 @@ pub fn install(
         pth_files,
         lockfile,
         root_scripts,
-        sys_path_removes,
     };
 
     Ok(finder_data)
@@ -773,7 +753,7 @@ pub fn run_command_finder_data(
             python_context.version,
             &sys_executable,
             &args,
-            &serde_json::to_string(&finder_data).unwrap(),
+            &finder_data,
         )?
     } else {
         debug!("launching (execv) {}", script_path.display());
@@ -799,7 +779,8 @@ pub fn run_command_finder_data(
         }
         #[cfg(windows)]
         {
-            // TODO: What's the correct equivalent of execv on windows?
+            // TODO: What's the correct equivalent of execv on windows? I couldn't find one, but
+            // there should be one
             let status = Command::new(script_path)
                 .args(args.iter())
                 .status()
@@ -809,9 +790,7 @@ pub fn run_command_finder_data(
                 .context("Process didn't return an exit code")?
         }
         #[cfg(not(any(unix, windows)))]
-        {
-            compile_error!("Unsupported Platform")
-        }
+        compile_error!("Unsupported Platform")
     };
     // just to assert it lives until here
     drop(scripts_tmp);

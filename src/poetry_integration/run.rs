@@ -66,7 +66,7 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
         // (at least i never encountered that)
         &python_context.sys_executable,
         &poetry_args,
-        &serde_json::to_string(&finder_data)?,
+        &finder_data,
     )
     .context("Running poetry for dependency resolution failed")?;
     Ok(exit_code)

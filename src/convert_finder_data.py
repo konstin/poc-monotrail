@@ -79,19 +79,36 @@ class FinderData:
     lockfile: Optional[str]
     # The scripts from pyproject.toml
     root_scripts: Dict[str, Any]
-    # For some reason on windows the location of the monotrail containing folder gets
-    # inserted into `sys.path` so we need to remove it manually
-    sys_path_removes: List[str]
 
     @classmethod
-    def from_json(cls, data: str) -> "FinderData":
-        data = json.loads(data)
+    def from_dict(cls, data: Dict[str, Any]) -> "FinderData":
         data["sprawl_packages"] = [
             InstalledPackage(**i) for i in data["sprawl_packages"]
         ]
         data["root_scripts"] = {
             name: Script(**value) for name, value in data["root_scripts"].items()
         }
+        return cls(**data)
+
+
+@dataclass
+class InjectData:
+    """The FinderData is made by the installation system, the other fields are made by
+    the inject system"""
+
+    # The location of packages and imports
+    finder_data: FinderData
+    # For some reason on windows the location of the monotrail containing folder gets
+    # inserted into `sys.path` so we need to remove it manually
+    sys_path_removes: List[str]
+    # Windows for some reason ignores `Py_SetProgramName`, so we need to set
+    # `sys.executable` manually
+    sys_executable: str
+
+    @classmethod
+    def from_json(cls, data: str) -> "InjectData":
+        data = json.loads(data)
+        data["finder_data"] = FinderData.from_dict(data["finder_data"])
         return cls(**data)
 
 
