@@ -3,7 +3,8 @@ def test_namespace_init_py(pytestconfig):
     from monotrail.monotrail import monotrail_from_dir
 
     poetry_self_toml_dir = pytestconfig.rootpath.joinpath("test-data/poetry-1.1.13")
-    finder_data = monotrail_from_dir(poetry_self_toml_dir, [])
+    inject_data = monotrail_from_dir(poetry_self_toml_dir, [])
+    finder_data = inject_data.finder_data
     assert finder_data.spec_paths.pop("poetry") == (
         finder_data.sprawl_root
         + "/poetry/1.1.13/py2.py3-none-any/lib/python/site-packages/poetry/__init__.py",
@@ -26,7 +27,8 @@ def test_namespace_no_init_py(pytestconfig):
     from monotrail.monotrail import monotrail_from_dir
 
     poetry_self_toml_dir = pytestconfig.rootpath.joinpath("test-data/poetry-1.2.0b1")
-    finder_data = monotrail_from_dir(poetry_self_toml_dir, [])
+    inject_data = monotrail_from_dir(poetry_self_toml_dir, [])
+    finder_data = inject_data.finder_data
     assert finder_data.spec_paths.pop("poetry") == (
         finder_data.sprawl_root
         + "/poetry/1.2.0b1/py3-none-any/lib/python/site-packages/poetry/__init__.py",

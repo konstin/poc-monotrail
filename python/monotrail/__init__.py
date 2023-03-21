@@ -54,8 +54,8 @@ def interactive(**kwargs):
 
     # enums with fields (or even untagged enums) are unsupported by pyo3, so json it is
     finder = MonotrailFinder.get_singleton()
-    finder_data = monotrail_from_requested(json.dumps(kwargs), finder.lockfile)
-    finder.update_and_activate(finder_data)
+    inject_data = monotrail_from_requested(json.dumps(kwargs), finder.lockfile)
+    finder.update_and_activate(inject_data)
 
 
 def from_git(repo_url: str, revision: str, extras: Optional[List[str]] = None):
@@ -75,5 +75,5 @@ def from_git(repo_url: str, revision: str, extras: Optional[List[str]] = None):
     from ._monotrail_finder import MonotrailFinder
 
     finder = MonotrailFinder.get_singleton()
-    finder_data = monotrail_from_git(repo_url, revision, extras, finder.lockfile)
-    finder.update_and_activate(finder_data)
+    inject_data = monotrail_from_git(repo_url, revision, extras, finder.lockfile)
+    finder.update_and_activate(inject_data)

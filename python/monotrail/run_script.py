@@ -21,7 +21,8 @@ def main():
 
     script_name = sys.argv[1]
     # Install all required packages and get their location (in rust)
-    finder_data = monotrail_from_args([])
+    inject_data = monotrail_from_args([])
+    finder_data = inject_data.finder_data
 
     # Search poetry scripts
     if script_name in finder_data.root_scripts:
@@ -31,7 +32,7 @@ def main():
         else:
             sys.path.append(os.getcwd())
         # prepare execution environment
-        MonotrailFinder.get_singleton().update_and_activate(finder_data)
+        MonotrailFinder.get_singleton().update_and_activate(inject_data)
         script = finder_data.root_scripts[script_name]
         # See https://packaging.python.org/en/latest/specifications/entry-points/#data-model
         obj = importlib.import_module(script.module)
@@ -71,7 +72,7 @@ def main():
     if shebang == placeholder_python:
         # Case 1: it's a python script
         # prepare execution environment
-        MonotrailFinder.get_singleton().update_and_activate(finder_data)
+        MonotrailFinder.get_singleton().update_and_activate(inject_data)
         runpy.run_path(str(script_path), run_name="__main__")
     else:
         # Case 2: it's not a python script, e.g. a native executable or a bash script

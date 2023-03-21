@@ -8,7 +8,8 @@
 use crate::install::InstalledPackage;
 use crate::markers::Pep508Environment;
 use crate::monotrail::{
-    find_scripts, install, load_specs, spec_paths, FinderData, LaunchType, PythonContext, SpecPaths,
+    find_scripts, install, load_specs, spec_paths, FinderData, InjectData, LaunchType,
+    PythonContext, SpecPaths,
 };
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
@@ -20,7 +21,7 @@ use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
 use std::collections::BTreeMap;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Once;
 use tracing::{debug, trace};
 
@@ -30,6 +31,21 @@ fn format_monotrail_error(err: impl Into<anyhow::Error>) -> PyErr {
         accumulator.push_str(&format!("\n  Caused by: {}", cause));
     }
     PyRuntimeError::new_err(accumulator)
+}
+
+fn injectable(
+    finder_data: anyhow::Result<FinderData>,
+    sys_executable: &Path,
+) -> PyResult<InjectData> {
+    match finder_data {
+        Ok(finder_data) => Ok(InjectData {
+            finder_data,
+            // TODO(konstin): Also be more consistent about String vs. Path here
+            sys_executable: sys_executable.to_string_lossy().to_string(),
+            sys_path_removes: Vec::new(),
+        }),
+        Err(err) => Err(format_monotrail_error(err)),
+    }
 }
 
 /// Uses the python C API to run a code snippet that json encodes the PEP508 env
@@ -72,7 +88,7 @@ fn get_python_context(py: Python) -> PyResult<PythonContext> {
 /// Takes a python invocation, extracts the script dir (if any), installs all required packages
 /// and returns script dir and finder data to python
 #[pyfunction]
-pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<FinderData> {
+pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<InjectData> {
     // We parse the python args even if we take MONOTRAIL_CWD as a validation
     // step
     let script = inject_and_run::naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
@@ -90,14 +106,14 @@ pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<FinderData
 
     let (specs, scripts, lockfile, project_dir) =
         load_specs(script.as_deref(), &extras, &python_context).map_err(format_monotrail_error)?;
-    install(
+    let finder_data = install(
         &specs,
         scripts,
         lockfile,
         Some(project_dir),
         &python_context,
-    )
-    .map_err(format_monotrail_error)
+    );
+    injectable(finder_data, &python_context.sys_executable)
 }
 
 /// User gives a `[tool.poetry.dependencies]`
@@ -106,7 +122,7 @@ pub fn monotrail_from_requested(
     py: Python,
     requested: String,
     lockfile: Option<String>,
-) -> PyResult<FinderData> {
+) -> PyResult<InjectData> {
     let requested = serde_json::from_str(&requested)
         .map_err(|serde_err| PyRuntimeError::new_err(format!("Invalid dependency format: {}.\n See https://python-poetry.org/docs/dependency-specification/", serde_err)))?;
 
@@ -120,8 +136,8 @@ pub fn monotrail_from_requested(
     let specs = read_poetry_specs(&poetry_section, poetry_lock, false, &[], &pep508_env)
         .map_err(format_monotrail_error)?;
 
-    install(&specs, BTreeMap::new(), lockfile, None, &python_context)
-        .map_err(format_monotrail_error)
+    let finder_data = install(&specs, BTreeMap::new(), lockfile, None, &python_context);
+    injectable(finder_data, &python_context.sys_executable)
 }
 
 /// Checkouts the repository at the given revision, storing it in the user cache dir.
@@ -132,7 +148,7 @@ pub fn monotrail_from_git(
     revision: String,
     extras: Option<Vec<String>>,
     lockfile: Option<String>,
-) -> PyResult<FinderData> {
+) -> PyResult<InjectData> {
     debug!("monotrail_from_git: {} {}", git_url, revision);
     let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
@@ -146,34 +162,34 @@ pub fn monotrail_from_git(
     )
     .map_err(format_monotrail_error)?;
 
-    install(
+    let finder_data = install(
         &specs,
         BTreeMap::new(),
         lockfile,
         Some(repo_dir),
         &python_context,
-    )
-    .map_err(format_monotrail_error)
+    );
+    injectable(finder_data, &python_context.sys_executable)
 }
 
 /// Like monotrail_from_args, except you explicitly pass what you want, currently only used for
 /// testing
 #[pyfunction]
-pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyResult<FinderData> {
+pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyResult<InjectData> {
     debug!("monotrail_from_dir script: {:?}", dir);
     let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
 
     let (specs, scripts, lockfile, project_dir) =
         load_specs(Some(&dir), &extras, &python_context).map_err(format_monotrail_error)?;
-    install(
+    let finder_data = install(
         &specs,
         scripts,
         lockfile,
         Some(project_dir),
         &python_context,
-    )
-    .map_err(format_monotrail_error)
+    );
+    injectable(finder_data, &python_context.sys_executable)
 }
 
 /// The installed packages are all lies and rumors, we can only find the actually importable
