@@ -19,7 +19,7 @@ anyhow = "1.0.65"
 base64 = "0.21.0"
 clap = { version = "4.0.2", features = ["derive"] }
 cpufeatures = "0.2.5"
-dirs = "4.0.0"
+dirs = "5.0.0"
 fs-err = "2.8.1"
 fs2 = "0.4.3"
 git2 = "0.16.1"
