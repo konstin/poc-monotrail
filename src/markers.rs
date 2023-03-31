@@ -10,7 +10,7 @@
 //! <https://github.com/pypa/pip/blob/b4d2b0f63f4955c7d6eee2653c6e1fa6fa507c31/src/pip/_vendor/distlib/markers.py>
 
 use crate::PEP508_QUERY_ENV;
-use pep440::Version as Pep440Version;
+use pep440_rs::Version;
 use serde::Deserialize;
 use std::fmt::{Display, Formatter};
 use std::io;
@@ -258,10 +258,12 @@ impl Expression {
                 }
             },
             Key::ImplementationVersion | Key::PythonFullVersion | Key::PythonVersion => {
-                let left_version = Pep440Version::parse(env.get_key(self.key))
-                    .ok_or_else(|| format!("{} is not a valid pep440 version", self.value))?;
-                let right_version = Pep440Version::parse(&self.value)
-                    .ok_or_else(|| format!("{} is not a valid pep440 version", self.value))?;
+                let left_version = Version::from_str(env.get_key(self.key)).map_err(|err| {
+                    format!("{} is not a valid pep440 version: {}", self.value, err)
+                })?;
+                let right_version = Version::from_str(&self.value).map_err(|err| {
+                    format!("{} is not a valid pep440 version: {}", self.value, err)
+                })?;
                 match self.comparator {
                     // Should this actually use equality or should we compare with pep440
                     Comparator::Equal => env.get_key(self.key) == self.value,
