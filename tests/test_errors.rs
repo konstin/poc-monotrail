@@ -74,7 +74,8 @@ fn test_cli_python_hyphen() {
         "data_science_project",
         "python",
         "-c",
-        "fail()",
+        // We can't use sys.exit, but we still want to see the exception
+        "import sys; sys.stderr.close(); raise RuntimeError()",
     ])
     .unwrap();
     assert_eq!(run_cli(cli, None).unwrap(), Some(1));
