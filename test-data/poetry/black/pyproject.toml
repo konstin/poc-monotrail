@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "black-user"
+version = "0.1.0"
+description = ""
+authors = ["konstin <konstin@mailbox.org>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+black = { extras = ["d", "jupyter"], version = "^23.3.0" }
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
