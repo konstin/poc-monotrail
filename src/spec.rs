@@ -202,10 +202,10 @@ pub struct ResolvedSpec {
 
 #[cfg(test)]
 mod test {
+    use crate::markers::marker_environment_from_json_str;
     use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
     use crate::spec::{FileOrUrl, ResolvedSpec};
     use crate::utils::zstd_json_mock;
-    use crate::Pep508Environment;
     use install_wheel_rs::{compatible_tags, Arch, Os};
     use mockito::Server;
     use std::path::Path;
@@ -218,8 +218,20 @@ mod test {
         let arch = Arch::X86_64;
         let python_version = (3, 7);
         let compatible_tags = compatible_tags(python_version, &os, &arch).unwrap();
-        let pep508_env = Pep508Environment::from_json_str(
-            r##"{"implementation_name": "cpython", "implementation_version": "3.7.13", "os_name": "posix", "platform_machine": "x86_64", "platform_python_implementation": "CPython", "platform_release": "5.4.188+", "platform_system": "Linux", "platform_version": "#1 SMP Sun Apr 24 10:03:06 PDT 2022", "python_full_version": "3.7.13", "python_version": "3.7", "sys_platform": "linux"}"##,
+        let pep508_env = marker_environment_from_json_str(
+            r##"{
+                "implementation_name": "cpython", 
+                "implementation_version": "3.7.13",
+                "os_name": "posix",
+                "platform_machine": "x86_64",
+                "platform_python_implementation": "CPython",
+                "platform_release": "5.4.188+",
+                "platform_system": "Linux",
+                "platform_version": "#1 SMP Sun Apr 24 10:03:06 PDT 2022",
+                "python_full_version": "3.7.13",
+                "python_version": "3.7",
+                "sys_platform": "linux"
+            }"##,
         );
 
         let (specs, _, _) = poetry_spec_from_dir(

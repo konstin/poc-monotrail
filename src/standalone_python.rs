@@ -1,9 +1,9 @@
 //! Download and install standalone python builds (PyOxy) from
 //! <https://github.com/indygreg/python-build-standalone>
 
+use crate::markers::marker_environment_from_python;
 use crate::monotrail::{LaunchType, PythonContext};
 use crate::utils::cache_dir;
-use crate::Pep508Environment;
 use anyhow::{bail, Context};
 use fs2::FileExt;
 use fs_err as fs;
@@ -220,7 +220,7 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
             .join("python3")
     };
     // TODO: Already init and use libpython here
-    let pep508_env = Pep508Environment::from_python(&python_binary);
+    let pep508_env = marker_environment_from_python(&python_binary);
     let python_context = PythonContext {
         sys_executable: python_binary,
         version: python_version,

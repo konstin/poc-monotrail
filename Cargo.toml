@@ -31,6 +31,8 @@ libloading = "0.7.3"
 libz-sys = { version = "1.1.8", features = ["static"] }
 nix = { version = "0.26.1", features = ["process"] }
 pep440_rs = "0.3.2"
+#pep508_rs = { version = "0.2.0", features = ["serde"] }
+pep508_rs = { git = "https://github.com/konstin/pep508_rs", rev = "2007e258f36d7ba6885fa742cbc4cf1c4d2f93c6", features = ["serde"] }
 pyo3 = { version = "0.18.1", features = ["extension-module", "abi3-py37"], optional = true }
 rayon = "1.5.3"
 regex = "1.6.0"

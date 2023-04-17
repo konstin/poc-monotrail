@@ -3,7 +3,6 @@ use crate::inject_and_run::{
     run_python_args_finder_data,
 };
 use crate::install::{install_all, InstalledPackage};
-use crate::markers::Pep508Environment;
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::{poetry_spec_from_dir, specs_from_git};
 use crate::read_poetry_specs;
@@ -17,6 +16,7 @@ use fs_err::{DirEntry, File};
 use install_wheel_rs::{
     compatible_tags, Arch, InstallLocation, Os, Script, MONOTRAIL_SCRIPT_SHEBANG,
 };
+use pep508_rs::MarkerEnvironment;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env::{current_dir, current_exe};
@@ -51,7 +51,7 @@ pub enum LaunchType {
 pub struct PythonContext {
     pub sys_executable: PathBuf,
     pub version: (u8, u8),
-    pub pep508_env: Pep508Environment,
+    pub pep508_env: MarkerEnvironment,
     pub launch_type: LaunchType,
 }
 

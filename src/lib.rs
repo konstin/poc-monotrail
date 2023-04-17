@@ -15,7 +15,6 @@
 //!    remains (which is in some case cleared up by the os) and we avoid half finished broken
 //!    installations.
 
-pub use crate::markers::Pep508Environment;
 pub use cli::{run_cli, Cli};
 pub use inject_and_run::{parse_major_minor, run_python_args};
 use poetry_integration::read_dependencies::read_poetry_specs;
