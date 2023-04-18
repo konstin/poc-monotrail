@@ -14,6 +14,7 @@ use anyhow::{bail, Context};
 use clap::Parser;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
 use std::env;
+use std::env::current_dir;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info};
@@ -35,9 +36,9 @@ pub struct PoetryOptions {
     /// Only relevant for venv install
     #[clap(long)]
     skip_existing: bool,
-    /// Don't bytecode compile python sources
+    /// Compile python sources to bytecode
     #[clap(long)]
-    no_compile: bool,
+    compile: bool,
 }
 
 /// Either `python ...` or `command ...`
@@ -139,13 +140,30 @@ pub enum Cli {
         /// arguments passed verbatim to poetry
         args: Vec<String>,
     },
+    /// Installs the (currently frozen only) dependencies in a virtualenv environment
+    ///
+    /// Currently, you can either use `-r requirements.txt`, it will use a poetry.lock or error.
+    Install {
+        /// Install from a requirements.txt-style file.
+        #[clap(short, long)]
+        requirement: Vec<String>,
+        /// Compile python sources to bytecode
+        #[clap(long)]
+        compile: bool,
+        /// Requirements are already resolved, if not not we'll resolve them (currently with poetry)
+        #[clap(long)]
+        frozen: bool,
+        /// Run single threaded (mostly for profiling)
+        #[clap(long)]
+        no_parallel: bool,
+    },
     /// Install the given list of wheels in the current venv
-    VenvInstall {
+    WheelInstall {
         /// The wheels to install
         targets: Vec<String>,
-        /// skip pyc compilation
+        /// Compile python sources to bytecode
         #[clap(long)]
-        no_compile: bool,
+        compile: bool,
         /// run single threaded (mostly for profiling)
         #[clap(long)]
         no_parallel: bool,
@@ -246,7 +264,7 @@ fn poetry_install(
         &to_install,
         &location,
         &compatible_tags,
-        options.no_compile,
+        options.compile,
         false,
         false,
     )?;
@@ -254,9 +272,48 @@ fn poetry_install(
     Ok(())
 }
 
+pub fn install(
+    requirement: Vec<String>,
+    _compile: bool,
+    _no_parallel: bool,
+    frozen: bool,
+) -> anyhow::Result<Option<i32>> {
+    if !frozen {
+        bail!("Needs to be frozen");
+    }
+    if requirement.is_empty() {
+        let cwd = current_dir().context("Couldn't get current directory ಠ_ಠ")?;
+        let poetry_lock = cwd
+            .ancestors()
+            .filter_map(|ancestor| {
+                if ancestor.join("poetry.lock").exists() {
+                    Some(ancestor.to_path_buf())
+                } else {
+                    None
+                }
+            })
+            .next()
+            .with_context(|| {
+                format!(
+                    "Couldn't find poetry.lock in {} or any parent directory",
+                    cwd.display()
+                )
+            })?;
+        todo!("not implemented {:?}", poetry_lock);
+    } else {
+        todo!()
+    }
+}
+
 /// Dispatches from the Cli
 pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
     match cli {
+        Cli::Install {
+            requirement,
+            compile,
+            no_parallel,
+            frozen,
+        } => install(requirement, compile, no_parallel, frozen),
         Cli::Run {
             extras,
             python_version,
@@ -350,9 +407,9 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             Ok(None)
         }
         Cli::Poetry { args } => Ok(Some(poetry_run(&args, None)?)),
-        Cli::VenvInstall {
+        Cli::WheelInstall {
             targets,
-            no_compile,
+            compile,
             no_parallel,
         } => {
             let venv = if let Some(venv) = venv {
@@ -384,7 +441,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                 &specs,
                 &location,
                 &compatible_tags,
-                no_compile,
+                compile,
                 false,
                 no_parallel,
             )?;

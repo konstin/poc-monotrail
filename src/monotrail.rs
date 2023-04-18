@@ -118,16 +118,17 @@ pub fn monotrail_root() -> anyhow::Result<PathBuf> {
 /// Walks the directory tree up to find a pyproject.toml or a requirements.txt and returns
 /// the dir (poetry) or the file (requirements.txt)
 fn find_dep_file(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
-    let mut parent = Some(dir_running.to_path_buf());
-    while let Some(dir) = parent {
-        if dir.join("poetry.lock").exists() {
-            return Some((dir, LockfileType::PoetryLock));
-        } else if dir.join("pyproject.toml").exists() {
-            return Some((dir, LockfileType::PyprojectToml));
-        } else if dir.join("requirements.txt").exists() {
-            return Some((dir.join("requirements.txt"), LockfileType::RequirementsTxt));
+    for ancestor in dir_running.ancestors() {
+        if ancestor.join("poetry.lock").exists() {
+            return Some((ancestor.to_path_buf(), LockfileType::PoetryLock));
+        } else if ancestor.join("pyproject.toml").exists() {
+            return Some((ancestor.to_path_buf(), LockfileType::PyprojectToml));
+        } else if ancestor.join("requirements.txt").exists() {
+            return Some((
+                ancestor.join("requirements.txt"),
+                LockfileType::RequirementsTxt,
+            ));
         }
-        parent = dir.parent().map(|path| path.to_path_buf());
     }
     None
 }
