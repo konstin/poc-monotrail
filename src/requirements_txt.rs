@@ -48,7 +48,7 @@ use thiserror::Error;
 use unscanny::{Pattern, Scanner};
 
 /// We emit one of those for each requirements.txt entry
-enum RequirementsTxtMessage {
+enum RequirementsTxtStatement {
     /// `-r` inclusion filename
     Requirements { filename: String, location: usize },
     /// `-c` inclusion filename
@@ -91,9 +91,9 @@ impl RequirementsTxt {
         let mut s = Scanner::new(&content);
 
         let mut data = Self::default();
-        while let Some(entry) = parse_entry(&mut s, &content, &requirements_txt)? {
-            match entry {
-                RequirementsTxtMessage::Requirements { filename, location } => {
+        while let Some(statement) = parse_entry(&mut s, &content, &requirements_txt)? {
+            match statement {
+                RequirementsTxtStatement::Requirements { filename, location } => {
                     let sub_file = working_dir.as_ref().join(filename);
                     let sub_requirements =
                         Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
@@ -107,7 +107,7 @@ impl RequirementsTxt {
                     data.requirements.extend(sub_requirements.requirements);
                     data.constraints.extend(sub_requirements.constraints);
                 }
-                RequirementsTxtMessage::Constraint { filename, location } => {
+                RequirementsTxtStatement::Constraint { filename, location } => {
                     let sub_file = working_dir.as_ref().join(filename);
                     let sub_constraints =
                         Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
@@ -126,7 +126,7 @@ impl RequirementsTxt {
                     );
                     data.constraints.extend(sub_constraints.constraints);
                 }
-                RequirementsTxtMessage::RequirementEntry(requirement_entry) => {
+                RequirementsTxtStatement::RequirementEntry(requirement_entry) => {
                     data.requirements.push(requirement_entry);
                 }
             }
@@ -180,7 +180,7 @@ fn parse_entry(
     s: &mut Scanner,
     content: &str,
     requirements_txt: &impl AsRef<Path>,
-) -> Result<Option<RequirementsTxtMessage>, RequirementsTxtError> {
+) -> Result<Option<RequirementsTxtStatement>, RequirementsTxtError> {
     // Eat all preceding whitespace, this may run us to the end of file
     eat_wrappable_whitespace(s);
     while s.at(['\n', '\r', '#']) {
@@ -197,7 +197,7 @@ fn parse_entry(
             &requirements_txt,
         )?;
         eat_trailing_line(s, requirements_txt.as_ref())?;
-        RequirementsTxtMessage::Requirements {
+        RequirementsTxtStatement::Requirements {
             filename: requirements_file.to_string(),
             location,
         }
@@ -209,14 +209,14 @@ fn parse_entry(
             &requirements_txt,
         )?;
         eat_trailing_line(s, requirements_txt.as_ref())?;
-        RequirementsTxtMessage::Constraint {
+        RequirementsTxtStatement::Constraint {
             filename: constraints_file.to_string(),
             location,
         }
     } else if s.eat_if("-e") {
         let (requirement, hashes) = parse_requirement_and_hashes(s, &content, &requirements_txt)?;
         eat_trailing_line(s, requirements_txt.as_ref())?;
-        RequirementsTxtMessage::RequirementEntry(RequirementEntry {
+        RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
             editable: true,
@@ -224,7 +224,7 @@ fn parse_entry(
     } else if s.at(char::is_ascii_alphanumeric) {
         let (requirement, hashes) = parse_requirement_and_hashes(s, &content, &requirements_txt)?;
         eat_trailing_line(s, requirements_txt.as_ref())?;
-        RequirementsTxtMessage::RequirementEntry(RequirementEntry {
+        RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
             editable: false,
