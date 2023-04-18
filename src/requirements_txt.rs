@@ -364,7 +364,7 @@ mod test {
             // Replace line endings with the other choice. This works even if you use git with LF
             // only on windows.
             let changed = if original.contains("\r\n") {
-                original.replace("\n", "\r\n")
+                original.replace('\n', "\r\n")
             } else {
                 original.replace("\r\n", "\n")
             };
@@ -396,15 +396,21 @@ mod test {
         let basic = Path::new("test-data")
             .join("requirements-txt")
             .join("invalid-include");
+        let missing = Path::new("test-data")
+            .join("requirements-txt")
+            .join("missing.txt");
         let err = RequirementsTxt::parse(&basic).unwrap_err();
         let errors = anyhow::Error::new(err)
             .chain()
             .map(ToString::to_string)
             .collect::<Vec<_>>();
         let expected = &[
-            "Failed to parse test-data/requirements-txt/invalid-include position 2 due to an error in an included file",
-            "failed to open file `test-data/requirements-txt/missing.txt`",
-            "No such file or directory (os error 2)"
+            format!(
+                "Failed to parse {} position 2 due to an error in an included file",
+                basic.display()
+            ),
+            format!("failed to open file `{}`", missing.display()),
+            "No such file or directory (os error 2)".to_string(),
         ];
         assert_eq!(errors, expected)
     }
@@ -420,12 +426,16 @@ mod test {
             .map(ToString::to_string)
             .collect::<Vec<_>>();
         let expected = &[
-            "Couldn't parse requirement in test-data/requirements-txt/invalid-requirement position 0 to 15",
+            format!(
+                "Couldn't parse requirement in {} position 0 to 15",
+                basic.display()
+            ),
             indoc! {"
                 Expected an alphanumeric character starting the extra name, found 'ö'
                 numpy[ö]==1.29
                       ^"
             }
+            .to_string(),
         ];
         assert_eq!(errors, expected)
     }
