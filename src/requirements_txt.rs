@@ -7,13 +7,12 @@
 //!  * `-r`
 //!  * `-c`
 //!  * `--hash` (postfix)
-//!
-//! Explicit error:
 //!  * `-e`
 //!
 //! Unsupported:
-//!  * `<path>`. Use `name @ path` instead
-//!  * `<archive_url>`. Use `name @ a'\r',rchive_url` instead
+//!  * `-e <path>`. TBD
+//!  * `<path>`. TBD
+//!  * `<archive_url>`. TBD
 //!  * Options without a requirement, such as `--find-links` or `--index-url`
 //!
 //! Grammar as implemented:
