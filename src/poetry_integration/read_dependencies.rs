@@ -1,7 +1,6 @@
 //! Parsing of pyproject.toml and poetry.lock
 
 use crate::install::repo_at_revision;
-use crate::markers::Pep508Environment;
 use crate::monotrail::{specs_from_requirements_txt_resolved, PythonContext};
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::{PoetryPyprojectToml, PoetrySection};
@@ -12,6 +11,7 @@ use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
 use install_wheel_rs::{normalize_name, Script, WheelFilename, WheelInstallerError};
+use pep508_rs::MarkerEnvironment;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -242,7 +242,7 @@ pub fn read_poetry_specs(
     poetry_lock: PoetryLock,
     no_dev: bool,
     extras: &[String],
-    pep508_env: &Pep508Environment,
+    pep508_env: &MarkerEnvironment,
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     // The deps in pyproject.toml which we need to read explicitly since they aren't marked
     // poetry.lock (raw names)
@@ -406,7 +406,7 @@ pub fn specs_from_git(
 pub fn poetry_spec_from_dir(
     dep_file_location: &Path,
     extras: &[String],
-    pep508_env: &Pep508Environment,
+    pep508_env: &MarkerEnvironment,
 ) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, Script>, String)> {
     let (poetry_section, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
     let mut scripts = BTreeMap::new();
@@ -424,23 +424,24 @@ pub fn poetry_spec_from_dir(
 #[cfg(test)]
 mod test {
     use super::{parse_dep_extra, poetry_spec_from_dir, read_toml_files};
-    use crate::markers::Pep508Environment;
     use crate::read_poetry_specs;
+    use pep508_rs::{MarkerEnvironment, StringVersion};
     use std::collections::HashSet;
     use std::path::Path;
+    use std::str::FromStr;
 
-    fn test_pep508_env() -> Pep508Environment {
-        Pep508Environment {
+    fn test_pep508_env() -> MarkerEnvironment {
+        MarkerEnvironment {
             implementation_name: "cpython".to_string(),
-            implementation_version: "3.8.10".to_string(),
+            implementation_version: StringVersion::from_str("3.8.10").unwrap(),
             os_name: "posix".to_string(),
             platform_machine: "x86_64".to_string(),
             platform_python_implementation: "CPython".to_string(),
             platform_release: "5.13.0-39-generic".to_string(),
             platform_system: "Linux".to_string(),
             platform_version: "#44~20.04.1-Ubuntu SMP Thu Mar 24 16:43:35 UTC 2022".to_string(),
-            python_full_version: "3.8.10".to_string(),
-            python_version: "3.8".to_string(),
+            python_full_version: StringVersion::from_str("3.8.10").unwrap(),
+            python_version: StringVersion::from_str("3.8").unwrap(),
             sys_platform: "linux".to_string(),
         }
     }

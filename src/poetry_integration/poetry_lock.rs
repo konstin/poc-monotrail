@@ -1,10 +1,11 @@
 //! Types for poetry.lock
 
-use crate::markers::{parse_markers, Pep508Environment};
 use anyhow::bail;
+use pep508_rs::{MarkerEnvironment, MarkerTree};
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
@@ -101,10 +102,11 @@ impl Dependency {
     /// self->dep, and return the extras active for self->dep
     pub fn get_version_and_extras(
         &self,
-        environment: &Pep508Environment,
+        environment: &MarkerEnvironment,
         self_extras: &HashSet<String>,
     ) -> Result<Option<(String, Vec<String>)>, String> {
         let extra_re = Regex::new(r#"^extra == "([\w\d_-]+)"$"#).unwrap();
+        let self_extras_vec: Vec<&str> = self_extras.iter().map(|str| str.as_str()).collect();
 
         Ok(match self {
             Dependency::Compact(version) => Some((version.to_string(), Vec::new())),
@@ -120,7 +122,10 @@ impl Dependency {
                         } else {
                             None
                         }
-                    } else if parse_markers(markers).unwrap().evaluate(environment)? {
+                    } else if MarkerTree::from_str(markers)
+                        .unwrap()
+                        .evaluate(environment, &self_extras_vec)
+                    {
                         Some((version.to_string(), extras.clone().unwrap_or_default()))
                     } else {
                         None
@@ -142,7 +147,10 @@ impl Dependency {
                                 continue;
                             };
                         }
-                        if parse_markers(markers).unwrap().evaluate(environment)? {
+                        if MarkerTree::from_str(markers)
+                            .unwrap()
+                            .evaluate(environment, &self_extras_vec)
+                        {
                             return Ok(Some((
                                 option.version.to_string(),
                                 option.extras.clone().unwrap_or_default(),

@@ -1,6 +1,6 @@
 use crate::inject_and_run::{parse_plus_arg, run_python_args};
 use crate::install::{filter_installed, install_all};
-use crate::markers::Pep508Environment;
+use crate::markers::marker_environment_from_python;
 use crate::monotrail::{cli_from_git, monotrail_root, run_command};
 use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
@@ -198,7 +198,7 @@ fn poetry_install(
         &Arch::current()?,
     )?;
     // TODO: don't parse this from a subprocess but do it like maturin
-    let pep508_env = Pep508Environment::from_python(Path::new("python"));
+    let pep508_env = marker_environment_from_python(Path::new("python"));
     let dir = if let Some(root) = &options.root {
         root.clone()
     } else {

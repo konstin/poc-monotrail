@@ -6,7 +6,7 @@
 //! TODO: Be consistent with String vs. PathBuf
 
 use crate::install::InstalledPackage;
-use crate::markers::Pep508Environment;
+use crate::markers::marker_environment_from_json_str;
 use crate::monotrail::{
     find_scripts, install, load_specs, spec_paths, FinderData, InjectData, LaunchType,
     PythonContext, SpecPaths,
@@ -78,7 +78,7 @@ fn get_python_context(py: Python) -> PyResult<PythonContext> {
     let python_context = PythonContext {
         sys_executable: PathBuf::from(sys_executable),
         version: (py.version_info().major, py.version_info().minor),
-        pep508_env: Pep508Environment::from_json_str(&get_pep508_env(py)?),
+        pep508_env: marker_environment_from_json_str(&get_pep508_env(py)?),
         launch_type: LaunchType::PythonBindings,
     };
     debug!("python: {:?}", python_context);
@@ -127,7 +127,7 @@ pub fn monotrail_from_requested(
         .map_err(|serde_err| PyRuntimeError::new_err(format!("Invalid dependency format: {}.\n See https://python-poetry.org/docs/dependency-specification/", serde_err)))?;
 
     let python_context = get_python_context(py)?;
-    let pep508_env = Pep508Environment::from_json_str(&get_pep508_env(py)?);
+    let pep508_env = marker_environment_from_json_str(&get_pep508_env(py)?);
 
     let (poetry_section, poetry_lock, lockfile) =
         poetry_resolve(&requested, lockfile.as_deref(), &python_context)
