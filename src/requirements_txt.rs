@@ -13,7 +13,7 @@
 //!
 //! Unsupported:
 //!  * `<path>`. Use `name @ path` instead
-//!  * `<archive_url>`. Use `name @ archive_url` instead
+//!  * `<archive_url>`. Use `name @ a'\r',rchive_url` instead
 //!  * Options without a requirement, such as `--find-links` or `--index-url`
 //!
 //! Grammar as implemented:
@@ -95,10 +95,11 @@ impl RequirementsTxt {
         s.eat_whitespace();
         if s.eat_if("#") {
             // skip comments
-            s.eat_until('\n');
+            s.eat_until(['\r', '\n']);
         } else if s.eat_if("-r") {
             let location = s.cursor();
-            let requirements_file = parse_value(s, ['\n', '#'], &requirements_txt)?;
+            let requirements_file = parse_value(s, ['\n', '\r', '#'], &requirements_txt)?;
+            s.eat_if('\n'); // \r\n
             let sub_file = parent.join(requirements_file);
             let sub_requirements =
                 Self::parse(&sub_file).map_err(|err| RequirementsTxtError::Subfile {
@@ -111,7 +112,8 @@ impl RequirementsTxt {
             self.constraints.extend(sub_requirements.constraints);
         } else if s.eat_if("-c") {
             let location = s.cursor();
-            let constraint_file = parse_value(s, ['\n', '#'], &requirements_txt)?;
+            let constraint_file = parse_value(s, ['\n', '\r', '#'], &requirements_txt)?;
+            s.eat_if('\n'); // \r\n
             let sub_file = parent.join(constraint_file);
             let sub_constraints =
                 Self::parse(&sub_file).map_err(|err| RequirementsTxtError::Subfile {
@@ -190,7 +192,7 @@ fn eat_wrappable_whitespace<'a>(s: &mut Scanner<'a>) -> &'a str {
     let start = s.cursor();
     s.eat_whitespace();
     // Allow multiple escaped line breaks
-    while s.eat_if("\\\n") {
+    while s.eat_if("\\\n") || s.eat_if("\\\r\n") {
         s.eat_whitespace();
     }
     s.from(start)
@@ -209,7 +211,7 @@ fn parse_requirement_and_hashes(
         let end = s.cursor();
 
         //  We look for the end of the line ...
-        if s.eat_if('\n') {
+        if s.eat_if('\n') || s.eat_if("\r\n") {
             break (end, false);
         }
         // ... or`--hash` separated by whitespace ...
@@ -321,18 +323,56 @@ mod test {
     use indoc::indoc;
     use std::collections::BTreeMap;
     use std::path::Path;
+    use tempfile::tempdir;
 
     #[test]
     fn test_requirements_txt_parsing() {
-        for basic in fs::read_dir(Path::new("test-data").join("requirements-txt")).unwrap() {
-            let basic = basic.unwrap().path();
-            if basic.extension().unwrap_or_default().to_str().unwrap() != "txt" {
+        for dir_entry in fs::read_dir(Path::new("test-data").join("requirements-txt")).unwrap() {
+            let dir_entry = dir_entry.unwrap().path();
+            if dir_entry.extension().unwrap_or_default().to_str().unwrap() != "txt" {
                 continue;
             }
-            let actual = RequirementsTxt::parse(&basic).unwrap();
-            let fixture = basic.with_extension("json");
+            let actual = RequirementsTxt::parse(&dir_entry).unwrap();
+            let fixture = dir_entry.with_extension("json");
             // Update the json fixtures
             // fs::write(&fixture, &serde_json::to_string_pretty(&actual).unwrap()).unwrap();
+            let snapshot = serde_json::from_str(&fs::read_to_string(fixture).unwrap()).unwrap();
+            assert_eq!(actual, snapshot);
+        }
+    }
+
+    /// Test with flipped line endings
+    #[test]
+    fn test_other_line_endings() {
+        let temp_dir = tempdir().unwrap();
+        let mut files = Vec::new();
+        let test_data = Path::new("test-data").join("requirements-txt");
+        for dir_entry in fs::read_dir(test_data).unwrap() {
+            let dir_entry = dir_entry.unwrap();
+            if dir_entry
+                .path()
+                .extension()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap()
+                != "txt"
+            {
+                continue;
+            }
+            let copied = temp_dir.path().join(dir_entry.file_name());
+            let original = fs::read_to_string(dir_entry.path()).unwrap();
+            // Replace line endings with the other choice. This works even if you use git with LF
+            // only on windows.
+            let changed = if original.contains("\r\n") {
+                original.replace("\n", "\r\n")
+            } else {
+                original.replace("\r\n", "\n")
+            };
+            fs::write(&copied, &changed).unwrap();
+            files.push((copied, dir_entry.path().with_extension("json")));
+        }
+        for (file, fixture) in files {
+            let actual = RequirementsTxt::parse(&file).unwrap();
             let snapshot = serde_json::from_str(&fs::read_to_string(fixture).unwrap()).unwrap();
             assert_eq!(actual, snapshot);
         }
