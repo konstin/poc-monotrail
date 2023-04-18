@@ -6,7 +6,7 @@ use crate::install::{install_all, InstalledPackage};
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::{poetry_spec_from_dir, specs_from_git};
 use crate::read_poetry_specs;
-use crate::requirements_txt::parse_requirements_txt;
+use crate::requirements_txt::RequirementsTxt;
 use crate::spec::RequestedSpec;
 use crate::standalone_python::provision_python;
 use crate::utils::{cache_dir, get_dir_content};
@@ -535,8 +535,7 @@ pub fn specs_from_requirements_txt_resolved(
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, String)> {
-    let requirements =
-        parse_requirements_txt(&fs::read_to_string(&requirements_txt)?, &requirements_txt)?;
+    let requirements = RequirementsTxt::parse(&requirements_txt)?.into_poetry(&requirements_txt)?;
     // We don't know whether the requirements.txt is from `pip freeze` or just a list of
     // version, so we let it go through poetry resolve either way. For a frozen file
     // there will just be no change

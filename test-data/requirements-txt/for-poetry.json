@@ -1,0 +1,25 @@
+{
+  "requirements": [
+    {
+      "requirement": "inflection ==0.5.1",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "upsidedown ==0.4",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "numpy",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "pandas[tabulate] >=1, <2",
+      "hashes": [],
+      "editable": false
+    }
+  ],
+  "constraints": []
+}

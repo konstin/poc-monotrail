@@ -1,0 +1,35 @@
+{
+  "requirements": [
+    {
+      "requirement": "numpy ==1.24.2",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "pandas ==2.0.0",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "python-dateutil ==2.8.2",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "pytz ==2023.3",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "six ==1.16.0",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "tzdata ==2023.3",
+      "hashes": [],
+      "editable": false
+    }
+  ],
+  "constraints": []
+}

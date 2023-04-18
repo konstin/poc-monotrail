@@ -1,0 +1,15 @@
+{
+  "requirements": [
+    {
+      "requirement": "django ==2.1.15",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "pytz ==2023.3",
+      "hashes": [],
+      "editable": false
+    }
+  ],
+  "constraints": []
+}
