@@ -363,9 +363,9 @@ mod test {
             // Replace line endings with the other choice. This works even if you use git with LF
             // only on windows.
             let changed = if original.contains("\r\n") {
-                original.replace('\n', "\r\n")
-            } else {
                 original.replace("\r\n", "\n")
+            } else {
+                original.replace('\n', "\r\n")
             };
             fs::write(&copied, &changed).unwrap();
             files.push((copied, dir_entry.path().with_extension("json")));
@@ -403,15 +403,19 @@ mod test {
             .chain()
             .map(ToString::to_string)
             .collect::<Vec<_>>();
-        let expected = &[
+        assert_eq!(errors.len(), 3);
+        assert_eq!(
+            errors[0],
             format!(
                 "Failed to parse {} position 2 due to an error in an included file",
                 basic.display()
-            ),
+            )
+        );
+        assert_eq!(
+            errors[1],
             format!("failed to open file `{}`", missing.display()),
-            "No such file or directory (os error 2)".to_string(),
-        ];
-        assert_eq!(errors, expected)
+        );
+        // The last error message is os specific
     }
 
     #[test]

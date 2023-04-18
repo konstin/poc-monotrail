@@ -1,6 +1,6 @@
 #numpy>=0.1.0
-numpy[something]
+#numpy[something]
 #numpy
-#./numpy
+./numpy
 #-e numpy
 #-e pandas
