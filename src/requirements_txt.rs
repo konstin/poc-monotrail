@@ -47,16 +47,17 @@ use std::str::FromStr;
 use thiserror::Error;
 use unscanny::{Pattern, Scanner};
 
-/// Parsed and flattened requirements.txt with requirements and constraints
-#[derive(Debug, Deserialize, Clone, Default, Eq, PartialEq, Serialize)]
-pub struct RequirementsTxt {
-    /// The actual requirements with the hashes
-    pub requirements: Vec<RequirementEntry>,
-    /// Constraints included with `-c`
-    pub constraints: Vec<Requirement>,
+/// We emit one of those for each requirements.txt entry
+enum RequirementsTxtMessage {
+    /// `-r` inclusion filename
+    Requirements { filename: String, location: usize },
+    /// `-c` inclusion filename
+    Constraint { filename: String, location: usize },
+    /// PEP 508 requirement plus metadata
+    RequirementEntry(RequirementEntry),
 }
 
-/// A requirement with additional metadata from the requirements.txt, currently only hashes but in
+/// A [Requirement] with additional metadata from the requirements.txt, currently only hashes but in
 /// the future also editable an similar information
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq, Serialize)]
 pub struct RequirementEntry {
@@ -68,84 +69,69 @@ pub struct RequirementEntry {
     pub editable: bool,
 }
 
+/// Parsed and flattened requirements.txt with requirements and constraints
+#[derive(Debug, Deserialize, Clone, Default, Eq, PartialEq, Serialize)]
+pub struct RequirementsTxt {
+    /// The actual requirements with the hashes
+    pub requirements: Vec<RequirementEntry>,
+    /// Constraints included with `-c`
+    pub constraints: Vec<Requirement>,
+}
+
 impl RequirementsTxt {
     /// See module level documentation
-    pub fn parse(requirements_txt: impl AsRef<Path>) -> Result<Self, RequirementsTxtError> {
+    ///
+    /// Note that all relative paths are dependent on the current working dir, not on the location
+    /// of the file
+    pub fn parse(
+        requirements_txt: impl AsRef<Path>,
+        working_dir: impl AsRef<Path>,
+    ) -> Result<Self, RequirementsTxtError> {
         let content = fs::read_to_string(&requirements_txt)?;
         let mut s = Scanner::new(&content);
 
-        let mut requirements_data = RequirementsTxt::default();
-        while !s.done() {
-            requirements_data.parse_entry(&mut s, &content, &requirements_txt)?;
+        let mut data = Self::default();
+        while let Some(entry) = parse_entry(&mut s, &content, &requirements_txt)? {
+            match entry {
+                RequirementsTxtMessage::Requirements { filename, location } => {
+                    let sub_file = working_dir.as_ref().join(filename);
+                    let sub_requirements =
+                        Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
+                            RequirementsTxtError::Subfile {
+                                file: requirements_txt.as_ref().to_path_buf(),
+                                source: Box::new(err),
+                                location,
+                            }
+                        })?;
+                    // Add each to the correct category
+                    data.requirements.extend(sub_requirements.requirements);
+                    data.constraints.extend(sub_requirements.constraints);
+                }
+                RequirementsTxtMessage::Constraint { filename, location } => {
+                    let sub_file = working_dir.as_ref().join(filename);
+                    let sub_constraints =
+                        Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
+                            RequirementsTxtError::Subfile {
+                                file: requirements_txt.as_ref().to_path_buf(),
+                                source: Box::new(err),
+                                location,
+                            }
+                        })?;
+                    // Here we add both to constraints
+                    data.constraints.extend(
+                        sub_constraints
+                            .requirements
+                            .into_iter()
+                            .map(|requirement_entry| requirement_entry.requirement),
+                    );
+                    data.constraints.extend(sub_constraints.constraints);
+                }
+                RequirementsTxtMessage::RequirementEntry(requirement_entry) => {
+                    data.requirements.push(requirement_entry);
+                }
+            }
         }
-        Ok(requirements_data)
-    }
-
-    /// Parse a single entry, that is a requirement, an inclusion or a comment line
-    fn parse_entry(
-        &mut self,
-        s: &mut Scanner,
-        content: &str,
-        requirements_txt: &impl AsRef<Path>,
-    ) -> Result<(), RequirementsTxtError> {
-        // Unwrap: We just read the file, we know it can't be the root or an empty string
-        let parent = requirements_txt.as_ref().parent().unwrap();
-
-        s.eat_whitespace();
-        if s.eat_if("#") {
-            // skip comments
-            s.eat_until(['\r', '\n']);
-        } else if s.eat_if("-r") {
-            let location = s.cursor();
-            let requirements_file = parse_value(s, ['\n', '\r', '#'], &requirements_txt)?;
-            s.eat_if('\n'); // \r\n
-            let sub_file = parent.join(requirements_file);
-            let sub_requirements =
-                Self::parse(&sub_file).map_err(|err| RequirementsTxtError::Subfile {
-                    file: requirements_txt.as_ref().to_path_buf(),
-                    source: Box::new(err),
-                    location,
-                })?;
-            // Add each to the correct category
-            self.requirements.extend(sub_requirements.requirements);
-            self.constraints.extend(sub_requirements.constraints);
-        } else if s.eat_if("-c") {
-            let location = s.cursor();
-            let constraint_file = parse_value(s, ['\n', '\r', '#'], &requirements_txt)?;
-            s.eat_if('\n'); // \r\n
-            let sub_file = parent.join(constraint_file);
-            let sub_constraints =
-                Self::parse(&sub_file).map_err(|err| RequirementsTxtError::Subfile {
-                    file: requirements_txt.as_ref().to_path_buf(),
-                    source: Box::new(err),
-                    location,
-                })?;
-            // Here we add both to constraints
-            self.constraints.extend(
-                sub_constraints
-                    .requirements
-                    .into_iter()
-                    .map(|requirement_entry| requirement_entry.requirement),
-            );
-            self.constraints.extend(sub_constraints.constraints);
-        } else if s.eat_if("-e") {
-            let (requirement, hashes) =
-                parse_requirement_and_hashes(s, &content, &requirements_txt)?;
-            self.requirements.push(RequirementEntry {
-                requirement,
-                hashes,
-                editable: true,
-            });
-        } else if s.at(char::is_ascii_alphanumeric) {
-            let (requirement, hashes) =
-                parse_requirement_and_hashes(s, &content, &requirements_txt)?;
-            self.requirements.push(RequirementEntry {
-                requirement,
-                hashes,
-                editable: false,
-            });
-        }
-        Ok(())
+        Ok(data)
     }
 
     /// Method to bridge between the new parser and the poetry assumptions of the existing code
@@ -186,15 +172,118 @@ impl RequirementsTxt {
     }
 }
 
+/// Parse a single entry, that is a requirement, an inclusion or a comment line
+///
+/// Consumes all preceding trivia (whitespace and comments). If it returns None, we've reached
+/// the end of file
+fn parse_entry(
+    s: &mut Scanner,
+    content: &str,
+    requirements_txt: &impl AsRef<Path>,
+) -> Result<Option<RequirementsTxtMessage>, RequirementsTxtError> {
+    // Eat all preceding whitespace, this may run us to the end of file
+    eat_wrappable_whitespace(s);
+    while s.at(['\n', '\r', '#']) {
+        // skip comments
+        eat_trailing_line(s, requirements_txt.as_ref())?;
+        eat_wrappable_whitespace(s);
+    }
+
+    Ok(Some(if s.eat_if("-r") {
+        let location = s.cursor();
+        let requirements_file = parse_value(
+            s,
+            |c: char| !['\n', '\r', '#'].contains(&c),
+            &requirements_txt,
+        )?;
+        eat_trailing_line(s, requirements_txt.as_ref())?;
+        RequirementsTxtMessage::Requirements {
+            filename: requirements_file.to_string(),
+            location,
+        }
+    } else if s.eat_if("-c") {
+        let location = s.cursor();
+        let constraints_file = parse_value(
+            s,
+            |c: char| !['\n', '\r', '#'].contains(&c),
+            &requirements_txt,
+        )?;
+        eat_trailing_line(s, requirements_txt.as_ref())?;
+        RequirementsTxtMessage::Constraint {
+            filename: constraints_file.to_string(),
+            location,
+        }
+    } else if s.eat_if("-e") {
+        let (requirement, hashes) = parse_requirement_and_hashes(s, &content, &requirements_txt)?;
+        eat_trailing_line(s, requirements_txt.as_ref())?;
+        RequirementsTxtMessage::RequirementEntry(RequirementEntry {
+            requirement,
+            hashes,
+            editable: true,
+        })
+    } else if s.at(char::is_ascii_alphanumeric) {
+        let (requirement, hashes) = parse_requirement_and_hashes(s, &content, &requirements_txt)?;
+        eat_trailing_line(s, requirements_txt.as_ref())?;
+        RequirementsTxtMessage::RequirementEntry(RequirementEntry {
+            requirement,
+            hashes,
+            editable: false,
+        })
+    } else if let Some(char) = s.peek() {
+        return Err(RequirementsTxtError::Parser {
+            message: format!(
+                "Unexpected '{}', expected '-c', '-e', '-r' or the start of a requirement",
+                char
+            ),
+            file: requirements_txt.as_ref().to_path_buf(),
+            location: s.cursor(),
+        });
+    } else {
+        // EOF
+        return Ok(None);
+    }))
+}
+
 /// Eat whitespace and ignore newlines escaped with a backslash
 fn eat_wrappable_whitespace<'a>(s: &mut Scanner<'a>) -> &'a str {
     let start = s.cursor();
-    s.eat_whitespace();
+    s.eat_while(|c: char| c == ' ' || c == '\t');
     // Allow multiple escaped line breaks
     while s.eat_if("\\\n") || s.eat_if("\\\r\n") {
-        s.eat_whitespace();
+        s.eat_while(|c: char| c == ' ' || c == '\t');
     }
     s.from(start)
+}
+
+/// Eats the end of line or a potential trailing comma
+fn eat_trailing_line(
+    s: &mut Scanner,
+    requirements_txt: impl AsRef<Path>,
+) -> Result<(), RequirementsTxtError> {
+    if s.eat_if("#") {
+        s.eat_while(|c| c != '\r' && c != '\n');
+    }
+
+    if s.eat_if('\r') {
+        if !s.eat_if('\n') {
+            Err(RequirementsTxtError::Parser {
+                message: "Expected \\n after \\n, found {}".to_string(),
+                file: requirements_txt.as_ref().to_path_buf(),
+                location: s.cursor(),
+            })
+        } else {
+            Ok(())
+        }
+    } else if s.eat_if('\n') || s.done() {
+        Ok(())
+    } else {
+        unreachable!(
+            "{} {} {:?}",
+            requirements_txt.as_ref().display(),
+            s.cursor(),
+            s.peek()
+        );
+    }
 }
 
 /// Parse a PEP 508 requirement with optional trailing hashes
@@ -210,14 +299,20 @@ fn parse_requirement_and_hashes(
         let end = s.cursor();
 
         //  We look for the end of the line ...
-        if s.eat_if('\n') || s.eat_if("\r\n") {
+        if s.at('\n') || s.at('\r') {
             break (end, false);
         }
-        // ... or`--hash` separated by whitespace ...
-        if !(eat_wrappable_whitespace(s)).is_empty() && (s.after()).starts_with("--") {
-            break (end, true);
+        // ... or`--hash`, an escaped newline or a comment separated by whitespace ...
+        if !eat_wrappable_whitespace(s).is_empty() {
+            if s.after().starts_with("--") {
+                break (end, true);
+            } else if s.at('\\') || s.at('#') {
+                break (end, false);
+            } else {
+                continue;
+            }
         }
-        // ... or the end of the file (after potential whitespace), which works like the end of line
+        // ... or the end of the file, which works like the end of line
         if s.eat().is_none() {
             break (end, false);
         }
@@ -254,14 +349,14 @@ fn parse_hashes(
             location: s.cursor(),
         });
     }
-    let hash = parse_value(s, char::is_whitespace, &requirements_txt)?;
+    let hash = parse_value(s, |c: char| !c.is_whitespace(), &requirements_txt)?;
     hashes.push(hash.to_string());
     loop {
         eat_wrappable_whitespace(s);
         if s.eat_while("--hash").is_empty() {
             break;
         }
-        let hash = parse_value(s, char::is_whitespace, &requirements_txt)?;
+        let hash = parse_value(s, |c: char| !c.is_whitespace(), &requirements_txt)?;
         hashes.push(hash.to_string());
     }
     Ok(hashes)
@@ -270,16 +365,16 @@ fn parse_hashes(
 /// In `-<key>=<value>` or `-<key> value`, this parses the part after the key
 fn parse_value<'a, T>(
     s: &mut Scanner<'a>,
-    until: impl Pattern<T>,
+    while_pattern: impl Pattern<T>,
     requirements_txt: impl AsRef<Path>,
 ) -> Result<&'a str, RequirementsTxtError> {
     if s.eat_if('=') {
         // Explicit equals sign
-        Ok(s.eat_until(until).trim_end())
+        Ok(s.eat_while(while_pattern).trim_end())
     } else if s.eat_if(char::is_whitespace) {
         // Key and value are separated by whitespace instead
         s.eat_whitespace();
-        Ok(s.eat_until(until).trim_end())
+        Ok(s.eat_while(while_pattern).trim_end())
     } else {
         Err(RequirementsTxtError::Parser {
             message: format!("Expected '=' or whitespace, found {:?}", s.peek()),
@@ -326,12 +421,13 @@ mod test {
 
     #[test]
     fn test_requirements_txt_parsing() {
-        for dir_entry in fs::read_dir(Path::new("test-data").join("requirements-txt")).unwrap() {
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        for dir_entry in fs::read_dir(&working_dir).unwrap() {
             let dir_entry = dir_entry.unwrap().path();
             if dir_entry.extension().unwrap_or_default().to_str().unwrap() != "txt" {
                 continue;
             }
-            let actual = RequirementsTxt::parse(&dir_entry).unwrap();
+            let actual = RequirementsTxt::parse(&dir_entry, &working_dir).unwrap();
             let fixture = dir_entry.with_extension("json");
             // Update the json fixtures
             // fs::write(&fixture, &serde_json::to_string_pretty(&actual).unwrap()).unwrap();
@@ -345,8 +441,8 @@ mod test {
     fn test_other_line_endings() {
         let temp_dir = tempdir().unwrap();
         let mut files = Vec::new();
-        let test_data = Path::new("test-data").join("requirements-txt");
-        for dir_entry in fs::read_dir(test_data).unwrap() {
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        for dir_entry in fs::read_dir(&working_dir).unwrap() {
             let dir_entry = dir_entry.unwrap();
             if dir_entry
                 .path()
@@ -371,7 +467,7 @@ mod test {
             files.push((copied, dir_entry.path().with_extension("json")));
         }
         for (file, fixture) in files {
-            let actual = RequirementsTxt::parse(&file).unwrap();
+            let actual = RequirementsTxt::parse(&file, &working_dir).unwrap();
             let snapshot = serde_json::from_str(&fs::read_to_string(fixture).unwrap()).unwrap();
             assert_eq!(actual, snapshot);
         }
@@ -381,24 +477,22 @@ mod test {
     #[test]
     #[ignore]
     fn test_pydantic() {
-        for basic in fs::read_dir(Path::new("test-data").join("requirements-pydantic")).unwrap() {
+        let working_dir = Path::new("test-data").join("requirements-pydantic");
+        for basic in fs::read_dir(&working_dir).unwrap() {
             let basic = basic.unwrap().path();
             if !["txt", "in"].contains(&basic.extension().unwrap_or_default().to_str().unwrap()) {
                 continue;
             }
-            RequirementsTxt::parse(&basic).unwrap();
+            RequirementsTxt::parse(&basic, &working_dir).unwrap();
         }
     }
 
     #[test]
     fn test_invalid_include_missing_file() {
-        let basic = Path::new("test-data")
-            .join("requirements-txt")
-            .join("invalid-include");
-        let missing = Path::new("test-data")
-            .join("requirements-txt")
-            .join("missing.txt");
-        let err = RequirementsTxt::parse(&basic).unwrap_err();
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        let basic = working_dir.join("invalid-include");
+        let missing = working_dir.join("missing.txt");
+        let err = RequirementsTxt::parse(&basic, &working_dir).unwrap_err();
         let errors = anyhow::Error::new(err)
             .chain()
             .map(ToString::to_string)
@@ -420,10 +514,9 @@ mod test {
 
     #[test]
     fn test_invalid_requirement() {
-        let basic = Path::new("test-data")
-            .join("requirements-txt")
-            .join("invalid-requirement");
-        let err = RequirementsTxt::parse(&basic).unwrap_err();
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        let basic = working_dir.join("invalid-requirement");
+        let err = RequirementsTxt::parse(&basic, &working_dir).unwrap_err();
         let errors = anyhow::Error::new(err)
             .chain()
             .map(ToString::to_string)
@@ -464,10 +557,9 @@ mod test {
             optional = false
         "#};
 
-        let path = Path::new("test-data")
-            .join("requirements-txt")
-            .join("for-poetry.txt");
-        let reqs = RequirementsTxt::parse(&path)
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        let path = working_dir.join("for-poetry.txt");
+        let reqs = RequirementsTxt::parse(&path, &working_dir)
             .unwrap()
             .into_poetry(&path)
             .unwrap();

@@ -535,7 +535,8 @@ pub fn specs_from_requirements_txt_resolved(
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, String)> {
-    let requirements = RequirementsTxt::parse(&requirements_txt)?.into_poetry(&requirements_txt)?;
+    let requirements = RequirementsTxt::parse(&requirements_txt, &current_dir()?)?
+        .into_poetry(&requirements_txt)?;
     // We don't know whether the requirements.txt is from `pip freeze` or just a list of
     // version, so we let it go through poetry resolve either way. For a frozen file
     // there will just be no change
