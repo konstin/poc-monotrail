@@ -588,13 +588,14 @@ mod test {
         let working_dir = Path::new("test-data").join("requirements-txt");
         let path = working_dir.join("empty.txt");
 
+        // TODO(konstin) I think that logger isn't thread safe
         let logger = Logger::start();
         RequirementsTxt::parse(&path, &working_dir).unwrap();
         let warnings: Vec<_> = logger
             .into_iter()
             .filter(|message| message.level() >= Level::Warn)
             .collect();
-        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings.len(), 1, "{:?}", warnings);
         assert!(warnings[0]
             .args()
             .ends_with("does not contain any dependencies"));
