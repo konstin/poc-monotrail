@@ -303,7 +303,12 @@ pub fn install(
             })?;
         todo!("not implemented {:?}", poetry_lock);
     } else {
-        todo!()
+        let mut requirements = RequirementsTxt::default();
+        for requirements_file in requirements_files {
+            requirements.update_from(RequirementsTxt::parse(requirements_file, &cwd)?)
+        }
+        dbg!(requirements);
+        Ok(Some(0))
     }
 }
 
