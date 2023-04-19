@@ -25,7 +25,7 @@ use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
 
 /// what we communicate back to python
-#[cfg(not(feature = "python_bindings"))]
+#[cfg_attr(feature = "python_bindings", pyo3::pyclass(get_all))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct InstalledPackage {
     pub name: String,
@@ -33,21 +33,6 @@ pub struct InstalledPackage {
     pub unique_version: String,
     /// The compatibility tag like "py3-none-any" or
     /// "cp38-cp38-manylinux_2_12_x86_64.manylinux2010_x86_64"
-    pub tag: String,
-}
-
-/// TODO: write a pyo3 bug report to parse through cfg attr
-#[cfg(feature = "python_bindings")]
-#[pyo3::pyclass]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct InstalledPackage {
-    #[pyo3(get)]
-    pub name: String,
-    #[pyo3(get)]
-    pub python_version: String,
-    #[pyo3(get)]
-    pub unique_version: String,
-    #[pyo3(get)]
     pub tag: String,
 }
 
