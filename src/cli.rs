@@ -273,19 +273,27 @@ fn poetry_install(
     Ok(())
 }
 
+///
+///
+/// The `venv` and `working_dir` options are to inject those for tests
 pub fn install(
     requirements_files: Vec<String>,
     _compile: bool,
     _no_parallel: bool,
     frozen: bool,
+    venv: Option<&Path>,
+    working_dir: Option<&Path>,
 ) -> anyhow::Result<Option<i32>> {
     if !frozen {
         bail!("Needs to be frozen for now");
     }
-    let venv = find_venv(venv)?;
-    let cwd = current_dir().context("Couldn't get current directory ಠ_ಠ")?;
+    let _venv = find_venv(venv)?;
+    let working_dir = match working_dir {
+        None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
+        Some(working_dir) => working_dir.to_path_buf(),
+    };
     if requirements_files.is_empty() {
-        let poetry_lock = cwd
+        let poetry_lock = working_dir
             .ancestors()
             .filter_map(|ancestor| {
                 if ancestor.join("poetry.lock").exists() {
@@ -298,14 +306,14 @@ pub fn install(
             .with_context(|| {
                 format!(
                     "Couldn't find poetry.lock in {} or any parent directory",
-                    cwd.display()
+                    working_dir.display()
                 )
             })?;
         todo!("not implemented {:?}", poetry_lock);
     } else {
         let mut requirements = RequirementsTxt::default();
         for requirements_file in requirements_files {
-            requirements.update_from(RequirementsTxt::parse(requirements_file, &cwd)?)
+            requirements.update_from(RequirementsTxt::parse(requirements_file, &working_dir)?)
         }
         dbg!(requirements);
         Ok(Some(0))
@@ -322,7 +330,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             compile,
             no_parallel,
             frozen,
-        } => install(requirement, compile, no_parallel, frozen),
+        } => install(requirement, compile, no_parallel, frozen, None, None),
         Cli::Run {
             extras,
             python_version,
@@ -505,4 +513,25 @@ pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
         );
     };
     Ok(venv)
+}
+
+#[cfg(test)]
+mod test {
+    use super::install;
+    use std::path::Path;
+
+    #[test]
+    fn test_install() {
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        let small = working_dir.join("small.txt");
+        install(
+            vec![small.to_str().unwrap().to_string()],
+            false,
+            false,
+            true,
+            None,
+            Some(&working_dir),
+        )
+        .unwrap();
+    }
 }
