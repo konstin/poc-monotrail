@@ -6,6 +6,7 @@ use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
 use crate::ppipx;
+use crate::requirements_txt::RequirementsTxt;
 use crate::spec::RequestedSpec;
 use crate::utils::cache_dir;
 use crate::venv_parser::get_venv_python_version;
@@ -273,16 +274,17 @@ fn poetry_install(
 }
 
 pub fn install(
-    requirement: Vec<String>,
+    requirements_files: Vec<String>,
     _compile: bool,
     _no_parallel: bool,
     frozen: bool,
 ) -> anyhow::Result<Option<i32>> {
     if !frozen {
-        bail!("Needs to be frozen");
+        bail!("Needs to be frozen for now");
     }
-    if requirement.is_empty() {
-        let cwd = current_dir().context("Couldn't get current directory ಠ_ಠ")?;
+    let venv = find_venv(venv)?;
+    let cwd = current_dir().context("Couldn't get current directory ಠ_ಠ")?;
+    if requirements_files.is_empty() {
         let poetry_lock = cwd
             .ancestors()
             .filter_map(|ancestor| {
@@ -306,6 +308,8 @@ pub fn install(
 }
 
 /// Dispatches from the Cli
+///
+/// The second parameter exists to override the venv in tests
 pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
     match cli {
         Cli::Install {
@@ -412,13 +416,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             compile,
             no_parallel,
         } => {
-            let venv = if let Some(venv) = venv {
-                venv.to_path_buf()
-            } else if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
-                PathBuf::from(virtual_env)
-            } else {
-                bail!("Will only install in a virtualenv");
-            };
+            let venv = find_venv(venv)?;
             let python_version = get_venv_python_version(&venv)?;
             let venv_canon = venv.canonicalize()?;
 
@@ -448,18 +446,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             Ok(None)
         }
         Cli::PoetryInstall { options } => {
-            let venv = if let Some(venv) = venv {
-                venv.to_path_buf()
-            } else if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
-                PathBuf::from(virtual_env)
-            } else {
-                let venv = PathBuf::from(".venv");
-                if venv.join("pyvenv.cfg").is_file() {
-                    venv
-                } else {
-                    bail!("No .venv directory found");
-                }
-            };
+            let venv = find_venv(venv)?;
             let python_version = get_venv_python_version(&venv)?;
             let venv_canon = venv.canonicalize()?;
             poetry_install(&venv, python_version, &venv_canon, &options)
@@ -477,4 +464,40 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             cli_from_git(&git_url, &revision, &extras, python_version, &args)
         }
     }
+}
+
+/// Finds a) an activated venv (`VIRTUAL_ENV`) b) `.venv` in any parent folder c) tells the user
+/// about venvs
+///
+/// The optional argument allows overriding the venv in test
+pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
+    let dot_venv = PathBuf::from(".venv");
+    let venv = if let Some(venv) = venv {
+        venv.to_path_buf()
+    } else if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
+        // According to https://peps.python.org/pep-0668/#marking-an-interpreter-as-using-an-external-package-manager
+        // we should check `sys.prefix == sys.base_prefix`, but we're not a python program nor
+        // running a python interpreter, in fact we want to create the environment
+        PathBuf::from(virtual_env)
+    } else if dot_venv.join("pyvenv.cfg").is_file() {
+        dot_venv
+    } else {
+        let activation_command = if cfg!(target_family = "unix") {
+            "and activate it using `source .venv/bin/activate`".to_string()
+        } else if cfg!(target_family = "windows") {
+            r#"and activate it using `.venv\Scripts\Activate.ps1`"#.to_string()
+        } else {
+            format!(
+                ". Please consult the documentation for {} on how to activate virtualenvs. ",
+                target_lexicon::HOST
+            )
+        };
+        bail!(
+            "Couldn't find an activated virtualenv not a .venv found in any parent directory. \
+                    You can create a virtualenv with `python -m venv .venv` {}. \
+                    See https://virtualenv.pypa.io/en/latest/index.html for more information",
+            activation_command
+        );
+    };
+    Ok(venv)
 }
