@@ -45,6 +45,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
+use tracing::warn;
 use unscanny::{Pattern, Scanner};
 
 /// We emit one of those for each requirements.txt entry
@@ -129,6 +130,12 @@ impl RequirementsTxt {
                     data.requirements.push(requirement_entry);
                 }
             }
+        }
+        if data == Self::default() {
+            warn!(
+                "Requirements file {} does not contain any dependencies",
+                requirements_txt.as_ref().display()
+            );
         }
         Ok(data)
     }
@@ -420,9 +427,11 @@ mod test {
     use crate::requirements_txt::RequirementsTxt;
     use fs_err as fs;
     use indoc::indoc;
+    use logtest::Logger;
     use std::collections::BTreeMap;
     use std::path::Path;
     use tempfile::tempdir;
+    use tracing::log::Level;
 
     #[test]
     fn test_requirements_txt_parsing() {
@@ -572,5 +581,22 @@ mod test {
         let reqs = BTreeMap::from_iter(&reqs);
         let poetry_toml = toml::to_string(&reqs).unwrap();
         assert_eq!(poetry_toml, expected);
+    }
+
+    #[test]
+    fn test_empty_file() {
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        let path = working_dir.join("empty.txt");
+
+        let logger = Logger::start();
+        RequirementsTxt::parse(&path, &working_dir).unwrap();
+        let warnings: Vec<_> = logger
+            .into_iter()
+            .filter(|message| message.level() >= Level::Warn)
+            .collect();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0]
+            .args()
+            .ends_with("does not contain any dependencies"));
     }
 }
