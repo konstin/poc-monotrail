@@ -104,8 +104,7 @@ impl RequirementsTxt {
                             }
                         })?;
                     // Add each to the correct category
-                    data.requirements.extend(sub_requirements.requirements);
-                    data.constraints.extend(sub_requirements.constraints);
+                    data.update_from(sub_requirements);
                 }
                 RequirementsTxtStatement::Constraint { filename, location } => {
                     let sub_file = working_dir.as_ref().join(filename);
@@ -132,6 +131,12 @@ impl RequirementsTxt {
             }
         }
         Ok(data)
+    }
+
+    /// Merges other into self
+    pub fn update_from(&mut self, other: RequirementsTxt) {
+        self.requirements.extend(other.requirements);
+        self.constraints.extend(other.constraints);
     }
 
     /// Method to bridge between the new parser and the poetry assumptions of the existing code
