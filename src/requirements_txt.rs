@@ -51,9 +51,17 @@ use unscanny::{Pattern, Scanner};
 /// We emit one of those for each requirements.txt entry
 enum RequirementsTxtStatement {
     /// `-r` inclusion filename
-    Requirements { filename: String, location: usize },
+    Requirements {
+        filename: String,
+        start: usize,
+        end: usize,
+    },
     /// `-c` inclusion filename
-    Constraint { filename: String, location: usize },
+    Constraint {
+        filename: String,
+        start: usize,
+        end: usize,
+    },
     /// PEP 508 requirement plus metadata
     RequirementEntry(RequirementEntry),
 }
@@ -117,25 +125,35 @@ impl RequirementsTxt {
         let mut data = Self::default();
         while let Some(statement) = parse_entry(&mut s, &content)? {
             match statement {
-                RequirementsTxtStatement::Requirements { filename, location } => {
+                RequirementsTxtStatement::Requirements {
+                    filename,
+                    start,
+                    end,
+                } => {
                     let sub_file = working_dir.as_ref().join(filename);
                     let sub_requirements =
                         Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
                             RequirementsTxtParserError::Subfile {
                                 source: Box::new(err),
-                                location,
+                                start,
+                                end,
                             }
                         })?;
                     // Add each to the correct category
                     data.update_from(sub_requirements);
                 }
-                RequirementsTxtStatement::Constraint { filename, location } => {
+                RequirementsTxtStatement::Constraint {
+                    filename,
+                    start,
+                    end,
+                } => {
                     let sub_file = working_dir.as_ref().join(filename);
                     let sub_constraints =
                         Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
                             RequirementsTxtParserError::Subfile {
                                 source: Box::new(err),
-                                location,
+                                start,
+                                end,
                             }
                         })?;
                     // Here we add both to constraints
@@ -215,25 +233,27 @@ fn parse_entry(
         eat_wrappable_whitespace(s);
     }
 
+    let start = s.cursor();
     Ok(Some(if s.eat_if("-r") {
-        let location = s.cursor();
         let requirements_file = parse_value(s, |c: char| !['\n', '\r', '#'].contains(&c))?;
+        let end = s.cursor();
         eat_trailing_line(s)?;
         RequirementsTxtStatement::Requirements {
             filename: requirements_file.to_string(),
-            location,
+            start,
+            end,
         }
     } else if s.eat_if("-c") {
-        let location = s.cursor();
         let constraints_file = parse_value(s, |c: char| !['\n', '\r', '#'].contains(&c))?;
+        let end = s.cursor();
         eat_trailing_line(s)?;
         RequirementsTxtStatement::Constraint {
             filename: constraints_file.to_string(),
-            location,
+            start,
+            end,
         }
     } else if s.eat_if("-e") {
         let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
-        eat_trailing_line(s)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
@@ -241,7 +261,6 @@ fn parse_entry(
         })
     } else if s.at(char::is_ascii_alphanumeric) {
         let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
-        eat_trailing_line(s)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
@@ -264,40 +283,43 @@ fn parse_entry(
 /// Eat whitespace and ignore newlines escaped with a backslash
 fn eat_wrappable_whitespace<'a>(s: &mut Scanner<'a>) -> &'a str {
     let start = s.cursor();
-    s.eat_while(|c: char| c == ' ' || c == '\t');
+    s.eat_while([' ', '\t']);
     // Allow multiple escaped line breaks
-    while s.eat_if("\\\n") || s.eat_if("\\\r\n") {
-        s.eat_while(|c: char| c == ' ' || c == '\t');
+    // With the order we support `\n`, `\r`, `\r\n` without accidentally eating a `\n\r`
+    while s.eat_if("\\\n") || s.eat_if("\\\r\n") || s.eat_if("\\\r") {
+        s.eat_while([' ', '\t']);
     }
     s.from(start)
 }
 
 /// Eats the end of line or a potential trailing comma
 fn eat_trailing_line(s: &mut Scanner) -> Result<(), RequirementsTxtParserError> {
-    if s.eat_if("#") {
-        s.eat_while(|c| c != '\r' && c != '\n');
-    }
-
-    if s.eat_if('\r') {
-        if !s.eat_if('\n') {
-            Err(RequirementsTxtParserError::Parser {
-                message: "Expected \\n after \\n, found {}".to_string(),
+    s.eat_while([' ', '\t']);
+    match s.eat() {
+        None | Some('\n') => {} // End of file or end of line, nothing to do
+        Some('\r') => {
+            s.eat_if('\n'); // `\r\n`, but just `\r` is also accepted
+        }
+        Some('#') => {
+            s.eat_until(['\r', '\n']);
+            if s.at('\r') {
+                s.eat_if('\n'); // `\r\n`, but just `\r` is also accepted
+            }
+        }
+        Some(other) => {
+            return Err(RequirementsTxtParserError::Parser {
+                message: format!("Expected comment or end-of-line, found '{}'", other),
                 location: s.cursor(),
             })
-        } else {
-            Ok(())
         }
-    } else if s.eat_if('\n') || s.done() {
-        Ok(())
-    } else {
-        unreachable!("{} {:?}", s.cursor(), s.peek())
     }
+    Ok(())
 }
 
 /// Parse a PEP 508 requirement with optional trailing hashes
 fn parse_requirement_and_hashes(
     s: &mut Scanner,
-    content: &&str,
+    content: &str,
 ) -> Result<(Requirement, Vec<String>), RequirementsTxtParserError> {
     // PEP 508 requirement
     let start = s.cursor();
@@ -306,14 +328,22 @@ fn parse_requirement_and_hashes(
         let end = s.cursor();
 
         //  We look for the end of the line ...
-        if s.at('\n') || s.at('\r') {
+        if s.eat_if('\n') {
             break (end, false);
         }
-        // ... or`--hash`, an escaped newline or a comment separated by whitespace ...
+        if s.eat_if('\r') {
+            s.eat_if('\n'); // Support `\r\n` but also accept stray `\r`
+            break (end, false);
+        }
+        // ... or `--hash`, an escaped newline or a comment separated by whitespace ...
         if !eat_wrappable_whitespace(s).is_empty() {
             if s.after().starts_with("--") {
                 break (end, true);
-            } else if s.at('\\') || s.at('#') {
+            } else if s.eat_if('#') {
+                s.eat_until(['\r', '\n']);
+                if s.at('\r') {
+                    s.eat_if('\n'); // `\r\n`, but just `\r` is also accepted
+                }
                 break (end, false);
             } else {
                 continue;
@@ -332,7 +362,9 @@ fn parse_requirement_and_hashes(
         }
     })?;
     let hashes = if has_hashes {
-        parse_hashes(s)?
+        let hashes = parse_hashes(s)?;
+        eat_trailing_line(s)?;
+        hashes
     } else {
         Vec::new()
     };
@@ -355,7 +387,7 @@ fn parse_hashes(s: &mut Scanner) -> Result<Vec<String>, RequirementsTxtParserErr
     hashes.push(hash.to_string());
     loop {
         eat_wrappable_whitespace(s);
-        if s.eat_while("--hash").is_empty() {
+        if !s.eat_if("--hash") {
             break;
         }
         let hash = parse_value(s, |c: char| !c.is_whitespace())?;
@@ -406,7 +438,8 @@ pub enum RequirementsTxtParserError {
     },
     Subfile {
         source: Box<RequirementsTxtFileError>,
-        location: usize,
+        start: usize,
+        end: usize,
     },
 }
 
@@ -432,12 +465,13 @@ impl Display for RequirementsTxtFileError {
                     end,
                 )
             }
-            RequirementsTxtParserError::Subfile { location, .. } => {
+            RequirementsTxtParserError::Subfile { start, end, .. } => {
                 write!(
                     f,
-                    "Failed to parse {} position {} due to an error in an included file",
+                    "Error parsing file included into {} at position {} to {}",
                     self.file.display(),
-                    location
+                    start,
+                    end
                 )
             }
         }
@@ -548,7 +582,7 @@ mod test {
         assert_eq!(
             errors[0],
             format!(
-                "Failed to parse {} position 2 due to an error in an included file",
+                "Error parsing file included into {} at position 0 to 14",
                 basic.display()
             )
         );
