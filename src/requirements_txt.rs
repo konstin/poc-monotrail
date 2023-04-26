@@ -41,10 +41,10 @@ use fs_err as fs;
 use pep508_rs::{Pep508Error, Requirement, VersionOrUrl};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt::{Display, Formatter};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use thiserror::Error;
 use tracing::warn;
 use unscanny::{Pattern, Scanner};
 
@@ -81,25 +81,47 @@ pub struct RequirementsTxt {
 
 impl RequirementsTxt {
     /// See module level documentation
-    ///
-    /// Note that all relative paths are dependent on the current working dir, not on the location
-    /// of the file
     pub fn parse(
         requirements_txt: impl AsRef<Path>,
         working_dir: impl AsRef<Path>,
-    ) -> Result<Self, RequirementsTxtError> {
-        let content = fs::read_to_string(&requirements_txt)?;
+    ) -> Result<Self, RequirementsTxtFileError> {
+        let content =
+            fs::read_to_string(&requirements_txt).map_err(|err| RequirementsTxtFileError {
+                file: requirements_txt.as_ref().to_path_buf(),
+                error: RequirementsTxtParserError::IO(err),
+            })?;
+        let data =
+            Self::parse_inner(&content, working_dir).map_err(|err| RequirementsTxtFileError {
+                file: requirements_txt.as_ref().to_path_buf(),
+                error: err,
+            })?;
+        if data == Self::default() {
+            warn!(
+                "Requirements file {} does not contain any dependencies",
+                requirements_txt.as_ref().display()
+            );
+        }
+        Ok(data)
+    }
+
+    /// See module level documentation
+    ///
+    /// Note that all relative paths are dependent on the current working dir, not on the location
+    /// of the file
+    pub fn parse_inner(
+        content: &str,
+        working_dir: impl AsRef<Path>,
+    ) -> Result<Self, RequirementsTxtParserError> {
         let mut s = Scanner::new(&content);
 
         let mut data = Self::default();
-        while let Some(statement) = parse_entry(&mut s, &content, &requirements_txt)? {
+        while let Some(statement) = parse_entry(&mut s, &content)? {
             match statement {
                 RequirementsTxtStatement::Requirements { filename, location } => {
                     let sub_file = working_dir.as_ref().join(filename);
                     let sub_requirements =
                         Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
-                            RequirementsTxtError::Subfile {
-                                file: requirements_txt.as_ref().to_path_buf(),
+                            RequirementsTxtParserError::Subfile {
                                 source: Box::new(err),
                                 location,
                             }
@@ -111,8 +133,7 @@ impl RequirementsTxt {
                     let sub_file = working_dir.as_ref().join(filename);
                     let sub_constraints =
                         Self::parse(&sub_file, working_dir.as_ref()).map_err(|err| {
-                            RequirementsTxtError::Subfile {
-                                file: requirements_txt.as_ref().to_path_buf(),
+                            RequirementsTxtParserError::Subfile {
                                 source: Box::new(err),
                                 location,
                             }
@@ -130,12 +151,6 @@ impl RequirementsTxt {
                     data.requirements.push(requirement_entry);
                 }
             }
-        }
-        if data == Self::default() {
-            warn!(
-                "Requirements file {} does not contain any dependencies",
-                requirements_txt.as_ref().display()
-            );
         }
         Ok(data)
     }
@@ -191,63 +206,53 @@ impl RequirementsTxt {
 fn parse_entry(
     s: &mut Scanner,
     content: &str,
-    requirements_txt: &impl AsRef<Path>,
-) -> Result<Option<RequirementsTxtStatement>, RequirementsTxtError> {
+) -> Result<Option<RequirementsTxtStatement>, RequirementsTxtParserError> {
     // Eat all preceding whitespace, this may run us to the end of file
     eat_wrappable_whitespace(s);
     while s.at(['\n', '\r', '#']) {
         // skip comments
-        eat_trailing_line(s, requirements_txt.as_ref())?;
+        eat_trailing_line(s)?;
         eat_wrappable_whitespace(s);
     }
 
     Ok(Some(if s.eat_if("-r") {
         let location = s.cursor();
-        let requirements_file = parse_value(
-            s,
-            |c: char| !['\n', '\r', '#'].contains(&c),
-            &requirements_txt,
-        )?;
-        eat_trailing_line(s, requirements_txt.as_ref())?;
+        let requirements_file = parse_value(s, |c: char| !['\n', '\r', '#'].contains(&c))?;
+        eat_trailing_line(s)?;
         RequirementsTxtStatement::Requirements {
             filename: requirements_file.to_string(),
             location,
         }
     } else if s.eat_if("-c") {
         let location = s.cursor();
-        let constraints_file = parse_value(
-            s,
-            |c: char| !['\n', '\r', '#'].contains(&c),
-            &requirements_txt,
-        )?;
-        eat_trailing_line(s, requirements_txt.as_ref())?;
+        let constraints_file = parse_value(s, |c: char| !['\n', '\r', '#'].contains(&c))?;
+        eat_trailing_line(s)?;
         RequirementsTxtStatement::Constraint {
             filename: constraints_file.to_string(),
             location,
         }
     } else if s.eat_if("-e") {
-        let (requirement, hashes) = parse_requirement_and_hashes(s, &content, &requirements_txt)?;
-        eat_trailing_line(s, requirements_txt.as_ref())?;
+        let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
+        eat_trailing_line(s)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
             editable: true,
         })
     } else if s.at(char::is_ascii_alphanumeric) {
-        let (requirement, hashes) = parse_requirement_and_hashes(s, &content, &requirements_txt)?;
-        eat_trailing_line(s, requirements_txt.as_ref())?;
+        let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
+        eat_trailing_line(s)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
             editable: false,
         })
     } else if let Some(char) = s.peek() {
-        return Err(RequirementsTxtError::Parser {
+        return Err(RequirementsTxtParserError::Parser {
             message: format!(
                 "Unexpected '{}', expected '-c', '-e', '-r' or the start of a requirement",
                 char
             ),
-            file: requirements_txt.as_ref().to_path_buf(),
             location: s.cursor(),
         });
     } else {
@@ -268,19 +273,15 @@ fn eat_wrappable_whitespace<'a>(s: &mut Scanner<'a>) -> &'a str {
 }
 
 /// Eats the end of line or a potential trailing comma
-fn eat_trailing_line(
-    s: &mut Scanner,
-    requirements_txt: impl AsRef<Path>,
-) -> Result<(), RequirementsTxtError> {
+fn eat_trailing_line(s: &mut Scanner) -> Result<(), RequirementsTxtParserError> {
     if s.eat_if("#") {
         s.eat_while(|c| c != '\r' && c != '\n');
     }
 
     if s.eat_if('\r') {
         if !s.eat_if('\n') {
-            Err(RequirementsTxtError::Parser {
+            Err(RequirementsTxtParserError::Parser {
                 message: "Expected \\n after \\n, found {}".to_string(),
-                file: requirements_txt.as_ref().to_path_buf(),
                 location: s.cursor(),
             })
         } else {
@@ -289,12 +290,7 @@ fn eat_trailing_line(
     } else if s.eat_if('\n') || s.done() {
         Ok(())
     } else {
-        unreachable!(
-            "{} {} {:?}",
-            requirements_txt.as_ref().display(),
-            s.cursor(),
-            s.peek()
-        );
+        unreachable!("{} {:?}", s.cursor(), s.peek())
     }
 }
 
@@ -302,8 +298,7 @@ fn eat_trailing_line(
 fn parse_requirement_and_hashes(
     s: &mut Scanner,
     content: &&str,
-    requirements_txt: &impl AsRef<Path>,
-) -> Result<(Requirement, Vec<String>), RequirementsTxtError> {
+) -> Result<(Requirement, Vec<String>), RequirementsTxtParserError> {
     // PEP 508 requirement
     let start = s.cursor();
     // Termination: s.eat() eventually becomes None
@@ -330,15 +325,14 @@ fn parse_requirement_and_hashes(
         }
     };
     let requirement = Requirement::from_str(&content[start..end]).map_err(|err| {
-        RequirementsTxtError::Pep508 {
+        RequirementsTxtParserError::Pep508 {
             source: err,
-            file: requirements_txt.as_ref().to_path_buf(),
             start,
             end,
         }
     })?;
     let hashes = if has_hashes {
-        parse_hashes(s, &requirements_txt)?
+        parse_hashes(s)?
     } else {
         Vec::new()
     };
@@ -346,29 +340,25 @@ fn parse_requirement_and_hashes(
 }
 
 /// Parse `--hash=... --hash ...` after a requirement
-fn parse_hashes(
-    s: &mut Scanner,
-    requirements_txt: &impl AsRef<Path>,
-) -> Result<Vec<String>, RequirementsTxtError> {
+fn parse_hashes(s: &mut Scanner) -> Result<Vec<String>, RequirementsTxtParserError> {
     let mut hashes = Vec::new();
     if s.eat_while("--hash").is_empty() {
-        return Err(RequirementsTxtError::Parser {
+        return Err(RequirementsTxtParserError::Parser {
             message: format!(
                 "Expected '--hash', found '{:?}'",
                 s.eat_while(|c: char| !c.is_whitespace())
             ),
-            file: requirements_txt.as_ref().to_path_buf(),
             location: s.cursor(),
         });
     }
-    let hash = parse_value(s, |c: char| !c.is_whitespace(), &requirements_txt)?;
+    let hash = parse_value(s, |c: char| !c.is_whitespace())?;
     hashes.push(hash.to_string());
     loop {
         eat_wrappable_whitespace(s);
         if s.eat_while("--hash").is_empty() {
             break;
         }
-        let hash = parse_value(s, |c: char| !c.is_whitespace(), &requirements_txt)?;
+        let hash = parse_value(s, |c: char| !c.is_whitespace())?;
         hashes.push(hash.to_string());
     }
     Ok(hashes)
@@ -378,8 +368,7 @@ fn parse_hashes(
 fn parse_value<'a, T>(
     s: &mut Scanner<'a>,
     while_pattern: impl Pattern<T>,
-    requirements_txt: impl AsRef<Path>,
-) -> Result<&'a str, RequirementsTxtError> {
+) -> Result<&'a str, RequirementsTxtParserError> {
     if s.eat_if('=') {
         // Explicit equals sign
         Ok(s.eat_while(while_pattern).trim_end())
@@ -388,38 +377,82 @@ fn parse_value<'a, T>(
         s.eat_whitespace();
         Ok(s.eat_while(while_pattern).trim_end())
     } else {
-        Err(RequirementsTxtError::Parser {
+        Err(RequirementsTxtParserError::Parser {
             message: format!("Expected '=' or whitespace, found {:?}", s.peek()),
-            file: requirements_txt.as_ref().to_path_buf(),
             location: s.cursor(),
         })
     }
 }
 
-/// Error parsing requirements.txt
-#[derive(Debug, Error)]
-pub enum RequirementsTxtError {
-    #[error(transparent)]
-    IO(#[from] io::Error),
-    #[error("{message} in {file} position {location}")]
+/// Error parsing requirements.txt, wrapper with filename
+#[derive(Debug)]
+pub struct RequirementsTxtFileError {
+    file: PathBuf,
+    error: RequirementsTxtParserError,
+}
+
+/// Error parsing requirements.txt, error disambiguation
+#[derive(Debug)]
+pub enum RequirementsTxtParserError {
+    IO(io::Error),
     Parser {
         message: String,
-        file: PathBuf,
         location: usize,
     },
-    #[error("Couldn't parse requirement in {file} position {start} to {end}")]
     Pep508 {
         source: Pep508Error,
-        file: PathBuf,
         start: usize,
         end: usize,
     },
-    #[error("Failed to parse {} position {} due to an error in an included file", file.display(), location)]
     Subfile {
-        file: PathBuf,
-        source: Box<RequirementsTxtError>,
+        source: Box<RequirementsTxtFileError>,
         location: usize,
     },
+}
+
+impl Display for RequirementsTxtFileError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.error {
+            RequirementsTxtParserError::IO(err) => err.fmt(f),
+            RequirementsTxtParserError::Parser { message, location } => {
+                write!(
+                    f,
+                    "{} in {} position {}",
+                    message,
+                    self.file.display(),
+                    location
+                )
+            }
+            RequirementsTxtParserError::Pep508 { start, end, .. } => {
+                write!(
+                    f,
+                    "Couldn't parse requirement in {} position {} to {}",
+                    self.file.display(),
+                    start,
+                    end,
+                )
+            }
+            RequirementsTxtParserError::Subfile { location, .. } => {
+                write!(
+                    f,
+                    "Failed to parse {} position {} due to an error in an included file",
+                    self.file.display(),
+                    location
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for RequirementsTxtFileError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.error {
+            RequirementsTxtParserError::IO(err) => err.source(),
+            RequirementsTxtParserError::Pep508 { source, .. } => Some(source),
+            RequirementsTxtParserError::Subfile { source, .. } => Some(source.as_ref()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
