@@ -15,7 +15,7 @@ crate-type = ["rlib", "cdylib"]
 name = "monotrail"
 
 [dependencies]
-anyhow = "1.0.65"
+anyhow = "1.0.71"
 base64 = "0.21.0"
 clap = { version = "4.0.2", features = ["derive"] }
 cpufeatures = "0.2.5"
