@@ -1,0 +1,10 @@
+{
+  "requirements": [
+    {
+      "requirement": "tomli",
+      "hashes": [],
+      "editable": false
+    }
+  ],
+  "constraints": []
+}

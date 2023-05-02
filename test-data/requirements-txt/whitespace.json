@@ -1,0 +1,15 @@
+{
+  "requirements": [
+    {
+      "requirement": "numpy",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "pandas[tabulate] @ https://github.com/pandas-dev/pandas",
+      "hashes": [],
+      "editable": false
+    }
+  ],
+  "constraints": []
+}

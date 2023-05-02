@@ -1,0 +1,15 @@
+{
+  "requirements": [
+    {
+      "requirement": "tomli",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "numpy ==1.24.2",
+      "hashes": [],
+      "editable": false
+    }
+  ],
+  "constraints": []
+}
