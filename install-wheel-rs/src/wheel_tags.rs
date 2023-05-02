@@ -44,7 +44,7 @@ impl FromStr for WheelFilename {
             }),
             _ => Err(WheelInstallerError::InvalidWheelFileName(
                 filename.to_string(),
-                "Expected four \"-\" in the filename".to_string(),
+                "Expected four or five dashes (\"-\") in the filename".to_string(),
             )),
         }
     }
