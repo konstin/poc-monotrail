@@ -52,6 +52,18 @@ jobs:
           python-version: '3.x'
       - uses: psf/black@23.1.0
 
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      # TODO: Put ruff in pyproject.toml dev dependencies and use lockfile version
+      # or ruff github action
+      - run: pipx run ruff==0.0.264 .
+
   test-cargo:
     name: Test Cargo
     strategy:
