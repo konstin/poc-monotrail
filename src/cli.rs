@@ -14,6 +14,8 @@ use crate::verify_installation::verify_installation;
 use anyhow::{bail, Context};
 use clap::Parser;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
+use pep440_rs::Operator;
+use pep508_rs::VersionOrUrl;
 use std::env;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
@@ -287,7 +289,7 @@ pub fn install(
     if !frozen {
         bail!("Needs to be frozen for now");
     }
-    let _venv = find_venv(venv)?;
+    let venv = find_venv(venv)?;
     let working_dir = match working_dir {
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(working_dir) => working_dir.to_path_buf(),
@@ -315,7 +317,63 @@ pub fn install(
         for requirements_file in requirements_files {
             requirements.update_from(RequirementsTxt::parse(requirements_file, &working_dir)?)
         }
-        dbg!(requirements);
+        if !requirements.constraints.is_empty() {
+            bail!("You can't use requirements files with constraints (`-c`) for installing");
+        }
+
+        // TODO(konstin): We lose the hashes here
+        let specs: Vec<RequestedSpec> = requirements
+            .requirements
+            .iter()
+            .map(|req| {
+                if let Some(VersionOrUrl::VersionSpecifier(specifiers)) =
+                    &req.requirement.version_or_url
+                {
+                    let version = if let [specifier] = specifiers.as_ref() {
+                        if *specifier.operator() == Operator::Equal {
+                            specifier.version().clone()
+                        } else {
+                            bail!(
+                                "Expected single frozen version constraint, found {}",
+                                specifier
+                            );
+                        }
+                    } else {
+                        bail!(
+                            "Expected single frozen version constraint, found {}",
+                            specifiers
+                        );
+                    };
+                    Ok(RequestedSpec {
+                        requested: req.to_string(),
+                        name: req.requirement.name.clone(),
+                        python_version: Some(version.to_string()),
+                        source: None,
+                        extras: vec![],
+                        file_path: None,
+                        url: None,
+                    })
+                } else {
+                    bail!("Missing version for requirement {}", req.requirement.name);
+                }
+            })
+            .collect::<Result<_, _>>()?;
+
+        let compatible_tags = compatible_tags(
+            get_venv_python_version(&venv)?,
+            &Os::current()?,
+            &Arch::current()?,
+        )?;
+        let location = InstallLocation::Venv {
+            venv_base: venv,
+            python_version: (3, 8),
+        }
+        .acquire_lock()?;
+
+        install_all(&specs, &location, &compatible_tags, false, false, false)?;
+
+        // TODO: Check consistency; Ideally before installing but here is better than not at all
+
         Ok(Some(0))
     }
 }

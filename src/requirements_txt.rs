@@ -78,6 +78,20 @@ pub struct RequirementEntry {
     pub editable: bool,
 }
 
+impl Display for RequirementEntry {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.editable {
+            write!(f, "-e ")?;
+        }
+        write!(f, "{}", self.requirement)?;
+        for hash in &self.hashes {
+            write!(f, " --hash {}", hash)?
+        }
+
+        Ok(())
+    }
+}
+
 /// Parsed and flattened requirements.txt with requirements and constraints
 #[derive(Debug, Deserialize, Clone, Default, Eq, PartialEq, Serialize)]
 pub struct RequirementsTxt {

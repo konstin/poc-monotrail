@@ -9,19 +9,38 @@ from argparse import ArgumentParser
 from pathlib import Path
 from shutil import rmtree
 from subprocess import check_call, DEVNULL
-from typing import List, Union
+from typing import List, Union, Optional
 
 import pytest
 
 from test.install.utils import get_bin, get_root
 
 
-def compare_with_pip(
+def compare_with_pip_wheels(
     env_name: str,
     wheels: List[Union[str, Path]],
-    monotrail: Path,
+    monotrail: Path = get_bin(),
     clear_rs: bool = True,
     clear_pip: bool = False,
+):
+    compare_with_pip_args(
+        env_name,
+        ["--no-deps", *wheels],
+        ["wheel-install", *wheels],
+        monotrail,
+        clear_rs,
+        clear_pip,
+    )
+
+
+def compare_with_pip_args(
+    env_name: str,
+    pip_args: List[Union[str, Path]],
+    monotrail_args: List[Union[str, Path]],
+    monotrail: Path = get_bin(),
+    clear_rs: bool = True,
+    clear_pip: bool = False,
+    cwd: Optional[Path] = None,
 ):
     test_venvs = get_root().joinpath("test-venvs")
     test_venvs.mkdir(exist_ok=True)
@@ -33,13 +52,13 @@ def compare_with_pip(
     if clear_pip and env_py.exists():
         rmtree(env_py)
     if not env_py.exists():
-        check_call(["virtualenv", env], stdout=DEVNULL)
+        check_call(["virtualenv", env], stdout=DEVNULL, cwd=cwd)
         start_pip = time.time()
         if platform.system() == "Windows":
             pip = env.joinpath("Scripts").joinpath("pip.exe")
         else:
             pip = env.joinpath("bin").joinpath("pip")
-        check_call([pip, "install", "-q", "--no-deps", *wheels])
+        check_call([pip, "install", "-q", *pip_args], cwd=cwd)
         stop_pip = time.time()
         env.rename(env_py)
 
@@ -51,8 +70,9 @@ def compare_with_pip(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [monotrail, "wheel-install", *wheels],
+        [monotrail, *monotrail_args],
         env=dict(os.environ, VIRTUAL_ENV=str(env)),
+        cwd=cwd,
     )
     stop_rs = time.time()
     env.rename(env_rs)
@@ -67,7 +87,7 @@ def compare_with_pip(
 
 
 def diff_envs(env_name: str, env_py: Path, env_rs: Path):
-    # Filter out paths created by invoking pip and pip itself with on oh horrible regex
+    # Filter out paths created by invoking pip and pip itself with a horrible regex
     # Better matching suggestions welcome 😬
     site_ignores = [
         r"__pycache__",
@@ -111,8 +131,11 @@ def diff_envs(env_name: str, env_py: Path, env_rs: Path):
         env_py_entries.add(i.relative_to(env_py))
     symmetric_difference = env_rs_entries ^ env_py_entries
     if symmetric_difference:
-        print("PATTERN", pattern)
-        print("DIFF", env_name, symmetric_difference)
+        print(f"Differences in environment {env_name} with pattern {pattern}")
+        for rs_only in env_rs_entries - env_py_entries:
+            print(f"rust only: {rs_only}")
+        for pip_only in env_py_entries - env_rs_entries:
+            print(f"pip only: {pip_only}")
         sys.exit(1)
 
 
@@ -121,7 +144,7 @@ def test_purelib_platlib():
     purelib_platlib_wheel = get_root().joinpath(
         "test-data/wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl"
     )
-    compare_with_pip("purelib_platlib", [purelib_platlib_wheel], get_bin())
+    compare_with_pip_wheels("purelib_platlib", [purelib_platlib_wheel], get_bin())
 
 
 def test_tqdm():
@@ -131,7 +154,7 @@ def test_tqdm():
         .joinpath("popular-wheels")
         .joinpath("tqdm-4.62.3-py2.py3-none-any.whl")
     )
-    compare_with_pip("tqdm", [purelib_platlib_wheel], get_bin())
+    compare_with_pip_wheels("tqdm", [purelib_platlib_wheel], get_bin())
 
 
 def test_scripts_ignore_extras():
@@ -149,7 +172,9 @@ def test_bio_embeddings_plus():
     bio_embeddings_plus_wheel = get_root().joinpath(
         "test-data/wheels/bio_embeddings_PLUS-0.1.1-py3-none-any.whl"
     )
-    compare_with_pip("bio_embeddings_plus", [bio_embeddings_plus_wheel], get_bin())
+    compare_with_pip_wheels(
+        "bio_embeddings_plus", [bio_embeddings_plus_wheel], get_bin()
+    )
 
 
 def main():
@@ -160,7 +185,7 @@ def main():
     wheel = Path(args.wheel)
 
     env_name = wheel.name.split("-")[0]
-    compare_with_pip(env_name, [wheel], get_bin())
+    compare_with_pip_wheels(env_name, [wheel], get_bin())
 
 
 if __name__ == "__main__":
