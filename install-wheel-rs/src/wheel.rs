@@ -80,10 +80,12 @@ impl Script {
     /// Parses a script definition like `foo.bar:main` or `foomod:main_bar [bar,baz]`
     ///
     /// <https://packaging.python.org/en/latest/specifications/entry-points/>
+    ///
+    /// Extras are supposed to be ignored, which happens if you pass None for extras
     pub fn from_value(
         script_name: &str,
         value: &str,
-        extras: &[String],
+        extras: Option<&[String]>,
     ) -> Result<Option<Script>, WheelInstallerError> {
         let script_regex = Regex::new(r"^(?P<module>[\w\d_\-.]+):(?P<function>[\w\d_\-.]+)(?:\s+\[(?P<extras>(?:[^,]+,?\s*)+)\])?$").unwrap();
 
@@ -96,8 +98,10 @@ impl Script {
                 .split(',')
                 .map(|extra| extra.trim().to_string())
                 .collect::<HashSet<String>>();
-            if !script_extras.is_subset(&extras.iter().cloned().collect()) {
-                return Ok(None);
+            if let Some(extras) = extras {
+                if !script_extras.is_subset(&extras.iter().cloned().collect()) {
+                    return Ok(None);
+                }
             }
         }
 
@@ -133,7 +137,7 @@ if __name__ == '__main__':
 fn read_scripts_from_section(
     scripts_section: &HashMap<String, Option<String>>,
     section_name: &str,
-    extras: &[String],
+    extras: Option<&[String]>,
 ) -> Result<Vec<Script>, WheelInstallerError> {
     let mut scripts = Vec::new();
     for (script_name, python_location) in scripts_section.iter() {
@@ -157,10 +161,12 @@ fn read_scripts_from_section(
 /// Parses the entry_points.txt entry in the wheel for console scripts
 ///
 /// Returns (script_name, module, function)
+///
+/// Extras are supposed to be ignored, which happens if you pass None for extras
 fn parse_scripts(
     archive: &mut ZipArchive<File>,
     dist_info_dir: &str,
-    extras: &[String],
+    extras: Option<&[String]>,
 ) -> Result<(Vec<Script>, Vec<Script>), WheelInstallerError> {
     let entry_points_path = format!("{}/entry_points.txt", dist_info_dir);
     let entry_points_mapping = match archive.by_name(&entry_points_path) {
@@ -1013,7 +1019,9 @@ pub fn install_wheel(
     location: &InstallLocation<LockedDir>,
     wheel_path: &Path,
     compile: bool,
-    extras: &[String],
+    // initially used to the console scripts, currently unused. Keeping it because we likely need
+    // it for validation later
+    _extras: &[String],
     unique_version: &str,
     sys_executable: &Path,
 ) -> Result<String, WheelInstallerError> {
@@ -1125,7 +1133,7 @@ pub fn install_wheel(
     );
 
     debug!(name = name.as_str(), "Writing entrypoints");
-    let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir, extras)?;
+    let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir, None)?;
     write_script_entrypoints(&site_packages, &location, &console_scripts, &mut record)?;
     write_script_entrypoints(&site_packages, &location, &gui_scripts, &mut record)?;
 
@@ -1334,7 +1342,7 @@ mod test {
     #[test]
     fn test_script_from_value() {
         assert_eq!(
-            Script::from_value("launcher", "foo.bar:main", &[]).unwrap(),
+            Script::from_value("launcher", "foo.bar:main", None).unwrap(),
             Some(Script {
                 script_name: "launcher".to_string(),
                 module: "foo.bar".to_string(),
@@ -1342,14 +1350,27 @@ mod test {
             })
         );
         assert_eq!(
-            Script::from_value("launcher", "foomod:main_bar [bar,baz]", &[]).unwrap(),
+            Script::from_value(
+                "launcher",
+                "foo.bar:main",
+                Some(&["bar".to_string(), "baz".to_string()])
+            )
+            .unwrap(),
+            Some(Script {
+                script_name: "launcher".to_string(),
+                module: "foo.bar".to_string(),
+                function: "main".to_string(),
+            })
+        );
+        assert_eq!(
+            Script::from_value("launcher", "foomod:main_bar [bar,baz]", Some(&[])).unwrap(),
             None
         );
         assert_eq!(
             Script::from_value(
                 "launcher",
                 "foomod:main_bar [bar,baz]",
-                &["bar".to_string(), "baz".to_string()]
+                Some(&["bar".to_string(), "baz".to_string()])
             )
             .unwrap(),
             Some(Script {

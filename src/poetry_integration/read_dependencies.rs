@@ -412,7 +412,7 @@ pub fn poetry_spec_from_dir(
     let mut scripts = BTreeMap::new();
     if let Some(script) = &poetry_section.scripts {
         for (key, value) in script {
-            if let Some(script) = Script::from_value(&key, &value, extras)? {
+            if let Some(script) = Script::from_value(&key, &value, None)? {
                 scripts.insert(key.to_string(), script);
             }
         }
