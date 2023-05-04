@@ -87,7 +87,7 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements-test.txt'
       - name: Install virtualenv maturin pytest jupyter nbconvert
-        run: pip install -r requirements-test.txt
+        run: pip install pytest
       - name: Install stable rust
         uses: actions-rs/toolchain@v1
         id: rustup
