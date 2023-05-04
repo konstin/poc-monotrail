@@ -47,7 +47,7 @@ fn test_corruptwheel() -> Result<()> {
 fn test_invalid() -> Result<()> {
     check_error(
         "invalid.whl",
-        &["The wheel filename \"invalid.whl\" is invalid: Expected four or five dashes \"-\" in the filename"],
+        &["The wheel filename \"invalid.whl\" is invalid: Expected four or five dashes (\"-\") in the filename"],
     )
 }
 

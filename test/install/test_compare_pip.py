@@ -134,6 +134,16 @@ def test_tqdm():
     compare_with_pip("tqdm", [purelib_platlib_wheel], get_bin())
 
 
+def test_scripts_ignore_extras():
+    miniblack = (
+        get_root()
+        .joinpath("test-data")
+        .joinpath("wheels")
+        .joinpath("miniblack-23.1.0-py3-none-any.whl")
+    )
+    compare_with_pip("miniblack", [miniblack], get_bin())
+
+
 def test_bio_embeddings_plus():
     """This wheel used to fail to install due to a name normalization mismatch"""
     bio_embeddings_plus_wheel = get_root().joinpath(
