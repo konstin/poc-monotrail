@@ -1350,7 +1350,12 @@ mod test {
             })
         );
         assert_eq!(
-            Script::from_value("launcher", "foo.bar:main", Some([&])).unwrap(),
+            Script::from_value(
+                "launcher",
+                "foo.bar:main",
+                Some(&["bar".to_string(), "baz".to_string()])
+            )
+            .unwrap(),
             Some(Script {
                 script_name: "launcher".to_string(),
                 module: "foo.bar".to_string(),
