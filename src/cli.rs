@@ -6,6 +6,7 @@ use crate::package_index::download_distribution;
 use crate::poetry_integration::read_dependencies::{read_poetry_specs, read_toml_files};
 use crate::poetry_integration::run::poetry_run;
 use crate::ppipx;
+use crate::requirements_txt::RequirementsTxt;
 use crate::spec::RequestedSpec;
 use crate::utils::cache_dir;
 use crate::venv_parser::get_venv_python_version;
@@ -16,6 +17,7 @@ use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstalle
 use pep440_rs::Operator;
 use pep508_rs::VersionOrUrl;
 use std::env;
+use std::env::current_dir;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info};
