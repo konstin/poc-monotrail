@@ -54,13 +54,19 @@ pub fn filename_and_url(
         .collect::<Result<_, anyhow::Error>>()?;
     let wheel = filenames
         .iter()
-        .find(|(_filename, parsed)| parsed.is_compatible(compatible_tags));
+        .filter_map(|(filename, parsed)| {
+            parsed
+                .compatibility(compatible_tags)
+                .map(|index| (index, filename, parsed))
+        })
+        // Pick the most recent manylinux
+        .min_by_key(|(index, _, _)| *index);
 
-    if let Some((filename, parsed_filename)) = wheel {
+    if let Some((_index, filename, parsed)) = wheel {
         // https://warehouse.pypa.io/api-reference/integration-guide.html#if-you-so-choose
         let url = format!(
             "https://files.pythonhosted.org/packages/{}/{}/{}/{}",
-            parsed_filename.python_tag.join("."),
+            parsed.python_tag.join("."),
             package.name.chars().next().unwrap(),
             package.name,
             filename,

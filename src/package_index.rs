@@ -56,7 +56,13 @@ fn matching_package_for_version(
         .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, WheelInstallerError>>()?;
     if let Some((_, picked_wheel)) = wheel_releases
         .iter()
-        .find(|(filename, _)| filename.is_compatible(compatible_tags))
+        .filter_map(|(filename, wheel)| {
+            filename
+                .compatibility(compatible_tags)
+                .map(|index| (index, wheel))
+        })
+        // Pick the most recent manylinux
+        .min_by_key(|(index, _)| *index)
     {
         return Ok(Some((
             (*picked_wheel).clone(),
