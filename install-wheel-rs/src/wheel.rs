@@ -123,8 +123,8 @@ pub fn get_script_launcher(module: &str, import_name: &str, shebang: &str) -> St
 import re
 import sys
 from {module} import {import_name}
-if __name__ == '__main__':
-    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+if __name__ == "__main__":
+    sys.argv[0] = re.sub(r"(-script\.pyw|\.exe)?$", "", sys.argv[0])
     sys.exit({import_name}())
 "##,
         shebang = shebang,
