@@ -51,7 +51,7 @@ def compare_with_pip(
     check_call(["virtualenv", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [monotrail, "venv-install", *wheels],
+        [monotrail, "wheel-install", *wheels],
         env=dict(os.environ, VIRTUAL_ENV=str(env)),
     )
     stop_rs = time.time()

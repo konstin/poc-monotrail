@@ -13,6 +13,8 @@ use crate::verify_installation::verify_installation;
 use anyhow::{bail, Context};
 use clap::Parser;
 use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
+use pep440_rs::Operator;
+use pep508_rs::VersionOrUrl;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -35,9 +37,9 @@ pub struct PoetryOptions {
     /// Only relevant for venv install
     #[clap(long)]
     skip_existing: bool,
-    /// Don't bytecode compile python sources
+    /// Compile python sources to bytecode
     #[clap(long)]
-    no_compile: bool,
+    compile: bool,
 }
 
 /// Either `python ...` or `command ...`
@@ -139,13 +141,30 @@ pub enum Cli {
         /// arguments passed verbatim to poetry
         args: Vec<String>,
     },
+    /// Installs the (currently frozen only) dependencies in a virtualenv environment
+    ///
+    /// Currently, you can either use `-r requirements.txt`, it will use a poetry.lock or error.
+    Install {
+        /// Install from a requirements.txt-style file.
+        #[clap(short, long)]
+        requirement: Vec<String>,
+        /// Compile python sources to bytecode
+        #[clap(long)]
+        compile: bool,
+        /// Requirements are already resolved, if not not we'll resolve them (currently with poetry)
+        #[clap(long)]
+        frozen: bool,
+        /// Run single threaded (mostly for profiling)
+        #[clap(long)]
+        no_parallel: bool,
+    },
     /// Install the given list of wheels in the current venv
-    VenvInstall {
+    WheelInstall {
         /// The wheels to install
         targets: Vec<String>,
-        /// skip pyc compilation
+        /// Compile python sources to bytecode
         #[clap(long)]
-        no_compile: bool,
+        compile: bool,
         /// run single threaded (mostly for profiling)
         #[clap(long)]
         no_parallel: bool,
@@ -246,7 +265,7 @@ fn poetry_install(
         &to_install,
         &location,
         &compatible_tags,
-        options.no_compile,
+        options.compile,
         false,
         false,
     )?;
@@ -254,11 +273,120 @@ fn poetry_install(
     Ok(())
 }
 
+///
+///
+/// The `venv` and `working_dir` options are to inject those for tests
+pub fn install(
+    requirements_files: Vec<String>,
+    _compile: bool,
+    _no_parallel: bool,
+    frozen: bool,
+    venv: Option<&Path>,
+    working_dir: Option<&Path>,
+) -> anyhow::Result<Option<i32>> {
+    if !frozen {
+        bail!("Needs to be frozen for now");
+    }
+    let venv = find_venv(venv)?;
+    let working_dir = match working_dir {
+        None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
+        Some(working_dir) => working_dir.to_path_buf(),
+    };
+    if requirements_files.is_empty() {
+        let poetry_lock = working_dir
+            .ancestors()
+            .filter_map(|ancestor| {
+                if ancestor.join("poetry.lock").exists() {
+                    Some(ancestor.to_path_buf())
+                } else {
+                    None
+                }
+            })
+            .next()
+            .with_context(|| {
+                format!(
+                    "Couldn't find poetry.lock in {} or any parent directory",
+                    working_dir.display()
+                )
+            })?;
+        todo!("not implemented {:?}", poetry_lock);
+    } else {
+        let mut requirements = RequirementsTxt::default();
+        for requirements_file in requirements_files {
+            requirements.update_from(RequirementsTxt::parse(requirements_file, &working_dir)?)
+        }
+        if !requirements.constraints.is_empty() {
+            bail!("You can't use requirements files with constraints (`-c`) for installing");
+        }
+
+        // TODO(konstin): We lose the hashes here
+        let specs: Vec<RequestedSpec> = requirements
+            .requirements
+            .iter()
+            .map(|req| {
+                if let Some(VersionOrUrl::VersionSpecifier(specifiers)) =
+                    &req.requirement.version_or_url
+                {
+                    let version = if let [specifier] = specifiers.as_ref() {
+                        if *specifier.operator() == Operator::Equal {
+                            specifier.version().clone()
+                        } else {
+                            bail!(
+                                "Expected single frozen version constraint, found {}",
+                                specifier
+                            );
+                        }
+                    } else {
+                        bail!(
+                            "Expected single frozen version constraint, found {}",
+                            specifiers
+                        );
+                    };
+                    Ok(RequestedSpec {
+                        requested: req.to_string(),
+                        name: req.requirement.name.clone(),
+                        python_version: Some(version.to_string()),
+                        source: None,
+                        extras: vec![],
+                        file_path: None,
+                        url: None,
+                    })
+                } else {
+                    bail!("Missing version for requirement {}", req.requirement.name);
+                }
+            })
+            .collect::<Result<_, _>>()?;
+
+        let compatible_tags = compatible_tags(
+            get_venv_python_version(&venv)?,
+            &Os::current()?,
+            &Arch::current()?,
+        )?;
+        let location = InstallLocation::Venv {
+            venv_base: venv,
+            python_version: (3, 8),
+        }
+        .acquire_lock()?;
+
+        install_all(&specs, &location, &compatible_tags, false, false, false)?;
+
+        // TODO: Check consistency; Ideally before installing but here is better than not at all
+
+        Ok(Some(0))
+    }
+}
+
 /// Dispatches from the Cli
 ///
 /// The second parameter exists to override the venv in tests
 pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
     match cli {
+        Cli::Install {
+            requirement,
+            compile,
+            no_parallel,
+            frozen,
+        } => install(requirement, compile, no_parallel, frozen, None, None),
         Cli::Run {
             extras,
             python_version,
@@ -352,9 +480,9 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             Ok(None)
         }
         Cli::Poetry { args } => Ok(Some(poetry_run(&args, None)?)),
-        Cli::VenvInstall {
+        Cli::WheelInstall {
             targets,
-            no_compile,
+            compile,
             no_parallel,
         } => {
             let venv = find_venv(venv)?;
@@ -380,7 +508,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                 &specs,
                 &location,
                 &compatible_tags,
-                no_compile,
+                compile,
                 false,
                 no_parallel,
             )?;
@@ -441,4 +569,25 @@ pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
         );
     };
     Ok(venv)
+}
+
+#[cfg(test)]
+mod test {
+    use super::install;
+    use std::path::Path;
+
+    #[test]
+    fn test_install() {
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        let small = working_dir.join("small.txt");
+        install(
+            vec![small.to_str().unwrap().to_string()],
+            false,
+            false,
+            true,
+            None,
+            Some(&working_dir),
+        )
+        .unwrap();
+    }
 }

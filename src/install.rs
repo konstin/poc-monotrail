@@ -156,7 +156,7 @@ pub fn install_all(
     specs: &[RequestedSpec],
     location: &InstallLocation<LockedDir>,
     compatible_tags: &[(String, String, String)],
-    no_compile: bool,
+    compile: bool,
     background: bool,
     no_parallel: bool,
 ) -> anyhow::Result<Vec<InstalledPackage>> {
@@ -177,7 +177,7 @@ pub fn install_all(
                 spec,
                 &location,
                 compatible_tags,
-                no_compile,
+                compile,
                 &location.get_python(),
             )?;
             debug!(
@@ -220,7 +220,7 @@ pub fn install_all(
                     spec,
                     &location,
                     compatible_tags,
-                    no_compile,
+                    compile,
                     &location.get_python(),
                 )?;
                 debug!(
@@ -356,7 +356,7 @@ fn download_and_install(
     requested_spec: &RequestedSpec,
     location: &InstallLocation<LockedDir>,
     compatible_tags: &[(String, String, String)],
-    no_compile: bool,
+    compile: bool,
     sys_executable: &Path,
 ) -> anyhow::Result<(String, String, String)> {
     let spec = requested_spec.resolve(PYPI_HOST, compatible_tags)?;
@@ -434,7 +434,7 @@ fn download_and_install(
     let tag = install_wheel(
         location,
         &wheel_path,
-        !no_compile,
+        compile,
         &spec.extras,
         &spec.unique_version,
         &sys_executable,

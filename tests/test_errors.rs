@@ -15,7 +15,7 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     Command::new("virtualenv").arg(&venv).output()?;
     let wheel = Path::new("test-data").join("pip-test-packages").join(name);
     let cli: Cli =
-        Cli::try_parse_from(["monotrail", "venv-install", &wheel.display().to_string()])?;
+        Cli::try_parse_from(["monotrail", "wheel-install", &wheel.display().to_string()])?;
     assert_cli_error(cli, Some(&venv), expected);
     Ok(())
 }
