@@ -584,19 +584,24 @@ pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
 mod test {
     use super::install;
     use std::path::Path;
+    use std::process::Command;
+    use tempfile::TempDir;
 
     #[test]
-    fn test_install() {
+    fn test_install() -> anyhow::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let venv = temp_dir.path().join(".venv");
+        Command::new("virtualenv").arg(&venv).output()?;
         let working_dir = Path::new("test-data").join("requirements-txt");
         let small = working_dir.join("small.txt");
         install(
-            vec![small.to_str().unwrap().to_string()],
+            &[small.to_str().unwrap().to_string()],
             false,
             false,
             true,
-            None,
+            Some(&venv),
             Some(&working_dir),
-        )
-        .unwrap();
+        )?;
+        Ok(())
     }
 }
