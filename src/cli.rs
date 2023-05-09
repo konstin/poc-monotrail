@@ -275,13 +275,13 @@ fn poetry_install(
     Ok(())
 }
 
-///
+/// Install from a set of (current frozen only) requirements.txt files or from poetry lock
 ///
 /// The `venv` and `working_dir` options are to inject those for tests
 pub fn install(
-    requirements_files: Vec<String>,
-    _compile: bool,
-    _no_parallel: bool,
+    requirements_files: &[String],
+    compile: bool,
+    no_parallel: bool,
     frozen: bool,
     venv: Option<&Path>,
     working_dir: Option<&Path>,
@@ -294,8 +294,13 @@ pub fn install(
         None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(working_dir) => working_dir.to_path_buf(),
     };
-    if requirements_files.is_empty() {
-        let poetry_lock = working_dir
+    let python_version = get_venv_python_version(&venv)?;
+    let location = InstallLocation::Venv {
+        venv_base: venv,
+        python_version,
+    };
+    let specs: Vec<RequestedSpec> = if requirements_files.is_empty() {
+        let poetry_dir = working_dir
             .ancestors()
             .filter_map(|ancestor| {
                 if ancestor.join("poetry.lock").exists() {
@@ -311,7 +316,10 @@ pub fn install(
                     working_dir.display()
                 )
             })?;
-        todo!("not implemented {:?}", poetry_lock);
+        let (poetry_section, poetry_lock, _lockfile) = read_toml_files(&poetry_dir)
+            .with_context(|| format!("Broken poetry setup at {}", poetry_dir.display()))?;
+        let pep508_env = marker_environment_from_python(&location.get_python());
+        read_poetry_specs(&poetry_section, poetry_lock, true, &[], &pep508_env)?
     } else {
         let mut requirements = RequirementsTxt::default();
         for requirements_file in requirements_files {
@@ -322,7 +330,7 @@ pub fn install(
         }
 
         // TODO(konstin): We lose the hashes here
-        let specs: Vec<RequestedSpec> = requirements
+        requirements
             .requirements
             .iter()
             .map(|req| {
@@ -357,25 +365,24 @@ pub fn install(
                     bail!("Missing version for requirement {}", req.requirement.name);
                 }
             })
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<_, _>>()?
+    };
 
-        let compatible_tags = compatible_tags(
-            get_venv_python_version(&venv)?,
-            &Os::current()?,
-            &Arch::current()?,
-        )?;
-        let location = InstallLocation::Venv {
-            venv_base: venv,
-            python_version: (3, 8),
-        }
-        .acquire_lock()?;
+    let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
+    let location = location.acquire_lock()?;
 
-        install_all(&specs, &location, &compatible_tags, false, false, false)?;
+    install_all(
+        &specs,
+        &location,
+        &compatible_tags,
+        compile,
+        false,
+        no_parallel,
+    )?;
 
-        // TODO: Check consistency; Ideally before installing but here is better than not at all
+    // TODO: Check consistency; Ideally before installing but here is better than not at all
 
-        Ok(Some(0))
-    }
+    Ok(Some(0))
 }
 
 /// Dispatches from the Cli
@@ -388,7 +395,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             compile,
             no_parallel,
             frozen,
-        } => install(requirement, compile, no_parallel, frozen, None, None),
+        } => install(&requirement, compile, no_parallel, frozen, None, None),
         Cli::Run {
             extras,
             python_version,
