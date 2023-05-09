@@ -77,6 +77,12 @@ fn find_python(host: &str, major: u8, minor: u8) -> anyhow::Result<String> {
         }
     }
 
+    get_known_good_release(major, minor)
+}
+
+fn get_known_good_release(major: u8, minor: u8) -> anyhow::Result<String> {
+    let version_re = filename_regex(major, minor);
+
     // unwrap because we know the content
     let good_release: GitHubRelease =
         serde_json::from_slice(&zstd::decode_all(PYTHON_STANDALONE_KNOWN_GOOD_RELEASE).unwrap())
@@ -161,7 +167,25 @@ fn provision_python_inner(
     // atomic installation by tempdir & rename
     let temp_dir = tempdir_in(&python_parent_dir)
         .context("Failed to create temporary directory for unpacking")?;
-    download_and_unpack_python(&url, temp_dir.path())?;
+    match download_and_unpack_python(&url, temp_dir.path()) {
+        Ok(()) => {}
+        Err(err) => {
+            warn!(
+                "Failed to download and unpack latest python-build-standalone from {}, \
+                using known good release instead. Error: {}",
+                url, err
+            );
+            let url =
+                get_known_good_release(python_version.0, python_version.1).with_context(|| {
+                    format!(
+                        "Couldn't find a matching python {}.{} to download",
+                        python_version.0, python_version.1,
+                    )
+                })?;
+            download_and_unpack_python(&url, temp_dir.path())
+                .context("Failed to download and unpack python-build-standalone")?;
+        }
+    }
     // we can use fs::rename here because we stay in the same directory
     fs::rename(temp_dir, &unpack_dir).context("Failed to move installed python into place")?;
     debug!("Installed python {}.{}", python_version.0, python_version.1);
