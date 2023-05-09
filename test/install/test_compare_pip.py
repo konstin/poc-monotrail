@@ -20,7 +20,8 @@ from test.install.utils import get_bin, get_root
 def compare_with_pip_wheels(
     env_name: str,
     wheels: List[Union[str, Path]],
-    monotrail: Path = get_bin(),
+    *,
+    monotrail: Optional[Path] = None,
     clear_rs: bool = True,
     clear_pip: bool = False,
 ):
@@ -28,9 +29,9 @@ def compare_with_pip_wheels(
         env_name,
         ["--no-deps", *wheels],
         ["wheel-install", *wheels],
-        monotrail,
-        clear_rs,
-        clear_pip,
+        monotrail=monotrail,
+        clear_rs=clear_rs,
+        clear_pip=clear_pip,
     )
 
 
@@ -38,7 +39,8 @@ def compare_with_pip_args(
     env_name: str,
     pip_args: List[Union[str, Path]],
     monotrail_args: List[Union[str, Path]],
-    monotrail: Path = get_bin(),
+    *,
+    monotrail: Optional[Path] = None,
     clear_rs: bool = True,
     clear_pip: bool = False,
     cwd: Optional[Path] = None,
@@ -70,6 +72,7 @@ def compare_with_pip_args(
     if env_rs.exists():
         rmtree(env_rs)
     check_call(["virtualenv", env], stdout=DEVNULL)
+    monotrail = monotrail or get_bin()
     start_rs = time.time()
     check_call(
         [monotrail, *monotrail_args],
@@ -220,7 +223,7 @@ def test_purelib_platlib():
     purelib_platlib_wheel = get_root().joinpath(
         "test-data/wheels/purelib_and_platlib-1.0.0-cp38-cp38-linux_x86_64.whl"
     )
-    compare_with_pip_wheels("purelib_platlib", [purelib_platlib_wheel], get_bin())
+    compare_with_pip_wheels("purelib_platlib", [purelib_platlib_wheel])
 
 
 def test_tqdm():
@@ -230,7 +233,7 @@ def test_tqdm():
         .joinpath("popular-wheels")
         .joinpath("tqdm-4.62.3-py2.py3-none-any.whl")
     )
-    compare_with_pip_wheels("tqdm", [purelib_platlib_wheel], get_bin())
+    compare_with_pip_wheels("tqdm", [purelib_platlib_wheel])
 
 
 def test_scripts_ignore_extras():
@@ -240,7 +243,7 @@ def test_scripts_ignore_extras():
         .joinpath("wheels")
         .joinpath("miniblack-23.1.0-py3-none-any.whl")
     )
-    compare_with_pip_wheels("miniblack", [miniblack], get_bin())
+    compare_with_pip_wheels("miniblack", [miniblack])
 
 
 def test_bio_embeddings_plus():
@@ -248,9 +251,7 @@ def test_bio_embeddings_plus():
     bio_embeddings_plus_wheel = get_root().joinpath(
         "test-data/wheels/bio_embeddings_PLUS-0.1.1-py3-none-any.whl"
     )
-    compare_with_pip_wheels(
-        "bio_embeddings_plus", [bio_embeddings_plus_wheel], get_bin()
-    )
+    compare_with_pip_wheels("bio_embeddings_plus", [bio_embeddings_plus_wheel])
 
 
 def main():
@@ -261,7 +262,7 @@ def main():
     wheel = Path(args.wheel)
 
     env_name = wheel.name.split("-")[0]
-    compare_with_pip_wheels(env_name, [wheel], get_bin())
+    compare_with_pip_wheels(env_name, [wheel])
 
 
 if __name__ == "__main__":

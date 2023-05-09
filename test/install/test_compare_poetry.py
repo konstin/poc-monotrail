@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 from shutil import rmtree
 from subprocess import check_call, DEVNULL, CalledProcessError
-from typing import List
+from typing import List, Optional
 
 from test.install.test_compare_pip import diff_envs
 from test.install.utils import get_bin, get_root
@@ -17,9 +17,10 @@ from test.install.utils import get_bin, get_root
 def compare_with_poetry(
     env_base: str,
     project_dir: Path,
-    monotrail: Path,
     no_dev: bool,
     extras: List[str],
+    *,
+    monotrail: Optional[Path] = None,
     clear_rs: bool = True,
     clear_poetry: bool = False,
 ):
@@ -64,6 +65,7 @@ def compare_with_poetry(
     if env_rs.exists():
         rmtree(env_rs)
     check_call(["virtualenv", env], stdout=DEVNULL)
+    monotrail = monotrail or get_bin()
     start_rs = time.time()
     call = [monotrail, "poetry-install"]
     if no_dev:
@@ -92,7 +94,6 @@ def test_data_science_project():
     compare_with_poetry(
         "data_science_project",
         get_root().joinpath("data_science_project"),
-        get_bin(),
         False,
         ["tqdm_feature"],
     )
@@ -107,9 +108,7 @@ def main():
 
     project_dir = Path(args.project_dir)
 
-    compare_with_poetry(
-        project_dir.name, project_dir, get_bin(), args.no_dev, args.extras
-    )
+    compare_with_poetry(project_dir.name, project_dir, args.no_dev, args.extras)
 
 
 if __name__ == "__main__":

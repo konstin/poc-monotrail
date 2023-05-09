@@ -4,11 +4,10 @@ Use the wheels from pip's tests to cover the edge cases
 """
 
 from test.install.test_compare_pip import compare_with_pip_wheels
-from test.install.utils import get_bin, get_root
+from test.install.utils import get_root
 
 
 def test_piptests():
-    bin = get_bin()
     wheel_paths = list(
         get_root().joinpath("test-data/pip-test-packages/").glob("*.whl")
     )
@@ -26,7 +25,7 @@ def test_piptests():
         wheel_paths.remove(
             get_root().joinpath("test-data/pip-test-packages/").joinpath(invalid)
         )
-    compare_with_pip_wheels("venv-piptests", wheel_paths, bin)
+    compare_with_pip_wheels("venv-piptests", wheel_paths)
 
 
 if __name__ == "__main__":
