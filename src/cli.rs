@@ -412,7 +412,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
 ///
 /// The optional argument allows overriding the venv in test
 pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
-    let dot_venv = PathBuf::from(".venv");
+    let dot_venv = Path::new(".venv");
     let venv = if let Some(venv) = venv {
         venv.to_path_buf()
     } else if let Some(virtual_env) = env::var_os("VIRTUAL_ENV") {
@@ -421,12 +421,12 @@ pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
         // running a python interpreter, in fact we want to create the environment
         PathBuf::from(virtual_env)
     } else if dot_venv.join("pyvenv.cfg").is_file() {
-        dot_venv
+        dot_venv.to_path_buf()
     } else {
         let activation_command = if cfg!(target_family = "unix") {
-            "and activate it using `source .venv/bin/activate`".to_string()
+            " and activate it using `source .venv/bin/activate`".to_string()
         } else if cfg!(target_family = "windows") {
-            r#"and activate it using `.venv\Scripts\Activate.ps1`"#.to_string()
+            r#" and activate it using `.venv\Scripts\Activate.ps1`"#.to_string()
         } else {
             format!(
                 ". Please consult the documentation for {} on how to activate virtualenvs. ",
@@ -435,7 +435,7 @@ pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
         };
         bail!(
             "Couldn't find an activated virtualenv not a .venv found in any parent directory. \
-                    You can create a virtualenv with `python -m venv .venv` {}. \
+                    You can create a virtualenv with `python -m venv .venv`{}. \
                     See https://virtualenv.pypa.io/en/latest/index.html for more information",
             activation_command
         );
