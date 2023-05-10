@@ -82,7 +82,8 @@ impl WheelFilename {
     }
 }
 
-/// Returns the compatible tags in a (python_tag, abi_tag, platform_tag) format
+/// Returns the compatible tags in a (python_tag, abi_tag, platform_tag) format, ordered from
+/// highest precedence to lowest precedence
 pub fn compatible_tags(
     python_version: (u8, u8),
     os: &Os,

@@ -4,8 +4,8 @@ Test with the top 100 pypi wheels and some more
 """
 from subprocess import check_call
 
-from test.install.test_compare_pip import compare_with_pip
-from test.install.utils import get_bin, get_root
+from test.install.test_compare_pip import compare_with_pip_wheels
+from test.install.utils import get_root
 
 
 def test_popular():
@@ -22,9 +22,8 @@ def test_popular():
                 get_root().joinpath("test-data").joinpath("popular.txt"),
             ]
         )
-    bin = get_bin()
     wheels_paths = list(wheels_dir.glob("*.whl"))
-    compare_with_pip("popular", wheels_paths, bin)
+    compare_with_pip_wheels("popular", wheels_paths)
 
 
 if __name__ == "__main__":
