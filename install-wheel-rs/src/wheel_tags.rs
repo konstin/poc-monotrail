@@ -51,16 +51,24 @@ impl FromStr for WheelFilename {
 }
 
 impl WheelFilename {
-    pub fn is_compatible(&self, compatible_tags: &[(String, String, String)]) -> bool {
-        for tag in compatible_tags {
-            if self.python_tag.contains(&tag.0)
-                && self.abi_tag.contains(&tag.1)
-                && self.platform_tag.contains(&tag.2)
-            {
-                return true;
-            }
-        }
-        false
+    /// Returns Some(precedence) is the wheels are compatible, otherwise none
+    ///
+    /// Precedence is e.g. used to install newer manylinux wheels over older manylinux wheels
+    pub fn compatibility(&self, compatible_tags: &[(String, String, String)]) -> Option<usize> {
+        compatible_tags
+            .iter()
+            .enumerate()
+            .filter_map(|(precedence, tag)| {
+                if self.python_tag.contains(&tag.0)
+                    && self.abi_tag.contains(&tag.1)
+                    && self.platform_tag.contains(&tag.2)
+                {
+                    Some(precedence)
+                } else {
+                    None
+                }
+            })
+            .next()
     }
 
     /// effectively undoes the wheel filename parsing step
@@ -144,7 +152,6 @@ pub fn compatible_tags(
         "none".to_string(),
         "any".to_string(),
     ));
-    tags.sort();
     Ok(tags)
 }
 
@@ -427,25 +434,30 @@ pub fn get_musl_version(ld_path: impl AsRef<Path>) -> std::io::Result<Option<(u1
     Ok(None)
 }
 
-/// Returns the compatible platform tags, e.g. manylinux_2_17, macosx_11_0_arm64 or win_amd64
+/// Returns the compatible platform tags from highest precedence to lowest precedence
+///
+/// Examples: manylinux_2_17, macosx_11_0_arm64, win_amd64
 ///
 /// We have two cases: Actual platform specific tags (including "merged" tags such as universal2)
 /// and "any".
 ///
-/// Bit of a mess, needs to be cleaned up
+/// Bit of a mess, needs to be cleaned up. The order also isn't exactly matching that of pip yet,
+/// but works good enough in practice
 pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, WheelInstallerError> {
     let platform_tags = match (os.clone(), *arch) {
         (Os::Manylinux { major, minor }, _) => {
             let mut platform_tags = vec![format!("linux_{}", arch)];
+            // Use newer manylinux first like pip does
             platform_tags.extend(
                 (arch.get_minimum_manylinux_minor()..=minor)
+                    .rev()
                     .map(|minor| format!("manylinux_{}_{}_{}", major, minor, arch)),
             );
-            if (arch.get_minimum_manylinux_minor()..=minor).contains(&12) {
-                platform_tags.push(format!("manylinux2010_{}", arch))
-            }
             if (arch.get_minimum_manylinux_minor()..=minor).contains(&17) {
                 platform_tags.push(format!("manylinux2014_{}", arch))
+            }
+            if (arch.get_minimum_manylinux_minor()..=minor).contains(&12) {
+                platform_tags.push(format!("manylinux2010_{}", arch))
             }
             if (arch.get_minimum_manylinux_minor()..=minor).contains(&5) {
                 platform_tags.push(format!("manylinux1_{}", arch))
@@ -455,8 +467,11 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
         (Os::Musllinux { major, minor }, _) => {
             let mut platform_tags = vec![format!("linux_{}", arch)];
             // musl 1.1 is the lowest supported version in musllinux
-            platform_tags
-                .extend((1..=minor).map(|minor| format!("musllinux_{}_{}_{}", major, minor, arch)));
+            platform_tags.extend(
+                (1..=minor)
+                    .rev()
+                    .map(|minor| format!("musllinux_{}_{}_{}", major, minor, arch)),
+            );
             platform_tags
         }
         (Os::Macos { major, minor }, Arch::X86_64) => {
@@ -710,7 +725,9 @@ mod test {
         for (filename, (python_version, os, arch)) in filenames {
             let compatible_tags = compatible_tags(python_version, &os, &arch)?;
             assert!(
-                WheelFilename::from_str(filename)?.is_compatible(&compatible_tags),
+                WheelFilename::from_str(filename)?
+                    .compatibility(&compatible_tags)
+                    .is_some(),
                 "{}",
                 filename
             );
@@ -735,7 +752,8 @@ mod test {
             .filter(|filename| {
                 WheelFilename::from_str(filename)
                     .unwrap()
-                    .is_compatible(&compatible_tags)
+                    .compatibility(&compatible_tags)
+                    .is_some()
             })
             .cloned()
             .collect();
@@ -770,7 +788,8 @@ mod test {
 
             assert!(
                 WheelFilename::from_str(&format!("foo-1.0-{}.whl", tag))?
-                    .is_compatible(&compatible_tags),
+                    .compatibility(&compatible_tags)
+                    .is_some(),
                 "{}",
                 tag
             )
@@ -797,6 +816,43 @@ mod test {
         .collect();
         assert_eq!(expected_tags, actual_tags);
         Ok(())
+    }
+
+    #[test]
+    fn test_precedence() {
+        let tags = compatible_tags(
+            (3, 8),
+            &Os::Manylinux {
+                major: 2,
+                minor: 31,
+            },
+            &Arch::X86_64,
+        )
+        .unwrap();
+        let pairs = [
+            (
+                "greenlet-2.0.2-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+                "greenlet-2.0.2-cp38-cp38-manylinux2010_x86_64.whl"
+            ),
+            (
+                "regex-2022.10.31-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", 
+                "regex-2022.10.31-cp38-cp38-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl"
+            ),
+        ];
+        for (higher_str, lower_str) in pairs {
+            let higher = WheelFilename::from_str(higher_str).unwrap();
+            let lower = WheelFilename::from_str(lower_str).unwrap();
+            let higher_precedence = higher.compatibility(&tags).unwrap();
+            let lower_precedence = lower.compatibility(&tags).unwrap();
+            assert!(
+                higher_precedence < lower_precedence,
+                "{} {} {} {}",
+                higher_str,
+                higher_precedence,
+                lower_str,
+                lower_precedence
+            );
+        }
     }
 
     /// Basic does-it-work test

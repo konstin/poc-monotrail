@@ -1038,7 +1038,7 @@ pub fn install_wheel(
     let os = Os::current()?;
     let arch = Arch::current()?;
     let compatible_tags = compatible_tags(location.get_python_version(), &os, &arch)?;
-    if !filename.is_compatible(&compatible_tags) {
+    if filename.compatibility(&compatible_tags).is_none() {
         return Err(WheelInstallerError::IncompatibleWheel { os, arch });
     }
 

@@ -27,7 +27,7 @@ pub fn build_source_distribution_to_wheel_cached(
                 continue;
             }
             if let Ok(true) = WheelFilename::from_str(entry.file_name().to_string_lossy().as_ref())
-                .map(|filename| filename.is_compatible(compatible_tags))
+                .map(|filename| filename.compatibility(compatible_tags).is_some())
             {
                 return Ok(entry.path());
             }
@@ -75,7 +75,10 @@ pub fn build_to_wheel(
         let path = path?;
         let filename = path.file_name().to_string_lossy().to_string();
         if filename.ends_with(".whl") {
-            if !WheelFilename::from_str(&filename)?.is_compatible(compatible_tags) {
+            if WheelFilename::from_str(&filename)?
+                .compatibility(compatible_tags)
+                .is_none()
+            {
                 bail!(
                     "pip wrote out an incompatible wheel. \
                     This is a bug, either in monotrail or in pip"
