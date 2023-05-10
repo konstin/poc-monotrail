@@ -1,0 +1,15 @@
+{
+  "requirements": [
+    {
+      "requirement": "tqdm ==4.65.0",
+      "hashes": [],
+      "editable": false
+    },
+    {
+      "requirement": "tomli-w ==1.0.0",
+      "hashes": [],
+      "editable": false
+    }
+  ],
+  "constraints": []
+}

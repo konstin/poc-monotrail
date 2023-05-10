@@ -125,7 +125,7 @@ Installing a single large wheel (plotly)
 ```
 $ virtualenv --clear .venv-benchmark
 $ VIRTUAL_ENV=.venv-benchmark hyperfine -p ".venv-benchmark/bin/pip uninstall -y plotly" \
-  "target/release/monotrail venv-install test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl" \
+  "target/release/monotrail wheel-install test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl" \
   ".venv-benchmark/bin/pip install --no-deps test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl"
           
 Benchmark #1: target/release/monotrail install test-data/popular-wheels/plotly-5.5.0-py2.py3-none-any.whl

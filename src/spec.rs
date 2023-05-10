@@ -32,10 +32,14 @@ pub struct SpecSource {
 /// TODO: carry hashes/locked files
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RequestedSpec {
+    /// Will be printed with the error message to indicate what was tried to install
     pub requested: String,
+    /// The name of the package
     pub name: String,
+    /// The version of the package
     pub python_version: Option<String>,
     pub source: Option<SpecSource>,
+    /// The extras of the package to also be installed
     pub extras: Vec<String>,
     /// TODO: allow sdist filepath
     pub file_path: Option<(PathBuf, WheelFilename)>,

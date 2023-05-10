@@ -42,7 +42,7 @@ def test_tqdm():
         .joinpath("popular-wheels")
         .joinpath("tqdm-4.62.3-py2.py3-none-any.whl")
     )
-    check_call([get_bin(), "venv-install", tqdm_wheel], env=env)
+    check_call([get_bin(), "wheel-install", tqdm_wheel], env=env)
     check_call(
         [
             python,
