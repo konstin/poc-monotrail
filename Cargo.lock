@@ -1152,6 +1152,19 @@ dependencies = [
 [[package]]
 name = "monotrail-utils"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fs-err",
+ "indoc 2.0.1",
+ "logtest",
+ "pep508_rs",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "tracing",
+ "unscanny",
+]
 
 [[package]]
 name = "nix"
