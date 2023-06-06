@@ -1150,6 +1150,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "monotrail-utils"
+version = "0.1.0"
+
+[[package]]
 name = "nix"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
