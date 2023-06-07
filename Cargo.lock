@@ -1125,9 +1125,10 @@ dependencies = [
  "libz-sys",
  "logtest",
  "mockito",
+ "monotrail-utils",
  "nix",
  "pep440_rs",
- "pep508_rs 0.2.0",
+ "pep508_rs",
  "pyo3",
  "rayon",
  "regex",
@@ -1157,7 +1158,7 @@ dependencies = [
  "fs-err",
  "indoc 2.0.1",
  "logtest",
- "pep508_rs 0.2.1",
+ "pep508_rs",
  "serde",
  "serde_json",
  "tempfile",
@@ -1286,21 +1287,6 @@ dependencies = [
  "serde",
  "tracing",
  "unicode-width",
-]
-
-[[package]]
-name = "pep508_rs"
-version = "0.2.0"
-source = "git+https://github.com/konstin/pep508_rs?rev=df87d4ff0f0f3554780ab82680539cb190b0a585#df87d4ff0f0f3554780ab82680539cb190b0a585"
-dependencies = [
- "once_cell",
- "pep440_rs",
- "regex",
- "serde",
- "thiserror",
- "tracing",
- "unicode-width",
- "url",
 ]
 
 [[package]]

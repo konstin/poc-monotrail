@@ -30,10 +30,10 @@ libc = "0.2.133"
 libloading = "0.8.0"
 # For the zig build
 libz-sys = { version = "1.1.8", features = ["static"] }
+monotrail-utils = { version = "0.0.1", path = "monotrail-utils" }
 nix = { version = "0.26.1", features = ["process"] }
 pep440_rs = "0.3.2"
-#pep508_rs = { version = "0.2.0", features = ["serde"] }
-pep508_rs = { git = "https://github.com/konstin/pep508_rs", rev = "df87d4ff0f0f3554780ab82680539cb190b0a585", features = ["serde"] }
+pep508_rs = { version = "0.2.1", features = ["serde"] }
 pyo3 = { version = "0.18.1", features = ["extension-module", "abi3-py37"], optional = true }
 rayon = "1.5.3"
 regex = "1.6.0"
@@ -57,10 +57,6 @@ zstd = "0.12.1"
 default = ["vendored"]
 python_bindings = ["pyo3", "install-wheel-rs/python_bindings"]
 vendored = ["git2/vendored-openssl", "git2/vendored-libgit2"]
-
-# zip implementation
-[profile.dev.package.adler]
-opt-level = 3
 
 # https://doc.rust-lang.org/cargo/reference/profiles.html#release
 [profile.perf]
