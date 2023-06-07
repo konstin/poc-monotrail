@@ -1127,7 +1127,7 @@ dependencies = [
  "mockito",
  "nix",
  "pep440_rs",
- "pep508_rs",
+ "pep508_rs 0.2.0",
  "pyo3",
  "rayon",
  "regex",
@@ -1157,7 +1157,7 @@ dependencies = [
  "fs-err",
  "indoc 2.0.1",
  "logtest",
- "pep508_rs",
+ "pep508_rs 0.2.1",
  "serde",
  "serde_json",
  "tempfile",
@@ -1292,6 +1292,22 @@ dependencies = [
 name = "pep508_rs"
 version = "0.2.0"
 source = "git+https://github.com/konstin/pep508_rs?rev=df87d4ff0f0f3554780ab82680539cb190b0a585#df87d4ff0f0f3554780ab82680539cb190b0a585"
+dependencies = [
+ "once_cell",
+ "pep440_rs",
+ "regex",
+ "serde",
+ "thiserror",
+ "tracing",
+ "unicode-width",
+ "url",
+]
+
+[[package]]
+name = "pep508_rs"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0713d7bb861ca2b7d4c50a38e1f31a4b63a2e2df35ef1e5855cc29e108453e2"
 dependencies = [
  "once_cell",
  "pep440_rs",
