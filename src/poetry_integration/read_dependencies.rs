@@ -430,19 +430,18 @@ pub fn poetry_spec_from_dir(
 
 /// Reads and parses requirements into poetry dependencies from a requirements file.
 pub fn read_requirements_for_poetry(
-    requirements_txt: impl AsRef<Path>,
-    working_dir: impl AsRef<Path>,
+    requirements_txt: &Path,
+    working_dir: &Path,
 ) -> anyhow::Result<BTreeMap<String, poetry_toml::Dependency>> {
-    let requirements_txt = requirements_txt.as_ref();
-    let requirements = RequirementsTxt::parse(requirements_txt, working_dir)?;
-    if !requirements.constraints.is_empty() {
+    let data = RequirementsTxt::parse(requirements_txt, working_dir)?;
+    if !data.constraints.is_empty() {
         bail!(
             "Constraints (`-c`) from {} are not supported yet",
             requirements_txt.display()
         );
     }
     let mut poetry_requirements: BTreeMap<String, poetry_toml::Dependency> = BTreeMap::new();
-    for requirement_entry in requirements.requirements {
+    for requirement_entry in data.requirements {
         let version = match requirement_entry.requirement.version_or_url {
             None => "*".to_string(),
             Some(VersionOrUrl::Url(_)) => {
@@ -575,7 +574,7 @@ mod test {
 
         let working_dir = Path::new("test-data").join("requirements-txt");
         let path = working_dir.join("for-poetry.txt");
-        let reqs = read_requirements_for_poetry(&path, working_dir).unwrap();
+        let reqs = read_requirements_for_poetry(&path, &working_dir).unwrap();
         let poetry_toml = toml::to_string(&reqs).unwrap();
         assert_eq!(poetry_toml, expected);
     }
