@@ -469,8 +469,9 @@ pub fn read_requirements_for_poetry(
 
 #[cfg(test)]
 mod test {
-    use super::{parse_dep_extra, poetry_spec_from_dir, read_toml_files};
-    use crate::poetry_integration::read_dependencies::read_requirements_for_poetry;
+    use super::{
+        parse_dep_extra, poetry_spec_from_dir, read_requirements_for_poetry, read_toml_files,
+    };
     use crate::read_poetry_specs;
     use indoc::indoc;
     use pep508_rs::{MarkerEnvironment, StringVersion};
