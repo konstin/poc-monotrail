@@ -58,6 +58,10 @@ default = ["vendored"]
 python_bindings = ["pyo3", "install-wheel-rs/python_bindings"]
 vendored = ["git2/vendored-openssl", "git2/vendored-libgit2"]
 
+# zip implementation
+[profile.dev.package.adler]
+opt-level = 3
+
 # https://doc.rust-lang.org/cargo/reference/profiles.html#release
 [profile.perf]
 inherits = "release"
