@@ -24,7 +24,7 @@ python-pkginfo = "0.5.4"
 regex = { workspace = true }
 serde = { version = "1.0.144", features = ["derive"] }
 serde_json = { workspace = true }
-sha2 = "0.10.5"
+sha2 = { workspace = true }
 target-lexicon = "0.12.4"
 tempfile = { workspace = true }
 thiserror = { workspace = true }
