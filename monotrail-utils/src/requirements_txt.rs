@@ -469,13 +469,13 @@ mod test {
     use fs_err as fs;
     use indoc::indoc;
     use logtest::Logger;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
     use tracing::log::Level;
 
     #[test]
     fn test_requirements_txt_parsing() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         for dir_entry in fs::read_dir(&working_dir).unwrap() {
             let dir_entry = dir_entry.unwrap().path();
             if dir_entry.extension().unwrap_or_default().to_str().unwrap() != "txt" {
@@ -495,7 +495,7 @@ mod test {
     fn test_other_line_endings() {
         let temp_dir = tempdir().unwrap();
         let mut files = Vec::new();
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         for dir_entry in fs::read_dir(&working_dir).unwrap() {
             let dir_entry = dir_entry.unwrap();
             if dir_entry
@@ -531,7 +531,7 @@ mod test {
     #[test]
     #[ignore]
     fn test_pydantic() {
-        let working_dir = Path::new("test-data").join("requirements-pydantic");
+        let working_dir = workspace_test_data_dir().join("requirments-pydantic");
         for basic in fs::read_dir(&working_dir).unwrap() {
             let basic = basic.unwrap().path();
             if !["txt", "in"].contains(&basic.extension().unwrap_or_default().to_str().unwrap()) {
@@ -543,7 +543,7 @@ mod test {
 
     #[test]
     fn test_invalid_include_missing_file() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         let basic = working_dir.join("invalid-include");
         let missing = working_dir.join("missing.txt");
         let err = RequirementsTxt::parse(&basic, &working_dir).unwrap_err();
@@ -568,7 +568,7 @@ mod test {
 
     #[test]
     fn test_invalid_requirement() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         let basic = working_dir.join("invalid-requirement");
         let err = RequirementsTxt::parse(&basic, &working_dir).unwrap_err();
         let errors = anyhow::Error::new(err)
@@ -592,7 +592,7 @@ mod test {
 
     #[test]
     fn test_empty_file() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         let path = working_dir.join("empty.txt");
 
         // TODO(konstin) I think that logger isn't thread safe
@@ -606,5 +606,12 @@ mod test {
         assert!(warnings[0]
             .args()
             .ends_with("does not contain any dependencies"));
+    }
+
+    fn workspace_test_data_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("test-data")
     }
 }
