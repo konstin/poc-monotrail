@@ -131,10 +131,10 @@ impl RequirementsTxt {
         content: &str,
         working_dir: impl AsRef<Path>,
     ) -> Result<Self, RequirementsTxtParserError> {
-        let mut s = Scanner::new(&content);
+        let mut s = Scanner::new(content);
 
         let mut data = Self::default();
-        while let Some(statement) = parse_entry(&mut s, &content)? {
+        while let Some(statement) = parse_entry(&mut s, content)? {
             match statement {
                 RequirementsTxtStatement::Requirements {
                     filename,
@@ -227,14 +227,14 @@ fn parse_entry(
             end,
         }
     } else if s.eat_if("-e") {
-        let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
+        let (requirement, hashes) = parse_requirement_and_hashes(s, content)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
             editable: true,
         })
     } else if s.at(char::is_ascii_alphanumeric) {
-        let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
+        let (requirement, hashes) = parse_requirement_and_hashes(s, content)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
@@ -597,7 +597,7 @@ mod test {
 
         // TODO(konstin) I think that logger isn't thread safe
         let logger = Logger::start();
-        RequirementsTxt::parse(&path, &working_dir).unwrap();
+        RequirementsTxt::parse(path, &working_dir).unwrap();
         let warnings: Vec<_> = logger
             .into_iter()
             .filter(|message| message.level() >= Level::Warn)
