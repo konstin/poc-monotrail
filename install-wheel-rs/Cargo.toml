@@ -37,4 +37,4 @@ zip = { version = "0.6.2", default-features = false, features = ["deflate"] } # 
 python_bindings = ["pyo3", "tracing-subscriber"]
 
 [dev-dependencies]
-indoc = "2.0.0"
+indoc = { workspace = true }

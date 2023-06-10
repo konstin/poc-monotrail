@@ -58,6 +58,9 @@ anyhow = "1.0.65"
 base64 = "0.21.0"
 fs-err = "2.8.1"
 fs2 = "0.4.3"
+indoc = "2.0.0"
+logtest = "2.0.0"
+mockito = "1.0.0"
 pep508_rs = { version = "0.2.1", features = ["serde"] }
 pyo3 = { version = "0.18.1", features = ["extension-module", "abi3-py37"] }
 regex = "1.6.0"
@@ -72,6 +75,7 @@ tracing = "0.1.36"
 tracing-subscriber = "0.3.15"
 unscanny = "0.1.0"
 walkdir = "2.3.2"
+which = "4.3.0"
 
 [features]
 default = ["vendored"]
@@ -88,8 +92,8 @@ inherits = "release"
 debug = 1
 
 [dev-dependencies]
-indoc = "2.0.0"
-logtest = "2.0.0"
-mockito = "1.0.0"
-tempfile = "3.3.0"
-which = "4.3.0"
+indoc = { workspace = true }
+logtest = { workspace = true }
+mockito = { workspace = true }
+tempfile = { workspace = true }
+which = { workspace = true }
