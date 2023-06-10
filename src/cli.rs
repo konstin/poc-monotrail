@@ -375,7 +375,7 @@ pub fn install(
         &specs,
         &location,
         &compatible_tags,
-        compile,
+        compile.clone(),
         false,
         no_parallel,
     )?;
