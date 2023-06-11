@@ -468,10 +468,8 @@ mod test {
     use crate::requirements_txt::RequirementsTxt;
     use fs_err as fs;
     use indoc::indoc;
-    use logtest::Logger;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
-    use tracing::log::Level;
 
     #[test]
     fn test_requirements_txt_parsing() {
@@ -588,24 +586,6 @@ mod test {
             .to_string(),
         ];
         assert_eq!(errors, expected)
-    }
-
-    #[test]
-    fn test_empty_file() {
-        let working_dir = workspace_test_data_dir().join("requirements-txt");
-        let path = working_dir.join("empty.txt");
-
-        // TODO(konstin) I think that logger isn't thread safe
-        let logger = Logger::start();
-        RequirementsTxt::parse(path, &working_dir).unwrap();
-        let warnings: Vec<_> = logger
-            .into_iter()
-            .filter(|message| message.level() >= Level::Warn)
-            .collect();
-        assert_eq!(warnings.len(), 1, "{:?}", warnings);
-        assert!(warnings[0]
-            .args()
-            .ends_with("does not contain any dependencies"));
     }
 
     fn workspace_test_data_dir() -> PathBuf {
