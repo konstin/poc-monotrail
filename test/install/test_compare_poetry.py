@@ -32,15 +32,16 @@ def compare_with_poetry(
     env_poetry = test_venvs.joinpath(f"{env_name}-poetry")
 
     separator = ";" if platform.system() == "Windows" else ":"
-    paths = os.environ["PATH"].split(separator)
+    # Normalize e.g. C:\Users\Me\monotrail\.venv/Scripts
+    paths = [Path(path) for path in os.environ["PATH"].split(separator)]
     if env_var_virtualenv := os.environ.get("VIRTUAL_ENV"):
         bin_dir = "Scripts" if platform.system() == "Windows" else "bin"
-        paths.remove(str(Path(env_var_virtualenv).joinpath(bin_dir)))
+        paths.remove(Path(env_var_virtualenv).joinpath(bin_dir))
     paths.insert(
-        0, str(env.joinpath("Scripts" if platform.system() == "Windows" else "bin"))
+        0, env.joinpath("Scripts" if platform.system() == "Windows" else "bin")
     )
     venv_env_vars = os.environ.copy()
-    venv_env_vars["PATH"] = separator.join(paths)
+    venv_env_vars["PATH"] = separator.join([str(path) for path in paths])
     venv_env_vars["VIRTUAL_ENV"] = str(env)
 
     # poetry install
