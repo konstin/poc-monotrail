@@ -124,7 +124,7 @@ def diff_envs(
         "[a-zA-Z0-9._-]+" + re.escape(".dist-info/REQUESTED"),
     ]
     if platform.system() == "Windows":
-        site_packages = "Lib/site-packages/"
+        site_packages = "Lib\\site-packages\\"
     else:
         py_version = rf"{sys.version_info.major}.{sys.version_info.minor}"
         site_packages = rf"lib/python{py_version}/site-packages/"
@@ -134,7 +134,8 @@ def diff_envs(
         + "("
         + "|".join(site_ignores)
         + ")"
-        + "|bin/__pycache__|Scripts/__pycache__|monotrail.lock|.*/__pycache__(/.*)?"
+        # TODO: .exe files should likely be identical
+        + "|Scripts/.*\.exe|monotrail.lock|.*/__pycache__(/.*)?"
         + ")"
     )
     if platform.system() == "Windows":
