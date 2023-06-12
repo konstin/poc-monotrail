@@ -35,12 +35,9 @@
 //! wrappable_whitespaces = whitespace ('\\\n' | whitespace)*
 //! ```
 
-use crate::poetry_integration::poetry_toml;
-use anyhow::bail;
 use fs_err as fs;
-use pep508_rs::{Pep508Error, Requirement, VersionOrUrl};
+use pep508_rs::{Pep508Error, Requirement};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -134,10 +131,10 @@ impl RequirementsTxt {
         content: &str,
         working_dir: impl AsRef<Path>,
     ) -> Result<Self, RequirementsTxtParserError> {
-        let mut s = Scanner::new(&content);
+        let mut s = Scanner::new(content);
 
         let mut data = Self::default();
-        while let Some(statement) = parse_entry(&mut s, &content)? {
+        while let Some(statement) = parse_entry(&mut s, content)? {
             match statement {
                 RequirementsTxtStatement::Requirements {
                     filename,
@@ -192,43 +189,6 @@ impl RequirementsTxt {
         self.requirements.extend(other.requirements);
         self.constraints.extend(other.constraints);
     }
-
-    /// Method to bridge between the new parser and the poetry assumptions of the existing code
-    pub fn into_poetry(
-        self,
-        requirements_txt: &Path,
-    ) -> anyhow::Result<BTreeMap<String, poetry_toml::Dependency>> {
-        if !self.constraints.is_empty() {
-            bail!(
-                "Constraints (`-c`) from {} are not supported yet",
-                requirements_txt.display()
-            );
-        }
-        let mut poetry_requirements: BTreeMap<String, poetry_toml::Dependency> = BTreeMap::new();
-        for requirement_entry in self.requirements {
-            let version = match requirement_entry.requirement.version_or_url {
-                None => "*".to_string(),
-                Some(VersionOrUrl::Url(_)) => {
-                    bail!(
-                        "Unsupported url requirement in {}: '{}'",
-                        requirements_txt.display(),
-                        requirement_entry.requirement,
-                    )
-                }
-                Some(VersionOrUrl::VersionSpecifier(specifiers)) => specifiers.to_string(),
-            };
-
-            let dep = poetry_toml::Dependency::Expanded {
-                version: Some(version),
-                optional: Some(false),
-                extras: requirement_entry.requirement.extras.clone(),
-                git: None,
-                branch: None,
-            };
-            poetry_requirements.insert(requirement_entry.requirement.name, dep);
-        }
-        Ok(poetry_requirements)
-    }
 }
 
 /// Parse a single entry, that is a requirement, an inclusion or a comment line
@@ -267,14 +227,14 @@ fn parse_entry(
             end,
         }
     } else if s.eat_if("-e") {
-        let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
+        let (requirement, hashes) = parse_requirement_and_hashes(s, content)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
             editable: true,
         })
     } else if s.at(char::is_ascii_alphanumeric) {
-        let (requirement, hashes) = parse_requirement_and_hashes(s, &content)?;
+        let (requirement, hashes) = parse_requirement_and_hashes(s, content)?;
         RequirementsTxtStatement::RequirementEntry(RequirementEntry {
             requirement,
             hashes,
@@ -508,15 +468,12 @@ mod test {
     use crate::requirements_txt::RequirementsTxt;
     use fs_err as fs;
     use indoc::indoc;
-    use logtest::Logger;
-    use std::collections::BTreeMap;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
-    use tracing::log::Level;
 
     #[test]
     fn test_requirements_txt_parsing() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         for dir_entry in fs::read_dir(&working_dir).unwrap() {
             let dir_entry = dir_entry.unwrap().path();
             if dir_entry.extension().unwrap_or_default().to_str().unwrap() != "txt" {
@@ -536,7 +493,7 @@ mod test {
     fn test_other_line_endings() {
         let temp_dir = tempdir().unwrap();
         let mut files = Vec::new();
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         for dir_entry in fs::read_dir(&working_dir).unwrap() {
             let dir_entry = dir_entry.unwrap();
             if dir_entry
@@ -572,7 +529,7 @@ mod test {
     #[test]
     #[ignore]
     fn test_pydantic() {
-        let working_dir = Path::new("test-data").join("requirements-pydantic");
+        let working_dir = workspace_test_data_dir().join("requirments-pydantic");
         for basic in fs::read_dir(&working_dir).unwrap() {
             let basic = basic.unwrap().path();
             if !["txt", "in"].contains(&basic.extension().unwrap_or_default().to_str().unwrap()) {
@@ -584,7 +541,7 @@ mod test {
 
     #[test]
     fn test_invalid_include_missing_file() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         let basic = working_dir.join("invalid-include");
         let missing = working_dir.join("missing.txt");
         let err = RequirementsTxt::parse(&basic, &working_dir).unwrap_err();
@@ -609,7 +566,7 @@ mod test {
 
     #[test]
     fn test_invalid_requirement() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = workspace_test_data_dir().join("requirements-txt");
         let basic = working_dir.join("invalid-requirement");
         let err = RequirementsTxt::parse(&basic, &working_dir).unwrap_err();
         let errors = anyhow::Error::new(err)
@@ -631,54 +588,10 @@ mod test {
         assert_eq!(errors, expected)
     }
 
-    #[test]
-    fn test_requirements_txt_poetry() {
-        let expected = indoc! {r#"
-            [inflection]
-            version = "==0.5.1"
-            optional = false
-            
-            [numpy]
-            version = "*"
-            optional = false
-
-            [pandas]
-            version = ">=1, <2"
-            optional = false
-            extras = ["tabulate"]
-            
-            [upsidedown]
-            version = "==0.4"
-            optional = false
-        "#};
-
-        let working_dir = Path::new("test-data").join("requirements-txt");
-        let path = working_dir.join("for-poetry.txt");
-        let reqs = RequirementsTxt::parse(&path, &working_dir)
+    fn workspace_test_data_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
             .unwrap()
-            .into_poetry(&path)
-            .unwrap();
-        // sort lines
-        let reqs = BTreeMap::from_iter(&reqs);
-        let poetry_toml = toml::to_string(&reqs).unwrap();
-        assert_eq!(poetry_toml, expected);
-    }
-
-    #[test]
-    fn test_empty_file() {
-        let working_dir = Path::new("test-data").join("requirements-txt");
-        let path = working_dir.join("empty.txt");
-
-        // TODO(konstin) I think that logger isn't thread safe
-        let logger = Logger::start();
-        RequirementsTxt::parse(&path, &working_dir).unwrap();
-        let warnings: Vec<_> = logger
-            .into_iter()
-            .filter(|message| message.level() >= Level::Warn)
-            .collect();
-        assert_eq!(warnings.len(), 1, "{:?}", warnings);
-        assert!(warnings[0]
-            .args()
-            .ends_with("does not contain any dependencies"));
+            .join("test-data")
     }
 }

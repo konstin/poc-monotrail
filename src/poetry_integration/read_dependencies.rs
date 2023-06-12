@@ -11,7 +11,8 @@ use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
 use install_wheel_rs::{normalize_name, Script, WheelFilename, WheelInstallerError};
-use pep508_rs::MarkerEnvironment;
+use monotrail_utils::RequirementsTxt;
+use pep508_rs::{MarkerEnvironment, VersionOrUrl};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -427,10 +428,51 @@ pub fn poetry_spec_from_dir(
     Ok((specs, scripts, lockfile))
 }
 
+/// Reads and parses requirements into poetry dependencies from a requirements file.
+pub fn read_requirements_for_poetry(
+    requirements_txt: &Path,
+    working_dir: &Path,
+) -> anyhow::Result<BTreeMap<String, poetry_toml::Dependency>> {
+    let data = RequirementsTxt::parse(requirements_txt, working_dir)?;
+    if !data.constraints.is_empty() {
+        bail!(
+            "Constraints (`-c`) from {} are not supported yet",
+            requirements_txt.display()
+        );
+    }
+    let mut poetry_requirements: BTreeMap<String, poetry_toml::Dependency> = BTreeMap::new();
+    for requirement_entry in data.requirements {
+        let version = match requirement_entry.requirement.version_or_url {
+            None => "*".to_string(),
+            Some(VersionOrUrl::Url(_)) => {
+                bail!(
+                    "Unsupported url requirement in {}: '{}'",
+                    requirements_txt.display(),
+                    requirement_entry.requirement,
+                )
+            }
+            Some(VersionOrUrl::VersionSpecifier(specifiers)) => specifiers.to_string(),
+        };
+
+        let dep = poetry_toml::Dependency::Expanded {
+            version: Some(version),
+            optional: Some(false),
+            extras: requirement_entry.requirement.extras.clone(),
+            git: None,
+            branch: None,
+        };
+        poetry_requirements.insert(requirement_entry.requirement.name, dep);
+    }
+    Ok(poetry_requirements)
+}
+
 #[cfg(test)]
 mod test {
-    use super::{parse_dep_extra, poetry_spec_from_dir, read_toml_files};
+    use super::{
+        parse_dep_extra, poetry_spec_from_dir, read_requirements_for_poetry, read_toml_files,
+    };
     use crate::read_poetry_specs;
+    use indoc::indoc;
     use pep508_rs::{MarkerEnvironment, StringVersion};
     use std::collections::HashSet;
     use std::path::Path;
@@ -507,6 +549,34 @@ mod test {
             .unwrap();
             assert_eq!(specs.len(), specs_count);
         }
+    }
+
+    #[test]
+    fn test_requirements_txt_poetry() {
+        let expected = indoc! {r#"
+            [inflection]
+            version = "==0.5.1"
+            optional = false
+            
+            [numpy]
+            version = "*"
+            optional = false
+
+            [pandas]
+            version = ">=1, <2"
+            optional = false
+            extras = ["tabulate"]
+            
+            [upsidedown]
+            version = "==0.4"
+            optional = false
+        "#};
+
+        let working_dir = Path::new("test-data").join("requirements-txt");
+        let path = working_dir.join("for-poetry.txt");
+        let reqs = read_requirements_for_poetry(&path, &working_dir).unwrap();
+        let poetry_toml = toml::to_string(&reqs).unwrap();
+        assert_eq!(poetry_toml, expected);
     }
 
     #[test]

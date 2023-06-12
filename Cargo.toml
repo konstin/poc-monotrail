@@ -7,7 +7,8 @@ readme = "Readme.md"
 
 [workspace]
 members = [
-    "install-wheel-rs"
+    "install-wheel-rs",
+    "monotrail-utils",
 ]
 
 [lib]
@@ -15,13 +16,13 @@ crate-type = ["rlib", "cdylib"]
 name = "monotrail"
 
 [dependencies]
-anyhow = "1.0.65"
-base64 = "0.21.0"
+anyhow = { workspace = true }
+base64 = { workspace = true }
 clap = { version = "4.0.2", features = ["derive"] }
 cpufeatures = "0.2.5"
 dirs = "5.0.0"
-fs-err = "2.8.1"
-fs2 = "0.4.3"
+fs-err = { workspace = true }
+fs2 = { workspace = true }
 git2 = "0.17.1"
 indicatif = "0.17.1"
 install-wheel-rs = { version = "0.0.3", path = "install-wheel-rs" }
@@ -29,17 +30,43 @@ libc = "0.2.133"
 libloading = "0.8.0"
 # For the zig build
 libz-sys = { version = "1.1.8", features = ["static"] }
+monotrail-utils = { version = "0.0.1", path = "monotrail-utils" }
 nix = { version = "0.26.1", features = ["process"] }
 pep440_rs = "0.3.2"
-#pep508_rs = { version = "0.2.0", features = ["serde"] }
-pep508_rs = { git = "https://github.com/konstin/pep508_rs", rev = "df87d4ff0f0f3554780ab82680539cb190b0a585", features = ["serde"] }
-pyo3 = { version = "0.18.1", features = ["extension-module", "abi3-py37"], optional = true }
+pep508_rs = { workspace = true, features = ["serde"] }
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py37"], optional = true }
 rayon = "1.5.3"
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tar = "0.4.38"
+target-lexicon = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+unscanny = { workspace = true }
+ureq = { version = "2.5.0", features = ["json"] }
+walkdir = { workspace = true }
+widestring = "1.0.2"
+zstd = "0.12.1"
+
+[workspace.dependencies]
+anyhow = "1.0.65"
+base64 = "0.21.0"
+fs-err = "2.8.1"
+fs2 = "0.4.3"
+indoc = "2.0.0"
+logtest = "2.0.0"
+mockito = "1.0.0"
+pep508_rs = { version = "0.2.1", features = ["serde"] }
+pyo3 = { version = "0.18.1", features = ["extension-module", "abi3-py37"] }
 regex = "1.6.0"
 serde = { version = "1.0.145", features = ["derive"] }
 serde_json = "1.0.85"
 sha2 = "0.10.6"
-tar = "0.4.38"
 target-lexicon = "0.12.4"
 tempfile = "3.3.0"
 thiserror = "1.0.37"
@@ -47,10 +74,8 @@ toml = "0.7.2"
 tracing = "0.1.36"
 tracing-subscriber = "0.3.15"
 unscanny = "0.1.0"
-ureq = { version = "2.5.0", features = ["json"] }
 walkdir = "2.3.2"
-widestring = "1.0.2"
-zstd = "0.12.1"
+which = "4.3.0"
 
 [features]
 default = ["vendored"]
@@ -67,8 +92,8 @@ inherits = "release"
 debug = 1
 
 [dev-dependencies]
-indoc = "2.0.0"
-logtest = "2.0.0"
-mockito = "1.0.0"
-tempfile = "3.3.0"
-which = "4.3.0"
+indoc = { workspace = true }
+logtest = { workspace = true }
+mockito = { workspace = true }
+tempfile = { workspace = true }
+which = { workspace = true }

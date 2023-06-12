@@ -18,7 +18,6 @@
 pub use cli::{run_cli, Cli};
 pub use inject_and_run::{parse_major_minor, run_python_args};
 use poetry_integration::read_dependencies::read_poetry_specs;
-pub use requirements_txt::RequirementsTxt;
 #[doc(hidden)]
 pub use utils::assert_cli_error;
 
@@ -32,7 +31,6 @@ mod poetry_integration;
 mod ppipx;
 #[cfg(feature = "python_bindings")]
 mod python_bindings;
-mod requirements_txt;
 mod source_distribution;
 mod spec;
 mod standalone_python;
