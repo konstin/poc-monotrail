@@ -135,7 +135,7 @@ def diff_envs(
         + "|".join(site_ignores)
         + ")"
         # TODO: .exe files should likely be identical
-        + "|Scripts/.*\.exe|monotrail.lock|.*/__pycache__(/.*)?"
+        + "|Scripts/.*\\.exe|monotrail.lock|.*/__pycache__(/.*)?"
         + ")"
     )
     if platform.system() == "Windows":
