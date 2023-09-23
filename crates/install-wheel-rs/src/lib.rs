@@ -71,8 +71,9 @@ pub fn install_wheel_in_venv(
     major: u8,
     minor: u8,
 ) -> Result<String, WheelInstallerError> {
+    let venv_base = venv.canonicalize()?;
     let install_location = InstallLocation::Venv {
-        venv_base: venv.to_path_buf(),
+        venv_base,
         python_version: (major, minor),
     };
     let locked_dir = install_location.acquire_lock()?;
