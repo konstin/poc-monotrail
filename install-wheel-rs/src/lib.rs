@@ -2,6 +2,7 @@
 
 // The pub ones are reused by monotrail
 pub use install_location::{normalize_name, InstallLocation, LockedDir};
+use platform_info::PlatformInfoError;
 use std::io;
 use thiserror::Error;
 pub use wheel::{
@@ -53,6 +54,8 @@ pub enum WheelInstallerError {
     BrokenVenv(String),
     #[error("Failed to detect the operating system version: {0}")]
     OsVersionDetectionError(String),
+    #[error("Failed to detect the current platform")]
+    PlatformInfoError(#[source] PlatformInfoError),
     #[error("Invalid version specification, only none or == is supported")]
     Pep440,
 }

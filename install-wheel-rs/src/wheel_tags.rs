@@ -3,7 +3,7 @@
 use crate::WheelInstallerError;
 use fs_err as fs;
 use goblin::elf::Elf;
-use platform_info::{PlatformInfo, Uname};
+use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
 use regex::Regex;
 use serde::Deserialize;
 use std::fmt;
@@ -227,26 +227,47 @@ impl Os {
                 Os::Macos { major, minor }
             }
             target_lexicon::OperatingSystem::Netbsd => Os::NetBsd {
-                release: PlatformInfo::new()?.release().to_string(),
+                release: PlatformInfo::new()
+                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .release()
+                    .to_string_lossy()
+                    .to_string(),
             },
             target_lexicon::OperatingSystem::Freebsd => Os::FreeBsd {
-                release: PlatformInfo::new()?.release().to_string(),
+                release: PlatformInfo::new()
+                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .release()
+                    .to_string_lossy()
+                    .to_string(),
             },
             target_lexicon::OperatingSystem::Openbsd => Os::OpenBsd {
-                release: PlatformInfo::new()?.release().to_string(),
+                release: PlatformInfo::new()
+                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .release()
+                    .to_string_lossy()
+                    .to_string(),
             },
             target_lexicon::OperatingSystem::Dragonfly => Os::Dragonfly {
-                release: PlatformInfo::new()?.release().to_string(),
+                release: PlatformInfo::new()
+                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .release()
+                    .to_string_lossy()
+                    .to_string(),
             },
             target_lexicon::OperatingSystem::Illumos => {
-                let platform_info = PlatformInfo::new()?;
+                let platform_info =
+                    PlatformInfo::new().map_err(WheelInstallerError::PlatformInfoError)?;
                 Os::Illumos {
-                    release: platform_info.release().to_string(),
-                    arch: platform_info.machine().to_string(),
+                    release: platform_info.release().to_string_lossy().to_string(),
+                    arch: platform_info.machine().to_string_lossy().to_string(),
                 }
             }
             target_lexicon::OperatingSystem::Haiku => Os::Haiku {
-                release: PlatformInfo::new()?.release().to_string(),
+                release: PlatformInfo::new()
+                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .release()
+                    .to_string_lossy()
+                    .to_string(),
             },
             unsupported => {
                 return Err(WheelInstallerError::OsVersionDetectionError(format!(
@@ -549,8 +570,8 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             | Os::Haiku { release: _ },
             _,
         ) => {
-            let info = PlatformInfo::new()?;
-            let release = info.release().replace(['.', '-'], "_");
+            let info = PlatformInfo::new().map_err(WheelInstallerError::PlatformInfoError)?;
+            let release = info.release().to_string_lossy().replace(['.', '-'], "_");
             vec![format!(
                 "{}_{}_{}",
                 os.to_string().to_lowercase(),

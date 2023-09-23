@@ -730,7 +730,7 @@ fn move_folder_recorded(
             }
         } else {
             fs::rename(src, &target)?;
-            let mut entry = record
+            let entry = record
                 .iter_mut()
                 .find(|entry| Path::new(&entry.path) == relative_to_site_packages)
                 .ok_or_else(|| {
@@ -807,7 +807,7 @@ fn install_script(
     let relative_to_site_packages = path
         .strip_prefix(site_packages)
         .expect("Prefix must no change");
-    let mut entry = record
+    let entry = record
         .iter_mut()
         .find(|entry| Path::new(&entry.path) == relative_to_site_packages)
         .ok_or_else(|| {
