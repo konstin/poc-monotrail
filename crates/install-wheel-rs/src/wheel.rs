@@ -1114,9 +1114,9 @@ pub fn install_wheel(
         .by_name(&format!("{}-{}.dist-info/RECORD", name, version))
         .is_err_and(|err| matches!(err, ZipError::FileNotFound))
     {
-        format!("{}-{}.dist-info", name, version)
-    } else {
         format!("{}-{}.dist-info", metadata_name, version)
+    } else {
+        format!("{}-{}.dist-info", name, version)
     };
     let record_path = format!("{}/RECORD", dist_info_dir);
 

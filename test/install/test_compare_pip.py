@@ -56,7 +56,7 @@ def compare_with_pip_args(
     if clear_pip and env_py.exists():
         rmtree(env_py)
     if not env_py.exists():
-        check_call(["virtualenv", env], stdout=DEVNULL, cwd=cwd)
+        check_call(["virtualenv", "-p", "3.8", env], stdout=DEVNULL, cwd=cwd)
         start_pip = time.time()
         if platform.system() == "Windows":
             pip = env.joinpath("Scripts").joinpath("pip.exe")
@@ -71,7 +71,7 @@ def compare_with_pip_args(
     # rust install
     if env_rs.exists():
         rmtree(env_rs)
-    check_call(["virtualenv", env], stdout=DEVNULL)
+    check_call(["virtualenv", "-p", "3.8", env], stdout=DEVNULL)
     monotrail = monotrail or get_bin()
     start_rs = time.time()
     check_call(

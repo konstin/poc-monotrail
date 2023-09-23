@@ -48,7 +48,7 @@ def compare_with_poetry(
     if clear_poetry and env_poetry.exists():
         rmtree(env_poetry)
     if not env_poetry.exists():
-        check_call(["virtualenv", env], stdout=DEVNULL)
+        check_call(["virtualenv", "-p", "3.8", env], stdout=DEVNULL)
         start_pip = time.time()
         call = ["poetry", "install", "--no-root"]
         if no_dev:
@@ -65,7 +65,7 @@ def compare_with_poetry(
     # rust install
     if env_rs.exists():
         rmtree(env_rs)
-    check_call(["virtualenv", env], stdout=DEVNULL)
+    check_call(["virtualenv", "-p", "3.8", env], stdout=DEVNULL)
     monotrail = monotrail or get_bin()
     start_rs = time.time()
     call = [monotrail, "poetry-install"]

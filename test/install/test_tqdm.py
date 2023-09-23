@@ -10,7 +10,7 @@ def test_tqdm():
     venv = get_root().joinpath("test-venvs").joinpath("venv-tqdm")
     if venv.is_dir():
         shutil.rmtree(venv)
-    check_call(["virtualenv", venv])
+    check_call(["virtualenv", "-p", "3.8", venv])
     env = {**os.environ, "VIRTUAL_ENV": str(venv)}
 
     if platform.system() == "Windows":
