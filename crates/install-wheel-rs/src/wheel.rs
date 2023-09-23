@@ -1093,9 +1093,8 @@ pub fn install_wheel(
     let escaped_name = Regex::new(r"[^\w\d.]+")
         .unwrap()
         .replace_all(&dist.metadata().name, "_")
-        .to_lowercase()
         .to_string();
-    if escaped_name != name.to_lowercase() {
+    if escaped_name.to_lowercase() != name.to_lowercase() {
         return Err(WheelInstallerError::InvalidWheel(format!(
             "Inconsistent package name: {} (wheel metadata, from {}) vs {} (filename)",
             escaped_name.to_lowercase(),
