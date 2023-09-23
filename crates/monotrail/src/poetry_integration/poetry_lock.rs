@@ -52,7 +52,7 @@ pub struct Package {
     pub name: String,
     pub version: String,
     pub description: String,
-    pub category: String,
+    pub category: Option<String>,
     pub optional: bool,
     pub python_versions: String,
     #[serde(default)]

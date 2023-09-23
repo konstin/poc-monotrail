@@ -41,8 +41,8 @@ pub enum WheelInstallerError {
     /// The wheel is broken, but in python pkginfo
     #[error("The wheel is broken")]
     PkgInfoError(#[from] python_pkginfo::Error),
-    #[error("Failed to read the wheel file")]
-    ZipError(#[from] ZipError),
+    #[error("Failed to read the wheel file {0}")]
+    ZipError(String, #[source] ZipError),
     #[error("Failed to run python subcommand")]
     PythonSubcommandError(#[source] io::Error),
     #[error("Failed to move data files")]

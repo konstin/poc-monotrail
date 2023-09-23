@@ -178,7 +178,7 @@ fn parse_scripts(
             })?
         }
         Err(ZipError::FileNotFound) => return Ok((Vec::new(), Vec::new())),
-        Err(err) => return Err(err.into()),
+        Err(err) => return Err(WheelInstallerError::ZipError(entry_points_path, err)),
     };
 
     // TODO: handle extras
@@ -250,7 +250,9 @@ fn unpack_wheel_files(
     let mut created_dirs = HashSet::new();
     // https://github.com/zip-rs/zip/blob/7edf2489d5cff8b80f02ee6fc5febf3efd0a9442/examples/extract.rs
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
+        let mut file = archive
+            .by_index(i)
+            .map_err(|err| WheelInstallerError::ZipError(format!("with index {i}"), err))?;
         // enclosed_name takes care of evil zip paths
         let relative = match file.enclosed_name() {
             Some(path) => path.to_owned(),
@@ -1091,8 +1093,9 @@ pub fn install_wheel(
     let escaped_name = Regex::new(r"[^\w\d.]+")
         .unwrap()
         .replace_all(&dist.metadata().name, "_")
+        .to_lowercase()
         .to_string();
-    if escaped_name.to_lowercase() != name.to_lowercase() {
+    if escaped_name != name.to_lowercase() {
         return Err(WheelInstallerError::InvalidWheel(format!(
             "Inconsistent package name: {} (wheel metadata, from {}) vs {} (filename)",
             escaped_name.to_lowercase(),
@@ -1104,11 +1107,17 @@ pub fn install_wheel(
     let dist_info_dir = format!("{}-{}.dist-info", escaped_name, version);
 
     debug!(name = name.as_str(), "Opening zip");
-    let mut archive = ZipArchive::new(File::open(&wheel_path)?)?;
+    let mut archive = ZipArchive::new(File::open(&wheel_path)?).map_err(|err| {
+        WheelInstallerError::ZipError(wheel_path.to_string_lossy().to_string(), err)
+    })?;
 
     debug!(name = name.as_str(), "Reading RECORD and WHEEL");
     let record_path = format!("{}/RECORD", dist_info_dir);
-    let mut record = read_record_file(&mut archive.by_name(&record_path)?)?;
+    let mut record = read_record_file(
+        &mut archive
+            .by_name(&record_path)
+            .map_err(|err| WheelInstallerError::ZipError(record_path.clone(), err))?,
+    )?;
 
     // We're going step by step though
     // https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
@@ -1117,7 +1126,8 @@ pub fn install_wheel(
     let wheel_file_path = format!("{}/WHEEL", dist_info_dir);
     let mut wheel_text = String::new();
     archive
-        .by_name(&wheel_file_path)?
+        .by_name(&wheel_file_path)
+        .map_err(|err| WheelInstallerError::ZipError(wheel_file_path, err))?
         .read_to_string(&mut wheel_text)?;
     parse_wheel_version(&wheel_text)?;
     // > 1.c If Root-Is-Purelib == ‘true’, unpack archive into purelib (site-packages).
