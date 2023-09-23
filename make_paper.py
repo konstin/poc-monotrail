@@ -9,7 +9,7 @@ for wheel in glob.glob("target-maturin/wheels/monotrail-*.whl"):
     os.remove(wheel)
 
 check_call(
-    ["maturin", "build", "--release", "--strip"],
+    ["maturin", "build", "--release", "--strip", "-m", "crates/monotrail/Cargo.toml"],
     env=dict(os.environ, CARGO_TARGET_DIR="target-maturin"),
 )
 check_call(["virtualenv", "-p", "3.8", ".venv"])
