@@ -3,7 +3,7 @@
 use crate::spec::DistributionType;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
-use install_wheel_rs::{WheelFilename, WheelInstallerError};
+use install_wheel_rs::{Error, WheelFilename};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io;
@@ -53,7 +53,7 @@ fn matching_package_for_version(
         .iter()
         .filter(|release| release.packagetype == PackageType::BdistWheel)
         .map(|release| Ok((WheelFilename::from_str(&release.filename)?, release)))
-        .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, WheelInstallerError>>()?;
+        .collect::<Result<Vec<(WheelFilename, &PypiRelease)>, Error>>()?;
     if let Some((_, picked_wheel)) = wheel_releases
         .iter()
         .filter_map(|(filename, wheel)| {

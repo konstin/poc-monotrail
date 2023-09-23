@@ -1,6 +1,6 @@
 //! Parses the wheel filename, the current host os/arch and checks wheels for compatibility
 
-use crate::WheelInstallerError;
+use crate::Error;
 use fs_err as fs;
 use goblin::elf::Elf;
 use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
@@ -22,14 +22,11 @@ pub struct WheelFilename {
 }
 
 impl FromStr for WheelFilename {
-    type Err = WheelInstallerError;
+    type Err = Error;
 
     fn from_str(filename: &str) -> Result<Self, Self::Err> {
         let basename = filename.strip_suffix(".whl").ok_or_else(|| {
-            WheelInstallerError::InvalidWheelFileName(
-                filename.to_string(),
-                "Must end with .whl".to_string(),
-            )
+            Error::InvalidWheelFileName(filename.to_string(), "Must end with .whl".to_string())
         })?;
         // https://www.python.org/dev/peps/pep-0427/#file-name-convention
         match basename.split('-').collect::<Vec<_>>().as_slice() {
@@ -42,7 +39,7 @@ impl FromStr for WheelFilename {
                 abi_tag: abi_tag.split('.').map(String::from).collect(),
                 platform_tag: platform_tag.split('.').map(String::from).collect(),
             }),
-            _ => Err(WheelInstallerError::InvalidWheelFileName(
+            _ => Err(Error::InvalidWheelFileName(
                 filename.to_string(),
                 "Expected four or five dashes (\"-\") in the filename".to_string(),
             )),
@@ -88,7 +85,7 @@ pub fn compatible_tags(
     python_version: (u8, u8),
     os: &Os,
     arch: &Arch,
-) -> Result<Vec<(String, String, String)>, WheelInstallerError> {
+) -> Result<Vec<(String, String, String)>, Error> {
     assert_eq!(python_version.0, 3);
     let mut tags = Vec::new();
     let platform_tags = compatible_platform_tags(os, arch)?;
@@ -172,7 +169,7 @@ pub enum Os {
 }
 
 impl Os {
-    fn detect_linux_libc() -> Result<Self, WheelInstallerError> {
+    fn detect_linux_libc() -> Result<Self, Error> {
         let libc = find_libc()?;
         let linux = if let Ok(Some((major, minor))) = get_musl_version(&libc) {
             Os::Musllinux { major, minor }
@@ -181,9 +178,7 @@ impl Os {
             let filename = glibc_ld
                 .file_name()
                 .ok_or_else(|| {
-                    WheelInstallerError::OsVersionDetectionError(
-                        "Expected the glibc ld to be a file".to_string(),
-                    )
+                    Error::OsVersionDetection("Expected the glibc ld to be a file".to_string())
                 })?
                 .to_string_lossy();
             let expr = Regex::new(r"ld-(\d{1,3})\.(\d{1,3})\.so").unwrap();
@@ -196,7 +191,7 @@ impl Os {
                 trace!("Couldn't use ld filename, using `ldd --version`");
                 // runs `ldd --version`
                 let version = glibc_version::get_version().map_err(|err| {
-                    WheelInstallerError::OsVersionDetectionError(format!(
+                    Error::OsVersionDetection(format!(
                         "Failed to determine glibc version with `ldd --version`: {}",
                         err
                     ))
@@ -207,13 +202,13 @@ impl Os {
                 }
             }
         } else {
-            return Err(WheelInstallerError::OsVersionDetectionError("Couldn't detect neither glibc version nor musl libc version, at least one of which is required".to_string()));
+            return Err(Error::OsVersionDetection("Couldn't detect neither glibc version nor musl libc version, at least one of which is required".to_string()));
         };
         trace!("libc: {}", linux);
         Ok(linux)
     }
 
-    pub fn current() -> Result<Self, WheelInstallerError> {
+    pub fn current() -> Result<Self, Error> {
         let target_triple = target_lexicon::HOST;
 
         let os = match target_triple.operating_system {
@@ -228,35 +223,34 @@ impl Os {
             }
             target_lexicon::OperatingSystem::Netbsd => Os::NetBsd {
                 release: PlatformInfo::new()
-                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .map_err(Error::PlatformInfo)?
                     .release()
                     .to_string_lossy()
                     .to_string(),
             },
             target_lexicon::OperatingSystem::Freebsd => Os::FreeBsd {
                 release: PlatformInfo::new()
-                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .map_err(Error::PlatformInfo)?
                     .release()
                     .to_string_lossy()
                     .to_string(),
             },
             target_lexicon::OperatingSystem::Openbsd => Os::OpenBsd {
                 release: PlatformInfo::new()
-                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .map_err(Error::PlatformInfo)?
                     .release()
                     .to_string_lossy()
                     .to_string(),
             },
             target_lexicon::OperatingSystem::Dragonfly => Os::Dragonfly {
                 release: PlatformInfo::new()
-                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .map_err(Error::PlatformInfo)?
                     .release()
                     .to_string_lossy()
                     .to_string(),
             },
             target_lexicon::OperatingSystem::Illumos => {
-                let platform_info =
-                    PlatformInfo::new().map_err(WheelInstallerError::PlatformInfoError)?;
+                let platform_info = PlatformInfo::new().map_err(Error::PlatformInfo)?;
                 Os::Illumos {
                     release: platform_info.release().to_string_lossy().to_string(),
                     arch: platform_info.machine().to_string_lossy().to_string(),
@@ -264,13 +258,13 @@ impl Os {
             }
             target_lexicon::OperatingSystem::Haiku => Os::Haiku {
                 release: PlatformInfo::new()
-                    .map_err(WheelInstallerError::PlatformInfoError)?
+                    .map_err(Error::PlatformInfo)?
                     .release()
                     .to_string_lossy()
                     .to_string(),
             },
             unsupported => {
-                return Err(WheelInstallerError::OsVersionDetectionError(format!(
+                return Err(Error::OsVersionDetection(format!(
                     "The operating system {:?} is not supported",
                     unsupported
                 )))
@@ -324,7 +318,7 @@ impl fmt::Display for Arch {
 }
 
 impl Arch {
-    pub fn current() -> Result<Arch, WheelInstallerError> {
+    pub fn current() -> Result<Arch, Error> {
         let target_triple = target_lexicon::HOST;
         let arch = match target_triple.architecture {
             target_lexicon::Architecture::X86_64 => Arch::X86_64,
@@ -335,7 +329,7 @@ impl Arch {
             target_lexicon::Architecture::Powerpc64le => Arch::Powerpc64Le,
             target_lexicon::Architecture::S390x => Arch::S390X,
             unsupported => {
-                return Err(WheelInstallerError::OsVersionDetectionError(format!(
+                return Err(Error::OsVersionDetection(format!(
                     "The architecture {} is not supported",
                     unsupported
                 )));
@@ -355,7 +349,7 @@ impl Arch {
     }
 }
 
-fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
+fn get_mac_os_version() -> Result<(u16, u16), Error> {
     // This is actually what python does
     // https://github.com/python/cpython/blob/cb2b3c8d3566ae46b3b8d0718019e1c98484589e/Lib/platform.py#L409-L428
     #[derive(Deserialize)]
@@ -365,10 +359,10 @@ fn get_mac_os_version() -> Result<(u16, u16), WheelInstallerError> {
     }
     let system_version: SystemVersion =
         plist::from_file("/System/Library/CoreServices/SystemVersion.plist")
-            .map_err(|err| WheelInstallerError::OsVersionDetectionError(err.to_string()))?;
+            .map_err(|err| Error::OsVersionDetection(err.to_string()))?;
 
     let invalid_mac_os_version = || {
-        WheelInstallerError::OsVersionDetectionError(format!(
+        Error::OsVersionDetection(format!(
             "Invalid mac os version {}",
             system_version.product_version
         ))
@@ -419,18 +413,15 @@ fn get_mac_binary_formats(major: u16, minor: u16, arch: &Arch) -> Vec<String> {
 }
 
 /// Find musl libc path from executable's ELF header
-pub fn find_libc() -> Result<PathBuf, WheelInstallerError> {
+pub fn find_libc() -> Result<PathBuf, Error> {
     let buffer = fs::read("/bin/ls")?;
     let error_str = "Couldn't parse /bin/ls for detecting the ld version";
-    let elf = Elf::parse(&buffer).map_err(|err| {
-        WheelInstallerError::OsVersionDetectionError(format!("{}: {}", error_str, err))
-    })?;
+    let elf = Elf::parse(&buffer)
+        .map_err(|err| Error::OsVersionDetection(format!("{}: {}", error_str, err)))?;
     if let Some(elf_interpreter) = elf.interpreter {
         Ok(PathBuf::from(elf_interpreter))
     } else {
-        Err(WheelInstallerError::OsVersionDetectionError(
-            error_str.to_string(),
-        ))
+        Err(Error::OsVersionDetection(error_str.to_string()))
     }
 }
 
@@ -465,7 +456,7 @@ pub fn get_musl_version(ld_path: impl AsRef<Path>) -> std::io::Result<Option<(u1
 ///
 /// Bit of a mess, needs to be cleaned up. The order also isn't exactly matching that of pip yet,
 /// but works good enough in practice
-pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, WheelInstallerError> {
+pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Error> {
     let platform_tags = match (os.clone(), *arch) {
         (Os::Manylinux { major, minor }, _) => {
             let mut platform_tags = vec![format!("linux_{}", arch)];
@@ -528,7 +519,7 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
                     }
                 }
                 _ => {
-                    return Err(WheelInstallerError::OsVersionDetectionError(format!(
+                    return Err(Error::OsVersionDetection(format!(
                         "Unsupported mac os version: {}",
                         major,
                     )));
@@ -570,7 +561,7 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             | Os::Haiku { release: _ },
             _,
         ) => {
-            let info = PlatformInfo::new().map_err(WheelInstallerError::PlatformInfoError)?;
+            let info = PlatformInfo::new().map_err(Error::PlatformInfo)?;
             let release = info.release().to_string_lossy().replace(['.', '-'], "_");
             vec![format!(
                 "{}_{}_{}",
@@ -590,7 +581,7 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             // See https://github.com/python/cpython/blob/46c8d915715aa2bd4d697482aa051fe974d440e1/Lib/sysconfig.py#L722-L730
             if let Some((major, other)) = release.split_once('_') {
                 let major_ver: u64 = major.parse().map_err(|err| {
-                    WheelInstallerError::OsVersionDetectionError(format!(
+                    Error::OsVersionDetection(format!(
                         "illumos major version is not a number: {}",
                         err
                     ))
@@ -605,7 +596,7 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
             vec![format!("{}_{}_{}", os, release, arch)]
         }
         _ => {
-            return Err(WheelInstallerError::OsVersionDetectionError(format!(
+            return Err(Error::OsVersionDetection(format!(
                 "Unsupported operating system and architecture combination: {} {}",
                 os, arch
             )));
@@ -617,7 +608,7 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Whe
 #[cfg(test)]
 mod test {
     use super::{compatible_platform_tags, compatible_tags, WheelFilename};
-    use crate::{Arch, Os, WheelInstallerError};
+    use crate::{Arch, Error, Os};
     use fs_err::File;
     use std::str::FromStr;
 
@@ -645,7 +636,7 @@ mod test {
 
     /// Test that we can parse the filenames
     #[test]
-    fn test_wheel_filename_parsing() -> Result<(), WheelInstallerError> {
+    fn test_wheel_filename_parsing() -> Result<(), Error> {
         for filename in FILENAMES {
             WheelFilename::from_str(filename)?;
         }
@@ -654,7 +645,7 @@ mod test {
 
     /// Test that we correctly identify compatible pairs
     #[test]
-    fn test_compatibility() -> Result<(), WheelInstallerError> {
+    fn test_compatibility() -> Result<(), Error> {
         let filenames = [
             (
                 "numpy-1.22.2-cp38-cp38-win_amd64.whl",
@@ -759,7 +750,7 @@ mod test {
 
     /// Test that incompatible pairs don't pass is_compatible
     #[test]
-    fn test_compatibility_filter() -> Result<(), WheelInstallerError> {
+    fn test_compatibility_filter() -> Result<(), Error> {
         let compatible_tags = compatible_tags(
             (3, 8),
             &Os::Manylinux {
@@ -796,7 +787,7 @@ mod test {
 
     /// Check against the tags that packaging.tags reports as compatible
     #[test]
-    fn ubuntu_20_04_compatible() -> Result<(), WheelInstallerError> {
+    fn ubuntu_20_04_compatible() -> Result<(), Error> {
         let tags = get_ubuntu_20_04_tags();
         for tag in tags {
             let compatible_tags = compatible_tags(
@@ -821,7 +812,7 @@ mod test {
 
     /// Check against the tags that packaging.tags reports as compatible
     #[test]
-    fn ubuntu_20_04_list() -> Result<(), WheelInstallerError> {
+    fn ubuntu_20_04_list() -> Result<(), Error> {
         let expected_tags = get_ubuntu_20_04_tags();
         let actual_tags: Vec<String> = compatible_tags(
             (3, 8),
@@ -879,7 +870,7 @@ mod test {
 
     /// Basic does-it-work test
     #[test]
-    fn host_arch() -> Result<(), WheelInstallerError> {
+    fn host_arch() -> Result<(), Error> {
         let os = Os::current()?;
         let arch = Arch::current()?;
         compatible_platform_tags(&os, &arch)?;

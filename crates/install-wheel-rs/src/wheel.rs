@@ -2,7 +2,7 @@
 
 use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::{compatible_tags, WheelFilename};
-use crate::{normalize_name, Arch, Os, WheelInstallerError};
+use crate::{normalize_name, Arch, Error, Os};
 use base64::Engine;
 use configparser::ini::Ini;
 use fs_err as fs;
@@ -86,12 +86,12 @@ impl Script {
         script_name: &str,
         value: &str,
         extras: Option<&[String]>,
-    ) -> Result<Option<Script>, WheelInstallerError> {
+    ) -> Result<Option<Script>, Error> {
         let script_regex = Regex::new(r"^(?P<module>[\w\d_\-.]+):(?P<function>[\w\d_\-.]+)(?:\s+\[(?P<extras>(?:[^,]+,?\s*)+)\])?$").unwrap();
 
-        let captures = script_regex.captures(value).ok_or_else(|| {
-            WheelInstallerError::InvalidWheel(format!("invalid console script: '{}'", value))
-        })?;
+        let captures = script_regex
+            .captures(value)
+            .ok_or_else(|| Error::InvalidWheel(format!("invalid console script: '{}'", value)))?;
         if let Some(script_extras) = captures.name("extras") {
             let script_extras = script_extras
                 .as_str()
@@ -138,7 +138,7 @@ fn read_scripts_from_section(
     scripts_section: &HashMap<String, Option<String>>,
     section_name: &str,
     extras: Option<&[String]>,
-) -> Result<Vec<Script>, WheelInstallerError> {
+) -> Result<Vec<Script>, Error> {
     let mut scripts = Vec::new();
     for (script_name, python_location) in scripts_section.iter() {
         match python_location {
@@ -148,7 +148,7 @@ fn read_scripts_from_section(
                 }
             }
             None => {
-                return Err(WheelInstallerError::InvalidWheel(format!(
+                return Err(Error::InvalidWheel(format!(
                     "[{}] key {} must have a value",
                     section_name, script_name
                 )));
@@ -167,18 +167,18 @@ fn parse_scripts(
     archive: &mut ZipArchive<File>,
     dist_info_dir: &str,
     extras: Option<&[String]>,
-) -> Result<(Vec<Script>, Vec<Script>), WheelInstallerError> {
+) -> Result<(Vec<Script>, Vec<Script>), Error> {
     let entry_points_path = format!("{}/entry_points.txt", dist_info_dir);
     let entry_points_mapping = match archive.by_name(&entry_points_path) {
         Ok(mut file) => {
             let mut ini_text = String::new();
             file.read_to_string(&mut ini_text)?;
             Ini::new_cs().read(ini_text).map_err(|err| {
-                WheelInstallerError::InvalidWheel(format!("entry_points.txt is invalid: {}", err))
+                Error::InvalidWheel(format!("entry_points.txt is invalid: {}", err))
             })?
         }
         Err(ZipError::FileNotFound) => return Ok((Vec::new(), Vec::new())),
-        Err(err) => return Err(WheelInstallerError::ZipError(entry_points_path, err)),
+        Err(err) => return Err(Error::Zip(entry_points_path, err)),
     };
 
     // TODO: handle extras
@@ -242,7 +242,7 @@ fn unpack_wheel_files(
     archive: &mut ZipArchive<File>,
     record: &[RecordEntry],
     check_hashes: bool,
-) -> Result<Vec<PathBuf>, WheelInstallerError> {
+) -> Result<Vec<PathBuf>, Error> {
     let mut extracted_paths = Vec::new();
     // Cache the created parent dirs to avoid io calls
     // When deactivating bytecode compilation and sha2 those were 5% of total runtime, with
@@ -252,7 +252,7 @@ fn unpack_wheel_files(
     for i in 0..archive.len() {
         let mut file = archive
             .by_index(i)
-            .map_err(|err| WheelInstallerError::ZipError(format!("with index {i}"), err))?;
+            .map_err(|err| Error::Zip(format!("with index {i}"), err))?;
         // enclosed_name takes care of evil zip paths
         let relative = match file.enclosed_name() {
             Some(path) => path.to_owned(),
@@ -318,7 +318,7 @@ fn unpack_wheel_files(
                 .find(|entry| relative_str == entry.path)
                 .and_then(|entry| entry.hash.as_ref())
                 .ok_or_else(|| {
-                    WheelInstallerError::RecordFileError(format!(
+                    Error::RecordFile(format!(
                         "Missing hash for {} (expected {})",
                         relative.display(),
                         encoded_hash
@@ -338,7 +338,7 @@ fn unpack_wheel_files(
                     );
                     continue;
                 }
-                return Err(WheelInstallerError::RecordFileError(format!(
+                return Err(Error::RecordFile(format!(
                     "Hash mismatch for {}. Recorded: {}, Actual: {}",
                     relative.display(),
                     recorded_hash,
@@ -380,7 +380,7 @@ fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
 /// TODO pyw scripts
 ///
 /// TODO: a nice, reproducible-without-distlib rust solution
-fn windows_script_launcher(launcher_python_script: &str) -> Result<Vec<u8>, WheelInstallerError> {
+fn windows_script_launcher(launcher_python_script: &str) -> Result<Vec<u8>, Error> {
     let launcher_bin = match env::consts::ARCH {
         "x84" => LAUNCHER_T32,
         "x86_64" => LAUNCHER_T64,
@@ -391,7 +391,7 @@ fn windows_script_launcher(launcher_python_script: &str) -> Result<Vec<u8>, Whee
                         only x86, x86_64 and aarch64 (64-bit arm) are supported",
                 arch
             );
-            return Err(WheelInstallerError::OsVersionDetectionError(error));
+            return Err(Error::OsVersionDetection(error));
         }
     };
 
@@ -425,7 +425,7 @@ fn write_script_entrypoints(
     location: &InstallLocation<LockedDir>,
     entrypoints: &[Script],
     record: &mut Vec<RecordEntry>,
-) -> Result<(), WheelInstallerError> {
+) -> Result<(), Error> {
     // for monotrail
     fs::create_dir_all(site_packages.join(&bin_rel()))?;
     for entrypoint in entrypoints {
@@ -485,7 +485,7 @@ fn bin_rel() -> PathBuf {
 ///
 /// > {distribution}-{version}.dist-info/WHEEL is metadata about the archive itself in the same
 /// > basic key: value format:
-fn parse_wheel_version(wheel_text: &str) -> Result<(), WheelInstallerError> {
+fn parse_wheel_version(wheel_text: &str) -> Result<(), Error> {
     // {distribution}-{version}.dist-info/WHEEL is metadata about the archive itself in the same basic key: value format:
     let data = parse_key_value_file(&mut wheel_text.as_bytes(), "WHEEL")?;
 
@@ -499,7 +499,7 @@ fn parse_wheel_version(wheel_text: &str) -> Result<(), WheelInstallerError> {
         }) {
         wheel_version
     } else {
-        return Err(WheelInstallerError::InvalidWheel(
+        return Err(Error::InvalidWheel(
             "Invalid Wheel-Version in WHEEL file".to_string(),
         ));
     };
@@ -512,7 +512,7 @@ fn parse_wheel_version(wheel_text: &str) -> Result<(), WheelInstallerError> {
     // Check that installer is compatible with Wheel-Version. Warn if minor version is greater, abort if major version is greater.
     // Wheel-Version: 1.0
     if wheel_version.0 != "1" {
-        return Err(WheelInstallerError::InvalidWheel(format!(
+        return Err(Error::InvalidWheel(format!(
             "Unsupported wheel major version (expected {}, got {})",
             1, wheel_version.0
         )));
@@ -538,7 +538,7 @@ fn bytecode_compile(
     // Only for logging
     name: &str,
     record: &mut Vec<RecordEntry>,
-) -> Result<(), WheelInstallerError> {
+) -> Result<(), Error> {
     // https://github.com/pypa/pip/blob/b5457dfee47dd9e9f6ec45159d9d410ba44e5ea1/src/pip/_internal/operations/install/wheel.py#L592-L603
     let py_source_paths: Vec<_> = unpacked_paths
         .into_iter()
@@ -565,7 +565,7 @@ fn bytecode_compile(
     };
     if !status.success() {
         // lossy because we want the error reporting to survive c̴̞̏ü̸̜̹̈́ŕ̴͉̈ś̷̤ė̵̤͋d̷͙̄ filenames in the zip
-        return Err(WheelInstallerError::PythonSubcommandError(io::Error::new(
+        return Err(Error::PythonSubcommand(io::Error::new(
             io::ErrorKind::Other,
             format!("Failed to run python compileall, log above: {}", status,),
         )));
@@ -590,7 +590,7 @@ fn bytecode_compile(
                 python_version.0, python_version.1
             ));
         if !site_packages.join(&pyc_path).is_file() {
-            return Err(WheelInstallerError::PythonSubcommandError(io::Error::new(
+            return Err(Error::PythonSubcommand(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
                     "Didn't find pyc generated by compileall: {}",
@@ -620,7 +620,7 @@ fn bytecode_compile_inner(
     site_packages: &Path,
     py_source_paths: &[PathBuf],
     sys_executable: &Path,
-) -> Result<(ExitStatus, Vec<String>), WheelInstallerError> {
+) -> Result<(ExitStatus, Vec<String>), Error> {
     let tempdir = tempdir()?;
     // Running python with an actual file will produce better error messages
     let pip_compileall_py = tempdir.path().join("pip_compileall.py");
@@ -633,7 +633,7 @@ fn bytecode_compile_inner(
         .stderr(Stdio::inherit())
         .current_dir(&site_packages)
         .spawn()
-        .map_err(WheelInstallerError::PythonSubcommandError)?;
+        .map_err(Error::PythonSubcommand)?;
 
     // https://stackoverflow.com/questions/49218599/write-to-child-process-stdin-in-rust/49597789#comment120223107_49597789
     let mut child_stdin = bytecode_compiler
@@ -646,8 +646,7 @@ fn bytecode_compile_inner(
         debug!("bytecode compiling {}", path.display());
         // There is no OsStr -> Bytes conversion on windows :o
         // https://stackoverflow.com/questions/43083544/how-can-i-convert-osstr-to-u8-vecu8-on-windows
-        writeln!(&mut child_stdin, "{}", path.display())
-            .map_err(WheelInstallerError::PythonSubcommandError)?;
+        writeln!(&mut child_stdin, "{}", path.display()).map_err(Error::PythonSubcommand)?;
     }
     // Close stdin to finish and avoid indefinite blocking
     drop(child_stdin);
@@ -657,7 +656,7 @@ fn bytecode_compile_inner(
     let mut lines: Vec<String> = Vec::new();
     for line in BufReader::new(stdout).lines() {
         let line = line.map_err(|err| {
-            WheelInstallerError::PythonSubcommandError(io::Error::new(
+            Error::PythonSubcommand(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Invalid utf-8 returned by python compileall: {}", err),
             ))
@@ -667,7 +666,7 @@ fn bytecode_compile_inner(
 
     let output = bytecode_compiler
         .wait_with_output()
-        .map_err(WheelInstallerError::PythonSubcommandError)?;
+        .map_err(Error::PythonSubcommand)?;
     Ok((output.status, lines))
 }
 
@@ -676,7 +675,7 @@ fn bytecode_compile_inner(
 /// lib/python/site-packages/foo/__init__.py and lib/python/site-packages -> foo/__init__.py
 /// lib/marker.txt and lib/python/site-packages -> ../../marker.txt
 /// bin/foo_launcher and lib/python/site-packages -> ../../../bin/foo_launcher
-pub fn relative_to(path: &Path, base: &Path) -> Result<PathBuf, WheelInstallerError> {
+pub fn relative_to(path: &Path, base: &Path) -> Result<PathBuf, Error> {
     // Find the longest common prefix, and also return the path stripped from that prefix
     let (stripped, common_prefix) = base
         .ancestors()
@@ -687,7 +686,7 @@ pub fn relative_to(path: &Path, base: &Path) -> Result<PathBuf, WheelInstallerEr
         })
         .next()
         .ok_or_else(|| {
-            WheelInstallerError::IOError(io::Error::new(
+            Error::IO(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
                     "trivial strip case should have worked: {} vs {}",
@@ -710,12 +709,12 @@ fn move_folder_recorded(
     dest_dir: &Path,
     site_packages: &Path,
     record: &mut [RecordEntry],
-) -> Result<(), WheelInstallerError> {
+) -> Result<(), Error> {
     if !dest_dir.is_dir() {
         fs::create_dir_all(&dest_dir)?;
     }
     for entry in WalkDir::new(&src_dir) {
-        let entry = entry.map_err(WheelInstallerError::WalkDirError)?;
+        let entry = entry?;
         let src = entry.path();
         // This is the base path for moving to the actual target for the data
         // e.g. for data it's without <..>.data/data/
@@ -736,7 +735,7 @@ fn move_folder_recorded(
                 .iter_mut()
                 .find(|entry| Path::new(&entry.path) == relative_to_site_packages)
                 .ok_or_else(|| {
-                    WheelInstallerError::RecordFileError(format!(
+                    Error::RecordFile(format!(
                         "Could not find entry for {} ({})",
                         relative_to_site_packages.display(),
                         src.display()
@@ -756,10 +755,10 @@ fn install_script(
     record: &mut [RecordEntry],
     file: DirEntry,
     location: &InstallLocation<LockedDir>,
-) -> Result<(), WheelInstallerError> {
+) -> Result<(), Error> {
     let path = file.path();
     if !path.is_file() {
-        return Err(WheelInstallerError::InvalidWheel(format!(
+        return Err(Error::InvalidWheel(format!(
             "Wheel contains entry in scripts directory that is not a file: {}",
             path.display()
         )));
@@ -814,7 +813,7 @@ fn install_script(
         .find(|entry| Path::new(&entry.path) == relative_to_site_packages)
         .ok_or_else(|| {
             // This should be possible to occur at this point, but filesystems and such
-            WheelInstallerError::RecordFileError(format!(
+            Error::RecordFile(format!(
                 "Could not find entry for {} ({})",
                 relative_to_site_packages.display(),
                 path.display()
@@ -839,7 +838,7 @@ fn install_data(
     console_scripts: &[Script],
     gui_scripts: &[Script],
     record: &mut [RecordEntry],
-) -> Result<(), WheelInstallerError> {
+) -> Result<(), Error> {
     for data_entry in fs::read_dir(data_dir)? {
         let data_entry = data_entry?;
         match data_entry.file_name().as_os_str().to_str() {
@@ -889,7 +888,7 @@ fn install_data(
                 move_folder_recorded(&data_entry.path(), site_packages, site_packages, record)?;
             }
             _ => {
-                return Err(WheelInstallerError::InvalidWheel(format!(
+                return Err(Error::InvalidWheel(format!(
                     "Unknown wheel data type: {:?}",
                     data_entry.file_name()
                 )));
@@ -908,7 +907,7 @@ fn write_file_recorded(
     relative_path: &Path,
     content: impl AsRef<[u8]>,
     record: &mut Vec<RecordEntry>,
-) -> Result<(), WheelInstallerError> {
+) -> Result<(), Error> {
     File::create(site_packages.join(relative_path))?.write_all(content.as_ref())?;
     let hash = Sha256::new().chain_update(content.as_ref()).finalize();
     let encoded_hash = format!(
@@ -935,7 +934,7 @@ fn extra_dist_info(
     #[allow(unused_variables)] wheel_path: &Path,
     requested: bool,
     record: &mut Vec<RecordEntry>,
-) -> Result<(), WheelInstallerError> {
+) -> Result<(), Error> {
     write_file_recorded(
         site_packages,
         &dist_info.join("INSTALLER"),
@@ -969,7 +968,7 @@ fn extra_dist_info(
 
 /// Reads the record file
 /// <https://www.python.org/dev/peps/pep-0376/#record>
-pub fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, WheelInstallerError> {
+pub fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, Error> {
     csv::ReaderBuilder::new()
         .has_headers(false)
         .escape(Some(b'"'))
@@ -990,7 +989,7 @@ pub fn read_record_file(record: &mut impl Read) -> Result<Vec<RecordEntry>, Whee
 pub fn parse_key_value_file(
     file: &mut impl Read,
     debug_filename: &str,
-) -> Result<HashMap<String, Vec<String>>, WheelInstallerError> {
+) -> Result<HashMap<String, Vec<String>>, Error> {
     let mut data = HashMap::new();
 
     let file = BufReader::new(file);
@@ -1000,7 +999,7 @@ pub fn parse_key_value_file(
             continue;
         }
         let (key, value) = line.split_once(": ").ok_or_else(|| {
-            WheelInstallerError::InvalidWheel(format!(
+            Error::InvalidWheel(format!(
                 "Line {} of the {} file is invalid",
                 line_no, debug_filename
             ))
@@ -1026,12 +1025,12 @@ pub fn install_wheel(
     _extras: &[String],
     unique_version: &str,
     sys_executable: &Path,
-) -> Result<String, WheelInstallerError> {
+) -> Result<String, Error> {
     // TODO: A valid metadata parse should be given to this function, at least in two cases
     // we have already done it anyway earlier. Neither should we have to return the tag
     let filename = wheel_path
         .file_name()
-        .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
+        .ok_or_else(|| Error::InvalidWheel("Expected a file".to_string()))?
         .to_string_lossy();
     let filename = WheelFilename::from_str(&filename)?;
     let name = &filename.distribution;
@@ -1041,7 +1040,7 @@ pub fn install_wheel(
     let arch = Arch::current()?;
     let compatible_tags = compatible_tags(location.get_python_version(), &os, &arch)?;
     if filename.compatibility(&compatible_tags).is_none() {
-        return Err(WheelInstallerError::IncompatibleWheel { os, arch });
+        return Err(Error::IncompatibleWheel { os, arch });
     }
 
     let (temp_dir_final_location, base_location) = match location {
@@ -1095,7 +1094,7 @@ pub fn install_wheel(
         .replace_all(&dist.metadata().name, "_")
         .to_string();
     if escaped_name.to_lowercase() != name.to_lowercase() {
-        return Err(WheelInstallerError::InvalidWheel(format!(
+        return Err(Error::InvalidWheel(format!(
             "Inconsistent package name: {} (wheel metadata, from {}) vs {} (filename)",
             escaped_name.to_lowercase(),
             dist.metadata().name,
@@ -1106,16 +1105,15 @@ pub fn install_wheel(
     let dist_info_dir = format!("{}-{}.dist-info", escaped_name, version);
 
     debug!(name = name.as_str(), "Opening zip");
-    let mut archive = ZipArchive::new(File::open(&wheel_path)?).map_err(|err| {
-        WheelInstallerError::ZipError(wheel_path.to_string_lossy().to_string(), err)
-    })?;
+    let mut archive = ZipArchive::new(File::open(&wheel_path)?)
+        .map_err(|err| Error::Zip(wheel_path.to_string_lossy().to_string(), err))?;
 
     debug!(name = name.as_str(), "Reading RECORD and WHEEL");
     let record_path = format!("{}/RECORD", dist_info_dir);
     let mut record = read_record_file(
         &mut archive
             .by_name(&record_path)
-            .map_err(|err| WheelInstallerError::ZipError(record_path.clone(), err))?,
+            .map_err(|err| Error::Zip(record_path.clone(), err))?,
     )?;
 
     // We're going step by step though
@@ -1126,7 +1124,7 @@ pub fn install_wheel(
     let mut wheel_text = String::new();
     archive
         .by_name(&wheel_file_path)
-        .map_err(|err| WheelInstallerError::ZipError(wheel_file_path, err))?
+        .map_err(|err| Error::Zip(wheel_file_path, err))?
         .read_to_string(&mut wheel_text)?;
     parse_wheel_version(&wheel_text)?;
     // > 1.c If Root-Is-Purelib == ‘true’, unpack archive into purelib (site-packages).

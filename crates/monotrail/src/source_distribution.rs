@@ -3,7 +3,7 @@
 use crate::utils::cache_dir;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
-use install_wheel_rs::{WheelFilename, WheelInstallerError};
+use install_wheel_rs::{Error, WheelFilename};
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -58,7 +58,7 @@ pub fn build_to_wheel(
         .context("Failed to invoke pip")?;
 
     if !output.status.success() {
-        return Err(WheelInstallerError::PythonSubcommandError(io::Error::new(
+        return Err(Error::PythonSubcommand(io::Error::new(
             io::ErrorKind::Other,
             format!(
                 "Failed to run `pip wheel --no-deps {}`: {}\n---stdout:\n{}---stderr:\n{}\n---",

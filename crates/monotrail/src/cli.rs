@@ -12,7 +12,7 @@ use crate::venv_parser::get_venv_python_version;
 use crate::verify_installation::verify_installation;
 use anyhow::{bail, Context};
 use clap::Parser;
-use install_wheel_rs::{compatible_tags, Arch, InstallLocation, Os, WheelInstallerError};
+use install_wheel_rs::{compatible_tags, Arch, Error, InstallLocation, Os};
 use monotrail_utils::RequirementsTxt;
 use pep440_rs::Operator;
 use pep508_rs::VersionOrUrl;
@@ -511,7 +511,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             let specs = targets
                 .iter()
                 .map(|target| RequestedSpec::from_requested(target, &[]))
-                .collect::<Result<Vec<RequestedSpec>, WheelInstallerError>>()?;
+                .collect::<Result<Vec<RequestedSpec>, Error>>()?;
 
             install_all(
                 &specs,

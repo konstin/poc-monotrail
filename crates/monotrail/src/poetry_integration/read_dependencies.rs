@@ -10,7 +10,7 @@ use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
-use install_wheel_rs::{normalize_name, Script, WheelFilename, WheelInstallerError};
+use install_wheel_rs::{normalize_name, Error, Script, WheelFilename};
 use monotrail_utils::RequirementsTxt;
 use pep508_rs::{MarkerEnvironment, VersionOrUrl};
 use regex::Regex;
@@ -103,13 +103,11 @@ pub fn filename_and_url(
 
 /// this isn't actually needed poetry gives us all we need
 #[allow(dead_code)]
-fn parse_dep_extra(
-    dep_spec: &str,
-) -> Result<(String, HashSet<String>, Option<String>), WheelInstallerError> {
+fn parse_dep_extra(dep_spec: &str) -> Result<(String, HashSet<String>, Option<String>), Error> {
     let re =
         Regex::new(r"(?P<name>[\w\d_-]+)(?:\[(?P<extras>.*)])? ?(?:\((?P<version>.+)\))?").unwrap();
     let captures = re.captures(dep_spec).ok_or_else(|| {
-        WheelInstallerError::InvalidWheel(format!(
+        Error::InvalidWheel(format!(
             "Invalid dependency specification in poetry.lock: {}",
             dep_spec
         ))
@@ -300,7 +298,7 @@ pub fn read_poetry_specs(
             // Check the extras selected on the current dep activate the transitive dependency
             let (_new_dep_version, new_dep_extras) = match new_dep
                 .get_version_and_extras(pep508_env, &self_extras)
-                .map_err(WheelInstallerError::InvalidPoetry)?
+                .map_err(Error::InvalidPoetry)?
             {
                 None => continue,
                 Some((version, new_dep_extras)) => (version, new_dep_extras),

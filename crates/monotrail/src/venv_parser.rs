@@ -1,15 +1,15 @@
 //! Reads pyvenv.cfg
 
 use fs_err as fs;
-use install_wheel_rs::WheelInstallerError;
+use install_wheel_rs::Error;
 use std::collections::HashMap;
 use std::path::Path;
 
 /// Parse pyvenv.cfg from the root of the virtualenv and returns the python major and minor version
-pub fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerError> {
+pub fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), Error> {
     let pyvenv_cfg = venv.join("pyvenv.cfg");
     if !pyvenv_cfg.is_file() {
-        return Err(WheelInstallerError::BrokenVenv(format!(
+        return Err(Error::BrokenVenv(format!(
             "The virtual environment needs to have a pyvenv.cfg, but {} doesn't exist",
             pyvenv_cfg.display(),
         )));
@@ -18,7 +18,7 @@ pub fn get_venv_python_version(venv: &Path) -> Result<(u8, u8), WheelInstallerEr
 }
 
 /// Parse pyvenv.cfg from the root of the virtualenv and returns the python major and minor version
-pub fn get_pyvenv_cfg_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), WheelInstallerError> {
+pub fn get_pyvenv_cfg_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), Error> {
     let pyvenv_cfg: HashMap<String, String> = pyvenv_cfg
         .lines()
         // Actual pyvenv.cfg doesn't have trailing newlines, but some program might insert some
@@ -26,30 +26,24 @@ pub fn get_pyvenv_cfg_python_version(pyvenv_cfg: &str) -> Result<(u8, u8), Wheel
         .map(|line| {
             line.split_once(" = ")
                 .map(|(key, value)| (key.to_string(), value.to_string()))
-                .ok_or_else(|| WheelInstallerError::BrokenVenv("Invalid pyvenv.cfg".to_string()))
+                .ok_or_else(|| Error::BrokenVenv("Invalid pyvenv.cfg".to_string()))
         })
-        .collect::<Result<HashMap<String, String>, WheelInstallerError>>()?;
+        .collect::<Result<HashMap<String, String>, Error>>()?;
 
-    let version_info = pyvenv_cfg.get("version_info").ok_or_else(|| {
-        WheelInstallerError::BrokenVenv("Missing version_info in pyvenv.cfg".to_string())
-    })?;
+    let version_info = pyvenv_cfg
+        .get("version_info")
+        .ok_or_else(|| Error::BrokenVenv("Missing version_info in pyvenv.cfg".to_string()))?;
     let python_version: (u8, u8) = match &version_info.split('.').collect::<Vec<_>>()[..] {
         [major, minor, ..] => (
             major.parse().map_err(|err| {
-                WheelInstallerError::BrokenVenv(format!(
-                    "Invalid major version_info in pyvenv.cfg: {}",
-                    err
-                ))
+                Error::BrokenVenv(format!("Invalid major version_info in pyvenv.cfg: {}", err))
             })?,
             minor.parse().map_err(|err| {
-                WheelInstallerError::BrokenVenv(format!(
-                    "Invalid minor version_info in pyvenv.cfg: {}",
-                    err
-                ))
+                Error::BrokenVenv(format!("Invalid minor version_info in pyvenv.cfg: {}", err))
             })?,
         ),
         _ => {
-            return Err(WheelInstallerError::BrokenVenv(
+            return Err(Error::BrokenVenv(
                 "Invalid version_info in pyvenv.cfg".to_string(),
             ))
         }

@@ -1,16 +1,15 @@
 use crate::cli::{run_cli, Cli};
-use anyhow::Context;
 use fs_err as fs;
 use fs_err::DirEntry;
-use install_wheel_rs::WheelInstallerError;
+use install_wheel_rs::Error;
 #[cfg(test)]
 use mockito::{Mock, ServerGuard};
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Returns all subdirs in a directory
-pub fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
-    let read_dir = fs::read_dir(Path::new(&dir)).context("Failed to read package directory")?;
+/// Return all subdirs in a directory
+pub fn get_dir_content(dir: &Path) -> io::Result<Vec<DirEntry>> {
+    let read_dir = fs::read_dir(Path::new(&dir))?;
     Ok(read_dir
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.path().is_dir())
@@ -18,10 +17,10 @@ pub fn get_dir_content(dir: &Path) -> anyhow::Result<Vec<DirEntry>> {
 }
 
 /// `~/.cache/monotrail`
-pub(crate) fn cache_dir() -> Result<PathBuf, WheelInstallerError> {
+pub(crate) fn cache_dir() -> Result<PathBuf, Error> {
     Ok(dirs::cache_dir()
         .ok_or_else(|| {
-            WheelInstallerError::IOError(io::Error::new(
+            Error::IO(io::Error::new(
                 io::ErrorKind::NotFound,
                 "System needs to have a cache dir",
             ))
@@ -30,10 +29,10 @@ pub(crate) fn cache_dir() -> Result<PathBuf, WheelInstallerError> {
 }
 
 /// `~/.local/share/monotrail`
-pub(crate) fn data_local_dir() -> Result<PathBuf, WheelInstallerError> {
+pub(crate) fn data_local_dir() -> Result<PathBuf, Error> {
     Ok(dirs::data_local_dir()
         .ok_or_else(|| {
-            WheelInstallerError::IOError(io::Error::new(
+            Error::IO(io::Error::new(
                 io::ErrorKind::NotFound,
                 "System needs to have a data dir",
             ))

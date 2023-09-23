@@ -1,11 +1,10 @@
 #![allow(clippy::format_push_string)] // I will not replace clear and infallible with fallible, io looking code
 
-use crate::{install_wheel, InstallLocation, LockedDir, WheelInstallerError};
+use crate::{install_wheel, Error, InstallLocation, LockedDir};
 use pyo3::create_exception;
 use pyo3::types::PyModule;
 use pyo3::{pyclass, pymethods, pymodule, PyErr, PyResult, Python};
 use std::env;
-use std::error::Error;
 use std::path::{Path, PathBuf};
 
 create_exception!(
@@ -14,11 +13,11 @@ create_exception!(
     pyo3::exceptions::PyException
 );
 
-impl From<WheelInstallerError> for PyErr {
-    fn from(err: WheelInstallerError) -> Self {
+impl From<Error> for PyErr {
+    fn from(err: Error) -> Self {
         let mut accumulator = format!("Failed to install wheels: {}", err);
 
-        let mut current_err: &dyn Error = &err;
+        let mut current_err: &dyn std::error::Error = &err;
         while let Some(cause) = current_err.source() {
             accumulator.push_str(&format!("\n  Caused by: {}", cause));
             current_err = cause;

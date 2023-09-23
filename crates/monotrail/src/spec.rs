@@ -2,7 +2,7 @@
 //! ([ResolvedSpec]).
 
 use crate::package_index::search_release;
-use install_wheel_rs::{normalize_name, WheelFilename, WheelInstallerError};
+use install_wheel_rs::{normalize_name, Error, WheelFilename};
 use regex::Regex;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -61,15 +61,12 @@ impl RequestedSpec {
     }
 
     /// Parses "package_name", "package_name==version" and "some/path/tqdm-4.62.3-py2.py3-none-any.whl"
-    pub fn from_requested(
-        requested: impl AsRef<str>,
-        extras: &[String],
-    ) -> Result<Self, WheelInstallerError> {
+    pub fn from_requested(requested: impl AsRef<str>, extras: &[String]) -> Result<Self, Error> {
         if requested.as_ref().ends_with(".whl") {
             let file_path = PathBuf::from(requested.as_ref());
             let filename = file_path
                 .file_name()
-                .ok_or_else(|| WheelInstallerError::InvalidWheel("Expected a file".to_string()))?
+                .ok_or_else(|| Error::InvalidWheel("Expected a file".to_string()))?
                 .to_string_lossy();
             let metadata = WheelFilename::from_str(&filename)?;
             Ok(Self {
@@ -105,7 +102,7 @@ impl RequestedSpec {
                     url: None,
                 })
             } else {
-                Err(WheelInstallerError::Pep440)
+                Err(Error::Pep440)
             }
         }
     }

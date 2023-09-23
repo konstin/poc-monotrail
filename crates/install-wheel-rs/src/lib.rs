@@ -20,12 +20,12 @@ mod wheel;
 mod wheel_tags;
 
 #[derive(Error, Debug)]
-pub enum WheelInstallerError {
+pub enum Error {
     #[error(transparent)]
-    IOError(#[from] io::Error),
+    IO(#[from] io::Error),
     /// This shouldn't actually be possible to occur
     #[error("Failed to serialize direct_url.json ಠ_ಠ")]
-    DirectUrlSerdeJsonError(#[source] serde_json::Error),
+    DirectUrlSerdeJson(#[source] serde_json::Error),
     /// Tags/metadata didn't match platform
     #[error("The wheel is incompatible with the current platform {os} {arch}")]
     IncompatibleWheel { os: Os, arch: Arch },
@@ -40,23 +40,23 @@ pub enum WheelInstallerError {
     InvalidWheelFileName(String, String),
     /// The wheel is broken, but in python pkginfo
     #[error("The wheel is broken")]
-    PkgInfoError(#[from] python_pkginfo::Error),
+    PkgInfo(#[from] python_pkginfo::Error),
     #[error("Failed to read the wheel file {0}")]
-    ZipError(String, #[source] ZipError),
+    Zip(String, #[source] ZipError),
     #[error("Failed to run python subcommand")]
-    PythonSubcommandError(#[source] io::Error),
+    PythonSubcommand(#[source] io::Error),
     #[error("Failed to move data files")]
-    WalkDirError(#[source] walkdir::Error),
+    WalkDir(#[from] walkdir::Error),
     #[error("RECORD file doesn't match wheel contents: {0}")]
-    RecordFileError(String),
+    RecordFile(String),
     #[error("RECORD file is invalid")]
-    RecordCsvError(#[from] csv::Error),
+    RecordCsv(#[from] csv::Error),
     #[error("Broken virtualenv: {0}")]
     BrokenVenv(String),
     #[error("Failed to detect the operating system version: {0}")]
-    OsVersionDetectionError(String),
+    OsVersionDetection(String),
     #[error("Failed to detect the current platform")]
-    PlatformInfoError(#[source] PlatformInfoError),
+    PlatformInfo(#[source] PlatformInfoError),
     #[error("Invalid version specification, only none or == is supported")]
     Pep440,
 }
@@ -70,7 +70,7 @@ pub fn install_wheel_in_venv(
     interpreter: &Path,
     major: u8,
     minor: u8,
-) -> Result<String, WheelInstallerError> {
+) -> Result<String, Error> {
     let venv_base = venv.canonicalize()?;
     let install_location = InstallLocation::Venv {
         venv_base,
