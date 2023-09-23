@@ -57,8 +57,8 @@ struct DirectUrl {
 
 /// A script from pyproject.toml
 #[cfg(feature = "python_bindings")]
-#[pyo3::pyclass(dict)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[pyo3::pyclass(dict)]
 pub struct Script {
     #[pyo3(get)]
     pub script_name: String,
@@ -1089,20 +1089,21 @@ pub fn install_wheel(
 
     debug!(name = name.as_str(), "Getting wheel metadata");
     let dist = python_pkginfo::Distribution::new(&wheel_path)?;
-    let escaped_name = Regex::new(r"[^\w\d.]+")
+    // The metadata may be uppercase, while the wheel and dist info names are lowercase
+    let metadata_name = Regex::new(r"[^\w\d.]+")
         .unwrap()
         .replace_all(&dist.metadata().name, "_")
         .to_string();
-    if escaped_name.to_lowercase() != name.to_lowercase() {
+    if metadata_name.to_lowercase() != name.to_lowercase() {
         return Err(Error::InvalidWheel(format!(
             "Inconsistent package name: {} (wheel metadata, from {}) vs {} (filename)",
-            escaped_name.to_lowercase(),
+            metadata_name.to_lowercase(),
             dist.metadata().name,
             name
         )));
     }
     let version = &dist.metadata().version;
-    let dist_info_dir = format!("{}-{}.dist-info", escaped_name, version);
+    let dist_info_dir = format!("{}-{}.dist-info", name, version);
 
     debug!(name = name.as_str(), "Opening zip");
     let mut archive = ZipArchive::new(File::open(&wheel_path)?)
@@ -1144,7 +1145,7 @@ pub fn install_wheel(
     write_script_entrypoints(&site_packages, &location, &console_scripts, &mut record)?;
     write_script_entrypoints(&site_packages, &location, &gui_scripts, &mut record)?;
 
-    let data_dir = site_packages.join(format!("{}-{}.data", escaped_name, version));
+    let data_dir = site_packages.join(format!("{}-{}.data", name, version));
     // 2.a Unpacked archive includes distribution-1.0.dist-info/ and (if there is data) distribution-1.0.data/.
     // 2.b Move each subtree of distribution-1.0.data/ onto its destination path. Each subdirectory of distribution-1.0.data/ is a key into a dict of destination directories, such as distribution-1.0.data/(purelib|platlib|headers|scripts|data). The initially supported paths are taken from distutils.command.install.
     if data_dir.is_dir() {
