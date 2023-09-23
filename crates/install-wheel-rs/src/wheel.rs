@@ -567,7 +567,7 @@ fn bytecode_compile(
         // lossy because we want the error reporting to survive c̴̞̏ü̸̜̹̈́ŕ̴͉̈ś̷̤ė̵̤͋d̷͙̄ filenames in the zip
         return Err(Error::PythonSubcommand(io::Error::new(
             io::ErrorKind::Other,
-            format!("Failed to run python compileall, log above: {}", status,),
+            format!("Failed to run python compileall, log above: {}", status),
         )));
     }
 
@@ -1089,7 +1089,6 @@ pub fn install_wheel(
 
     debug!(name = name.as_str(), "Getting wheel metadata");
     let dist = python_pkginfo::Distribution::new(&wheel_path)?;
-    // The metadata may be uppercase, while the wheel and dist info names are lowercase
     let metadata_name = Regex::new(r"[^\w\d.]+")
         .unwrap()
         .replace_all(&dist.metadata().name, "_")
@@ -1103,14 +1102,24 @@ pub fn install_wheel(
         )));
     }
     let version = &dist.metadata().version;
-    let dist_info_dir = format!("{}-{}.dist-info", name, version);
 
     debug!(name = name.as_str(), "Opening zip");
     let mut archive = ZipArchive::new(File::open(&wheel_path)?)
         .map_err(|err| Error::Zip(wheel_path.to_string_lossy().to_string(), err))?;
 
     debug!(name = name.as_str(), "Reading RECORD and WHEEL");
+    // The metadata name may be uppercase, while the wheel and dist info names are lowercase, or
+    // the metadata name and the dist info name are lowercase, while the wheel name is uppercase
+    let dist_info_dir = if archive
+        .by_name(&format!("{}-{}.dist-info/RECORD", name, version))
+        .is_err_and(|err| matches!(err, ZipError::FileNotFound))
+    {
+        format!("{}-{}.dist-info", name, version)
+    } else {
+        format!("{}-{}.dist-info", metadata_name, version)
+    };
     let record_path = format!("{}/RECORD", dist_info_dir);
+
     let mut record = read_record_file(
         &mut archive
             .by_name(&record_path)
