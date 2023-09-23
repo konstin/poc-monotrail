@@ -8,7 +8,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use tracing::{error, warn};
 
-const MONOTRAIL_LOCKFILE: &str = "monotrail.lock";
+const INSTALL_LOCKFILE: &str = "install-wheel-rs.lock";
 
 /// I'm not sure that's the right way to normalize here, but it's a single place to change
 /// everything.
@@ -20,18 +20,18 @@ pub fn normalize_name(dep_name: &str) -> String {
     dep_name.to_lowercase().replace(['.', '_'], "-")
 }
 
-/// A directory for which we acquired a monotrail.lock lockfile
+/// A directory for which we acquired a install-wheel-rs.lock lockfile
 pub struct LockedDir {
     /// The directory to lock
     path: PathBuf,
-    /// handle on the monotrail.lock that drops the lock
+    /// handle on the install-wheel-rs.lock that drops the lock
     lockfile: File,
 }
 
 impl LockedDir {
     /// Tries to lock the directory, returns Ok(None) if it is already locked
     pub fn try_acquire(path: &Path) -> io::Result<Option<Self>> {
-        let lockfile = File::create(path.join(MONOTRAIL_LOCKFILE))?;
+        let lockfile = File::create(path.join(INSTALL_LOCKFILE))?;
         if lockfile.file().try_lock_exclusive().is_ok() {
             Ok(Some(Self {
                 path: path.to_path_buf(),
@@ -44,7 +44,7 @@ impl LockedDir {
 
     /// Locks the directory, if necessary blocking until the lock becomes free
     pub fn acquire(path: &Path) -> io::Result<Self> {
-        let lockfile = File::create(path.join(MONOTRAIL_LOCKFILE))?;
+        let lockfile = File::create(path.join(INSTALL_LOCKFILE))?;
         lockfile.file().lock_exclusive()?;
         Ok(Self {
             path: path.to_path_buf(),
