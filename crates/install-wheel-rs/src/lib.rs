@@ -4,6 +4,7 @@
 pub use install_location::{normalize_name, InstallLocation, LockedDir};
 use platform_info::PlatformInfoError;
 use std::io;
+use std::path::Path;
 use thiserror::Error;
 pub use wheel::{
     get_script_launcher, install_wheel, parse_key_value_file, read_record_file, relative_to,
@@ -58,4 +59,30 @@ pub enum WheelInstallerError {
     PlatformInfoError(#[source] PlatformInfoError),
     #[error("Invalid version specification, only none or == is supported")]
     Pep440,
+}
+
+/// High level API: Install a wheel in a virtualenv
+///
+/// Returns the tag of the wheel
+pub fn install_wheel_in_venv(
+    wheel_path: &Path,
+    venv: &Path,
+    interpreter: &Path,
+    major: u8,
+    minor: u8,
+) -> Result<String, WheelInstallerError> {
+    let install_location = InstallLocation::Venv {
+        venv_base: venv.to_path_buf(),
+        python_version: (major, minor),
+    };
+    let locked_dir = install_location.acquire_lock()?;
+    install_wheel(
+        &locked_dir,
+        wheel_path,
+        false,
+        &[],
+        // Only relevant for monotrail style installation
+        "",
+        interpreter,
+    )
 }
