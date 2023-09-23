@@ -16,9 +16,9 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
     let (args, python_version) = determine_python_version(&args, python_version)?;
     let (python_context, python_home) = provision_python(python_version)?;
 
-    let pyproject_toml = include_str!("../../resources/poetry_boostrap_lock/pyproject.toml");
+    let pyproject_toml = include_str!("../../../../resources/poetry_boostrap_lock/pyproject.toml");
     let poetry_toml: PoetryPyprojectToml = toml::from_str(pyproject_toml).unwrap();
-    let lockfile = include_str!("../../resources/poetry_boostrap_lock/poetry.lock");
+    let lockfile = include_str!("../../../../resources/poetry_boostrap_lock/poetry.lock");
     let poetry_lock = PoetryLock::from_str(lockfile).unwrap();
 
     let poetry_section = poetry_toml.tool.unwrap().poetry.unwrap();

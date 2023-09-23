@@ -7,11 +7,7 @@ use tracing::log::Level;
 //  See https://github.com/yoshuawuyts/logtest/blob/a6da0057fb52ec702e89eadf4689e3a56a97099b/src/lib.rs#L12-L16
 #[test]
 fn test_empty_requirements_file() {
-    let working_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("test-data")
-        .join("requirements-txt");
+    let working_dir = Path::new("../../test-data").join("requirements-txt");
     let path = working_dir.join("empty.txt");
 
     let logger = Logger::start();

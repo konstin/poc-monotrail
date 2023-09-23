@@ -239,7 +239,7 @@ mod test {
         );
 
         let (specs, _, _) = poetry_spec_from_dir(
-            Path::new("resources/poetry_boostrap_lock"),
+            Path::new("../../resources/poetry_boostrap_lock"),
             &[],
             &pep508_env,
         )
@@ -253,7 +253,8 @@ mod test {
 
     #[test]
     fn test_manylinux_url() {
-        let (server, _mock) = zstd_json_mock("/pypi/cffi/json", "test-data/pypi/cffi.json.zstd");
+        let (server, _mock) =
+            zstd_json_mock("/pypi/cffi/json", "../../test-data/pypi/cffi.json.zstd");
         assert_eq!(
             manylinux_url(&server.url(), "cffi").unwrap().location,
             FileOrUrl::Url {

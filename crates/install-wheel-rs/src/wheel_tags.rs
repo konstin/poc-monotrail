@@ -790,7 +790,7 @@ mod test {
     }
 
     fn get_ubuntu_20_04_tags() -> Vec<String> {
-        serde_json::from_reader(File::open("../test-data/tags/cp38-ubuntu-20-04.json").unwrap())
+        serde_json::from_reader(File::open("../../test-data/tags/cp38-ubuntu-20-04.json").unwrap())
             .unwrap()
     }
 

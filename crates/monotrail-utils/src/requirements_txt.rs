@@ -468,7 +468,7 @@ mod test {
     use crate::requirements_txt::RequirementsTxt;
     use fs_err as fs;
     use indoc::indoc;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -589,9 +589,6 @@ mod test {
     }
 
     fn workspace_test_data_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("test-data")
+        PathBuf::from("../../test-data")
     }
 }

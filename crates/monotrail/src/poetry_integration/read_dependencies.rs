@@ -523,8 +523,8 @@ mod test {
 
     #[test]
     fn test_read_poetry_specs() {
-        let mst = Path::new("test-data/poetry/mst");
-        let data_science = Path::new("test-data/poetry/data-science");
+        let mst = Path::new("../../test-data/poetry/mst");
+        let data_science = Path::new("../../test-data/poetry/data-science");
 
         let expected = [
             (mst, true, vec![], 95),
@@ -572,7 +572,7 @@ mod test {
             optional = false
         "#};
 
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = Path::new("../../test-data").join("requirements-txt");
         let path = working_dir.join("for-poetry.txt");
         let reqs = read_requirements_for_poetry(&path, &working_dir).unwrap();
         let poetry_toml = toml::to_string(&reqs).unwrap();
@@ -582,7 +582,7 @@ mod test {
     #[test]
     fn test_outdated_lockfile() {
         let err = poetry_spec_from_dir(
-            Path::new("test-data/lockfile-outdated"),
+            Path::new("../../test-data/lockfile-outdated"),
             &[],
             &test_pep508_env(),
         )

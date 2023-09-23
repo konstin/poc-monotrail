@@ -26,9 +26,9 @@ use zip::{ZipArchive, ZipWriter};
 
 pub const MONOTRAIL_SCRIPT_SHEBANG: &str = "#!/usr/bin/env python";
 
-pub const LAUNCHER_T32: &[u8] = include_bytes!("../../resources/t32.exe");
-pub const LAUNCHER_T64: &[u8] = include_bytes!("../../resources/t64.exe");
-pub const LAUNCHER_T64_ARM: &[u8] = include_bytes!("../../resources/t64-arm.exe");
+pub const LAUNCHER_T32: &[u8] = include_bytes!("../../../resources/t32.exe");
+pub const LAUNCHER_T64: &[u8] = include_bytes!("../../../resources/t64.exe");
+pub const LAUNCHER_T64_ARM: &[u8] = include_bytes!("../../../resources/t64-arm.exe");
 
 /// Line in a RECORD file
 /// <https://www.python.org/dev/peps/pep-0376/#record>
@@ -298,7 +298,7 @@ fn unpack_wheel_files(
         // > 7. RECORD.p7s is allowed as a courtesy to anyone who would prefer to use S/MIME
         // >    signatures to secure their wheel files. It is not mentioned in RECORD.
         let record_path = PathBuf::from(&record_path);
-        if vec![
+        if [
             record_path.clone(),
             record_path.with_extension("jws"),
             record_path.with_extension("p7s"),
@@ -353,7 +353,7 @@ fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
         let path = location.get_python().display().to_string();
         let path = if cfg!(windows) {
             // https://stackoverflow.com/a/50323079
-            const VERBATIM_PREFIX: &str = r#"\\?\"#;
+            const VERBATIM_PREFIX: &str = r"\\?\";
             if let Some(stripped) = path.strip_prefix(VERBATIM_PREFIX) {
                 stripped.to_string()
             } else {
@@ -1273,7 +1273,7 @@ mod test {
     #[test]
     fn installed_paths_relative() {
         println!("{}", std::env::current_dir().unwrap().display());
-        let wheel = Path::new("../test-data/wheels/colander-0.9.9-py2.py3-none-any.whl");
+        let wheel = Path::new("../../test-data/wheels/colander-0.9.9-py2.py3-none-any.whl");
         let temp_dir = TempDir::new().unwrap();
         // TODO: Would be nicer to pick the default python here, but i don't want to launch a
         //  subprocess

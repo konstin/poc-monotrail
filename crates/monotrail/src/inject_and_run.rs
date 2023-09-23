@@ -272,7 +272,7 @@ pub fn inject_and_run_python(
         // I again wish i knew how to just invoke pyo3 to get this done.
         let command_str = format!(
             "{}\n{}\n{}\n{}\n{}\nmaybe_debug()\n",
-            include_str!("../python/monotrail/_monotrail_finder.py"),
+            include_str!("../../../python/monotrail/_monotrail_finder.py"),
             include_str!("convert_finder_data.py"),
             // TODO: actual encoding strings
             // This just hopefully works because json uses double quotes so there shouldn't

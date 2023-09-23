@@ -206,8 +206,10 @@ pub struct HashedFile {
 mod test {
     use crate::poetry_integration::poetry_lock::PoetryLock;
     use std::fs;
+    use std::path::Path;
 
     fn get_filenames(filename: &str, package: &str) -> usize {
+        let filename = Path::new("../../test-data").join(filename);
         PoetryLock::from_str(&fs::read_to_string(filename).unwrap())
             .unwrap()
             .get_filenames(package)
@@ -217,25 +219,16 @@ mod test {
 
     #[test]
     fn filenames_1_1_13() {
-        assert_eq!(
-            get_filenames("test-data/poetry-1.1.13/poetry.lock", "certifi"),
-            2
-        );
+        assert_eq!(get_filenames("poetry-1.1.13/poetry.lock", "certifi"), 2);
     }
 
     #[test]
     fn filenames_1_2_0b1() {
-        assert_eq!(
-            get_filenames("test-data/poetry-1.2.0b1/poetry.lock", "certifi"),
-            2
-        );
+        assert_eq!(get_filenames("poetry-1.2.0b1/poetry.lock", "certifi"), 2);
     }
 
     #[test]
     fn poetry_1_3() {
-        assert_eq!(
-            get_filenames("test-data/poetry-1.3-django/poetry.lock", "django"),
-            2
-        );
+        assert_eq!(get_filenames("poetry-1.3-django/poetry.lock", "django"), 2);
     }
 }

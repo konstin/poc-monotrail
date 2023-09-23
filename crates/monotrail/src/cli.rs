@@ -563,7 +563,7 @@ pub fn find_venv(venv: Option<&Path>) -> anyhow::Result<PathBuf> {
         let activation_command = if cfg!(target_family = "unix") {
             " and activate it using `source .venv/bin/activate`".to_string()
         } else if cfg!(target_family = "windows") {
-            r#" and activate it using `.venv\Scripts\Activate.ps1`"#.to_string()
+            r" and activate it using `.venv\Scripts\Activate.ps1`".to_string()
         } else {
             format!(
                 ". Please consult the documentation for {} on how to activate virtualenvs. ",
@@ -592,7 +592,7 @@ mod test {
         let temp_dir = TempDir::new()?;
         let venv = temp_dir.path().join(".venv");
         Command::new("virtualenv").arg(&venv).output()?;
-        let working_dir = Path::new("test-data").join("requirements-txt");
+        let working_dir = Path::new("../../test-data").join("requirements-txt");
         let small = working_dir.join("small.txt");
         install(
             &[small.to_str().unwrap().to_string()],

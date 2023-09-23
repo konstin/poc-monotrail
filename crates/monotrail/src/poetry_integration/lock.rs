@@ -109,11 +109,11 @@ pub fn poetry_resolve_from_dir(
     fs::create_dir_all(&poetry_boostrap_lock)?;
     fs::write(
         poetry_boostrap_lock.join("poetry.lock"),
-        include_str!("../../resources/poetry_boostrap_lock/poetry.lock"),
+        include_str!("../../../../resources/poetry_boostrap_lock/poetry.lock"),
     )?;
     fs::write(
         poetry_boostrap_lock.join("pyproject.toml"),
-        include_str!("../../resources/poetry_boostrap_lock/pyproject.toml"),
+        include_str!("../../../../resources/poetry_boostrap_lock/pyproject.toml"),
     )?;
 
     let (poetry_section, poetry_lock, _lockfile) = read_toml_files(&poetry_boostrap_lock)

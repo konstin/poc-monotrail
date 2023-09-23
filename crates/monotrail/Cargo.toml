@@ -1,0 +1,61 @@
+[package]
+name = "monotrail"
+version = "0.1.0"
+description = "This proof of concept shows how to use python packages without virtualenvs"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+name = "monotrail"
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+clap = { version = "4.4.4", features = ["derive"] }
+cpufeatures = "0.2.9"
+dirs = "5.0.1"
+fs-err = { workspace = true }
+fs2 = { workspace = true }
+git2 = "0.18.1"
+indicatif = "0.17.7"
+install-wheel-rs = { version = "0.0.3", path = "../install-wheel-rs" }
+libc = "0.2.148"
+libloading = "0.8.0"
+# For the zig build
+libz-sys = { version = "1.1.12", features = ["static"] }
+monotrail-utils = { version = "0.0.1", path = "../monotrail-utils" }
+nix = { version = "0.27.1", features = ["process"] }
+pep440_rs = "0.3.11"
+pep508_rs = { workspace = true, features = ["serde"] }
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py37"], optional = true }
+rayon = "1.8.0"
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tar = "0.4.40"
+target-lexicon = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+unscanny = { workspace = true }
+ureq = { version = "2.7.1", features = ["json"] }
+walkdir = { workspace = true }
+widestring = "1.0.2"
+zstd = "0.12.4"
+
+[dev-dependencies]
+indoc = { workspace = true }
+logtest = { workspace = true }
+mockito = { workspace = true }
+tempfile = { workspace = true }
+which = { workspace = true }
+
+[features]
+default = ["vendored"]
+python_bindings = ["pyo3", "install-wheel-rs/python_bindings"]
+vendored = ["git2/vendored-openssl", "git2/vendored-libgit2"]
+
+

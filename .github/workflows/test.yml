@@ -52,7 +52,7 @@ jobs:
           python-version: '3.x'
       # TODO: Put ruff in pyproject.toml dev dependencies and use lockfile version
       # or ruff github action
-      - run: pipx run ruff==0.0.264 .
+      - run: pipx run ruff==0.0.291 .
 
   test-cargo:
     name: Test Cargo
