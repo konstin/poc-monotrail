@@ -3,6 +3,7 @@
 use crate::Error;
 use fs_err as fs;
 use goblin::elf::Elf;
+use once_cell::sync::Lazy;
 use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
 use regex::Regex;
 use serde::Deserialize;
@@ -200,7 +201,9 @@ impl Os {
                     Error::OsVersionDetection("Expected the glibc ld to be a file".to_string())
                 })?
                 .to_string_lossy();
-            let expr = Regex::new(r"ld-(\d{1,3})\.(\d{1,3})\.so").unwrap();
+            #[allow(non_upper_case_globals)]
+            static expr: Lazy<Regex> =
+                Lazy::new(|| Regex::new(r"ld-(\d{1,3})\.(\d{1,3})\.so").unwrap());
 
             if let Some(capture) = expr.captures(&filename) {
                 let major = capture.get(1).unwrap().as_str().parse::<u16>().unwrap();
@@ -457,7 +460,9 @@ pub fn get_musl_version(ld_path: impl AsRef<Path>) -> std::io::Result<Option<(u1
         .stderr(Stdio::piped())
         .output()?;
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let expr = Regex::new(r"Version (\d{2,4})\.(\d{2,4})").unwrap();
+
+    #[allow(non_upper_case_globals)]
+    static expr: Lazy<Regex> = Lazy::new(|| Regex::new(r"Version (\d{2,4})\.(\d{2,4})").unwrap());
     if let Some(capture) = expr.captures(&stderr) {
         let major = capture.get(1).unwrap().as_str().parse::<u16>().unwrap();
         let minor = capture.get(2).unwrap().as_str().parse::<u16>().unwrap();

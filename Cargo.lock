@@ -869,6 +869,7 @@ dependencies = [
  "glibc_version",
  "goblin",
  "indoc 2.0.4",
+ "once_cell",
  "platform-info",
  "plist",
  "pyo3",
