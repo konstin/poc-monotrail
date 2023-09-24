@@ -1,6 +1,6 @@
 [package]
 name = "install-wheel-rs"
-version = "0.0.3"
+version = "0.0.1"
 edition = "2021"
 description = "Takes a wheel and installs it, either in a venv or for monotrail"
 

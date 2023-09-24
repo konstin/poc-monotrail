@@ -18,7 +18,7 @@ fs-err = { workspace = true }
 fs2 = { workspace = true }
 git2 = "0.18.1"
 indicatif = "0.17.7"
-install-wheel-rs = { version = "0.0.3", path = "../install-wheel-rs" }
+install-wheel-rs = { version = "0.0.1", path = "../install-wheel-rs" }
 libc = "0.2.148"
 libloading = "0.8.0"
 # For the zig build
