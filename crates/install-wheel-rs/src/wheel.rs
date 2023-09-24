@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
-use std::io::{BufRead, BufReader, BufWriter, Cursor, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Cursor, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::str::FromStr;
@@ -163,8 +163,8 @@ fn read_scripts_from_section(
 /// Returns (script_name, module, function)
 ///
 /// Extras are supposed to be ignored, which happens if you pass None for extras
-fn parse_scripts(
-    archive: &mut ZipArchive<File>,
+fn parse_scripts<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
     dist_info_dir: &str,
     extras: Option<&[String]>,
 ) -> Result<(Vec<Script>, Vec<Script>), Error> {
@@ -236,10 +236,10 @@ pub fn copy_and_hash(reader: &mut impl Read, writer: &mut impl Write) -> io::Res
 /// Matches with the RECORD entries
 ///
 /// Returns paths relative to site packages
-fn unpack_wheel_files(
+fn unpack_wheel_files<R: Read + Seek>(
     site_packages: &Path,
     record_path: &str,
-    archive: &mut ZipArchive<File>,
+    archive: &mut ZipArchive<R>,
     record: &[RecordEntry],
     check_hashes: bool,
 ) -> Result<Vec<PathBuf>, Error> {
@@ -1013,12 +1013,14 @@ pub fn parse_key_value_file(
 
 /// Install the given wheel to the given venv
 ///
+/// The caller must ensure that the wheel is compatible to the environment.
+///
 /// <https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl>
 ///
 /// Wheel 1.0: <https://www.python.org/dev/peps/pep-0427/>
 pub fn install_wheel(
     location: &InstallLocation<LockedDir>,
-    wheel_path: &Path,
+    wheel: &Path,
     compile: bool,
     // initially used to the console scripts, currently unused. Keeping it because we likely need
     // it for validation later
@@ -1028,7 +1030,7 @@ pub fn install_wheel(
 ) -> Result<String, Error> {
     // TODO: A valid metadata parse should be given to this function, at least in two cases
     // we have already done it anyway earlier. Neither should we have to return the tag
-    let filename = wheel_path
+    let filename = wheel
         .file_name()
         .ok_or_else(|| Error::InvalidWheel("Expected a file".to_string()))?
         .to_string_lossy();
@@ -1039,8 +1041,8 @@ pub fn install_wheel(
     let compatible_tags = CompatibleTags::current(location.get_python_version())?;
     if filename.compatibility(&compatible_tags).is_none() {
         return Err(Error::IncompatibleWheel {
-            os: compatible_tags.os,
-            arch: compatible_tags.arch,
+            os: compatible_tags.os.clone(),
+            arch: compatible_tags.arch.clone(),
         });
     }
 
@@ -1089,7 +1091,7 @@ pub fn install_wheel(
     };
 
     debug!(name = name.as_str(), "Getting wheel metadata");
-    let dist = python_pkginfo::Distribution::new(&wheel_path)?;
+    let dist = python_pkginfo::Distribution::new(&wheel)?;
     let metadata_name = Regex::new(r"[^\w\d.]+")
         .unwrap()
         .replace_all(&dist.metadata().name, "_")
@@ -1105,8 +1107,9 @@ pub fn install_wheel(
     let version = &dist.metadata().version;
 
     debug!(name = name.as_str(), "Opening zip");
-    let mut archive = ZipArchive::new(File::open(&wheel_path)?)
-        .map_err(|err| Error::Zip(wheel_path.to_string_lossy().to_string(), err))?;
+    // No BufReader: https://github.com/zip-rs/zip/issues/381
+    let mut archive = ZipArchive::new(File::open(&wheel)?)
+        .map_err(|err| Error::Zip(wheel.to_string_lossy().to_string(), err))?;
 
     debug!(name = name.as_str(), "Reading RECORD and WHEEL");
     // The metadata name may be uppercase, while the wheel and dist info names are lowercase, or
@@ -1198,7 +1201,7 @@ pub fn install_wheel(
     extra_dist_info(
         &site_packages,
         Path::new(&dist_info_dir),
-        wheel_path,
+        wheel,
         true,
         &mut record,
     )?;

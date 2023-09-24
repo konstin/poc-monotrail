@@ -65,21 +65,22 @@ pub enum Error {
 ///
 /// Returns the tag of the wheel
 pub fn install_wheel_in_venv(
-    wheel_path: &Path,
+    wheel: &Path,
     venv: &Path,
     interpreter: &Path,
     major: u8,
     minor: u8,
 ) -> Result<String, Error> {
     let venv_base = venv.canonicalize()?;
-    let install_location = InstallLocation::Venv {
+    let location = InstallLocation::Venv {
         venv_base,
         python_version: (major, minor),
     };
-    let locked_dir = install_location.acquire_lock()?;
+    let locked_dir = location.acquire_lock()?;
+
     install_wheel(
         &locked_dir,
-        wheel_path,
+        wheel,
         false,
         &[],
         // Only relevant for monotrail style installation
