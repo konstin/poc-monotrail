@@ -15,7 +15,7 @@ use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use install_wheel_rs::{
-    compatible_tags, Arch, InstallLocation, Os, Script, MONOTRAIL_SCRIPT_SHEBANG,
+    Arch, CompatibleTags, InstallLocation, Os, Script, MONOTRAIL_SCRIPT_SHEBANG,
 };
 use pep508_rs::MarkerEnvironment;
 use serde::Serialize;
@@ -139,11 +139,11 @@ fn find_dep_file(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
 /// This filtering is only done here to avoid messing with split/unsplit tags later
 pub fn list_installed(
     root: &Path,
-    compatible_tags: Option<&[(String, String, String)]>,
+    compatible_tags: Option<&CompatibleTags>,
 ) -> anyhow::Result<Vec<(String, String, String)>> {
     // Behold my monstrous iterator
     // name -> version -> compatible tag
-    let mut compatible: Vec<(String, String, String)> = Vec::new();
+    let mut compatible = Vec::new();
     // No monotrail dir, no packages
     for name_dir in get_dir_content(root).unwrap_or_default() {
         for version_dir in get_dir_content(&name_dir.path())? {
@@ -188,7 +188,7 @@ pub fn list_installed(
 pub fn filter_installed_monotrail(
     specs: &[RequestedSpec],
     monotrail_root: &Path,
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     let compatible = list_installed(&monotrail_root, Some(compatible_tags))
         .context("Failed to collect installed packages")?;
@@ -254,7 +254,7 @@ pub fn install_missing(
     python_version: (u8, u8),
 ) -> anyhow::Result<(String, Vec<InstalledPackage>)> {
     let monotrail_root = monotrail_root()?;
-    let compatible_tags = compatible_tags(python_version, &Os::current()?, &Arch::current()?)?;
+    let compatible_tags = CompatibleTags::new(python_version, &Os::current()?, &Arch::current()?)?;
 
     // Lock install directory to prevent races between multiple monotrail processes. We need to
     // lock before determining which packages to install because another process might install

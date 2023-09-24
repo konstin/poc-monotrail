@@ -10,7 +10,7 @@ use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
-use install_wheel_rs::{normalize_name, Error, Script, WheelFilename};
+use install_wheel_rs::{normalize_name, CompatibleTags, Error, Script, WheelFilename};
 use monotrail_utils::RequirementsTxt;
 use pep508_rs::{MarkerEnvironment, VersionOrUrl};
 use regex::Regex;
@@ -33,7 +33,7 @@ const UNSAFE_DEPS: &[&str] = &["setuptools", "distribute", "pip", "wheel"];
 pub fn filename_and_url(
     lockfile: &PoetryLock,
     package: &poetry_lock::Package,
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
 ) -> anyhow::Result<(String, DistributionType, String)> {
     let hashed_files = lockfile
         .get_filenames(&package.name)

@@ -3,7 +3,7 @@
 use crate::spec::DistributionType;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
-use install_wheel_rs::{Error, WheelFilename};
+use install_wheel_rs::{CompatibleTags, Error, WheelFilename};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io;
@@ -45,7 +45,7 @@ pub enum PackageType {
 }
 
 fn matching_package_for_version(
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
     version: &str,
     pypi_releases: &[PypiRelease],
 ) -> Result<Option<(PypiRelease, DistributionType, String)>> {
@@ -92,7 +92,7 @@ pub fn search_release(
     host: &str,
     name: &str,
     version: Option<String>,
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
 ) -> Result<(PypiRelease, DistributionType, String)> {
     debug!("Getting Releases");
     let url = format!("{}/pypi/{}/json", host, name);

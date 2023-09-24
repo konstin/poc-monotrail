@@ -11,7 +11,7 @@ use fs_err::{DirEntry, File};
 use git2::{Direction, Repository};
 use indicatif::{ProgressBar, ProgressStyle};
 use install_wheel_rs::{
-    install_wheel, normalize_name, parse_key_value_file, InstallLocation, LockedDir,
+    install_wheel, normalize_name, parse_key_value_file, CompatibleTags, InstallLocation, LockedDir,
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
@@ -134,7 +134,7 @@ pub fn filter_installed_venv(
 pub fn filter_installed(
     location: &InstallLocation<impl Deref<Target = Path>>,
     specs: &[RequestedSpec],
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
 ) -> anyhow::Result<(Vec<RequestedSpec>, Vec<InstalledPackage>)> {
     match location {
         InstallLocation::Venv {
@@ -155,7 +155,7 @@ pub fn filter_installed(
 pub fn install_all(
     specs: &[RequestedSpec],
     location: &InstallLocation<LockedDir>,
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
     compile: bool,
     background: bool,
     no_parallel: bool,
@@ -355,7 +355,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
 fn download_and_install(
     requested_spec: &RequestedSpec,
     location: &InstallLocation<LockedDir>,
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
     compile: bool,
     sys_executable: &Path,
 ) -> anyhow::Result<(String, String, String)> {

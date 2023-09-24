@@ -2,7 +2,7 @@
 //! ([ResolvedSpec]).
 
 use crate::package_index::search_release;
-use install_wheel_rs::{normalize_name, Error, WheelFilename};
+use install_wheel_rs::{normalize_name, CompatibleTags, Error, WheelFilename};
 use regex::Regex;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -112,7 +112,7 @@ impl RequestedSpec {
     pub fn resolve(
         &self,
         host: &str,
-        compatible_tags: &[(String, String, String)],
+        compatible_tags: &CompatibleTags,
     ) -> anyhow::Result<ResolvedSpec> {
         if let Some(python_version) = self.python_version.clone() {
             if let Some((file_path, _filename)) = self.file_path.clone() {
@@ -207,7 +207,7 @@ mod test {
     use crate::poetry_integration::read_dependencies::poetry_spec_from_dir;
     use crate::spec::{FileOrUrl, ResolvedSpec};
     use crate::utils::zstd_json_mock;
-    use install_wheel_rs::{compatible_tags, Arch, Os};
+    use install_wheel_rs::{Arch, CompatibleTags, Os};
     use mockito::Server;
     use std::path::Path;
 
@@ -218,7 +218,7 @@ mod test {
         };
         let arch = Arch::X86_64;
         let python_version = (3, 7);
-        let compatible_tags = compatible_tags(python_version, &os, &arch).unwrap();
+        let compatible_tags = CompatibleTags::new(python_version, &os, &arch).unwrap();
         let pep508_env = marker_environment_from_json_str(
             r##"{
                 "implementation_name": "cpython", 

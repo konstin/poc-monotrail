@@ -10,7 +10,7 @@ pub use wheel::{
     get_script_launcher, install_wheel, parse_key_value_file, read_record_file, relative_to,
     Script, MONOTRAIL_SCRIPT_SHEBANG,
 };
-pub use wheel_tags::{compatible_tags, Arch, Os, WheelFilename};
+pub use wheel_tags::{Arch, CompatibleTags, Os, WheelFilename};
 use zip::result::ZipError;
 
 mod install_location;

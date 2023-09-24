@@ -1,7 +1,7 @@
 #![allow(clippy::needless_borrow)]
 
 use crate::install_location::{InstallLocation, LockedDir};
-use crate::wheel_tags::{compatible_tags, WheelFilename};
+use crate::wheel_tags::{CompatibleTags, WheelFilename};
 use crate::{normalize_name, Arch, Error, Os};
 use base64::Engine;
 use configparser::ini::Ini;
@@ -1038,7 +1038,7 @@ pub fn install_wheel(
 
     let os = Os::current()?;
     let arch = Arch::current()?;
-    let compatible_tags = compatible_tags(location.get_python_version(), &os, &arch)?;
+    let compatible_tags = CompatibleTags::new(location.get_python_version(), &os, &arch)?;
     if filename.compatibility(&compatible_tags).is_none() {
         return Err(Error::IncompatibleWheel { os, arch });
     }

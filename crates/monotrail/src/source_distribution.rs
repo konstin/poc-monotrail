@@ -3,7 +3,7 @@
 use crate::utils::cache_dir;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
-use install_wheel_rs::{Error, WheelFilename};
+use install_wheel_rs::{CompatibleTags, Error, WheelFilename};
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ pub fn build_source_distribution_to_wheel_cached(
     name: &str,
     version: &str,
     sdist: &Path,
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
 ) -> Result<PathBuf> {
     let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
 
@@ -48,7 +48,7 @@ pub fn build_to_wheel(
     sdist_or_dir: &Path,
     // needs to be passed in or the tempdir will be deleted to early
     build_dir: &Path,
-    compatible_tags: &[(String, String, String)],
+    compatible_tags: &CompatibleTags,
 ) -> Result<PathBuf> {
     let output = Command::new("pip")
         .current_dir(build_dir)

@@ -7,6 +7,7 @@ use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
 use regex::Regex;
 use serde::Deserialize;
 use std::fmt;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
@@ -51,7 +52,7 @@ impl WheelFilename {
     /// Returns Some(precedence) is the wheels are compatible, otherwise none
     ///
     /// Precedence is e.g. used to install newer manylinux wheels over older manylinux wheels
-    pub fn compatibility(&self, compatible_tags: &[(String, String, String)]) -> Option<usize> {
+    pub fn compatibility(&self, compatible_tags: &CompatibleTags) -> Option<usize> {
         compatible_tags
             .iter()
             .enumerate()
@@ -79,78 +80,87 @@ impl WheelFilename {
     }
 }
 
+/// List of wheel tags that define compatibility to the current platform
+pub struct CompatibleTags(pub Vec<(String, String, String)>);
+
+impl Deref for CompatibleTags {
+    type Target = [(String, String, String)];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 /// Returns the compatible tags in a (python_tag, abi_tag, platform_tag) format, ordered from
 /// highest precedence to lowest precedence
-pub fn compatible_tags(
-    python_version: (u8, u8),
-    os: &Os,
-    arch: &Arch,
-) -> Result<Vec<(String, String, String)>, Error> {
-    assert_eq!(python_version.0, 3);
-    let mut tags = Vec::new();
-    let platform_tags = compatible_platform_tags(os, arch)?;
-    // 1. This exact c api version
-    for platform_tag in &platform_tags {
-        tags.push((
-            format!("cp{}{}", python_version.0, python_version.1),
-            format!(
-                "cp{}{}{}",
-                python_version.0,
-                python_version.1,
-                // hacky but that's legacy anyways
-                if python_version.1 <= 7 { "m" } else { "" }
-            ),
-            platform_tag.clone(),
-        ));
-        tags.push((
-            format!("cp{}{}", python_version.0, python_version.1),
-            "none".to_string(),
-            platform_tag.clone(),
-        ));
-    }
-    // 2. abi3 and no abi (e.g. executable binary)
-    // For some reason 3.2 is the minimum python for the cp abi
-    for minor in 2..=python_version.1 {
+impl CompatibleTags {
+    pub fn new(python_version: (u8, u8), os: &Os, arch: &Arch) -> Result<CompatibleTags, Error> {
+        assert_eq!(python_version.0, 3);
+        let mut tags = Vec::new();
+        let platform_tags = compatible_platform_tags(os, arch)?;
+        // 1. This exact c api version
         for platform_tag in &platform_tags {
             tags.push((
-                format!("cp{}{}", python_version.0, minor),
-                "abi3".to_string(),
+                format!("cp{}{}", python_version.0, python_version.1),
+                format!(
+                    "cp{}{}{}",
+                    python_version.0,
+                    python_version.1,
+                    // hacky but that's legacy anyways
+                    if python_version.1 <= 7 { "m" } else { "" }
+                ),
                 platform_tag.clone(),
             ));
-        }
-    }
-    // 3. no abi (e.g. executable binary)
-    for minor in 0..=python_version.1 {
-        for platform_tag in &platform_tags {
             tags.push((
-                format!("py{}{}", python_version.0, minor),
+                format!("cp{}{}", python_version.0, python_version.1),
                 "none".to_string(),
                 platform_tag.clone(),
             ));
         }
-    }
-    // 4. major only
-    for platform_tag in platform_tags {
+        // 2. abi3 and no abi (e.g. executable binary)
+        // For some reason 3.2 is the minimum python for the cp abi
+        for minor in 2..=python_version.1 {
+            for platform_tag in &platform_tags {
+                tags.push((
+                    format!("cp{}{}", python_version.0, minor),
+                    "abi3".to_string(),
+                    platform_tag.clone(),
+                ));
+            }
+        }
+        // 3. no abi (e.g. executable binary)
+        for minor in 0..=python_version.1 {
+            for platform_tag in &platform_tags {
+                tags.push((
+                    format!("py{}{}", python_version.0, minor),
+                    "none".to_string(),
+                    platform_tag.clone(),
+                ));
+            }
+        }
+        // 4. major only
+        for platform_tag in platform_tags {
+            tags.push((
+                format!("py{}", python_version.0),
+                "none".to_string(),
+                platform_tag,
+            ));
+        }
+        // 5. no binary
+        for minor in 0..=python_version.1 {
+            tags.push((
+                format!("py{}{}", python_version.0, minor),
+                "none".to_string(),
+                "any".to_string(),
+            ));
+        }
         tags.push((
             format!("py{}", python_version.0),
             "none".to_string(),
-            platform_tag,
-        ));
-    }
-    // 5. no binary
-    for minor in 0..=python_version.1 {
-        tags.push((
-            format!("py{}{}", python_version.0, minor),
-            "none".to_string(),
             "any".to_string(),
         ));
+        Ok(CompatibleTags(tags))
     }
-    tags.push((
-        format!("py{}", python_version.0),
-        "none".to_string(),
-        "any".to_string(),
-    ));
-    Ok(tags)
 }
 
 /// All supported operating system
@@ -607,8 +617,8 @@ pub fn compatible_platform_tags(os: &Os, arch: &Arch) -> Result<Vec<String>, Err
 
 #[cfg(test)]
 mod test {
-    use super::{compatible_platform_tags, compatible_tags, WheelFilename};
-    use crate::{Arch, Error, Os};
+    use super::{compatible_platform_tags, WheelFilename};
+    use crate::{Arch, CompatibleTags, Error, Os};
     use fs_err::File;
     use std::str::FromStr;
 
@@ -736,7 +746,7 @@ mod test {
         ];
 
         for (filename, (python_version, os, arch)) in filenames {
-            let compatible_tags = compatible_tags(python_version, &os, &arch)?;
+            let compatible_tags = CompatibleTags::new(python_version, &os, &arch)?;
             assert!(
                 WheelFilename::from_str(filename)?
                     .compatibility(&compatible_tags)
@@ -751,7 +761,7 @@ mod test {
     /// Test that incompatible pairs don't pass is_compatible
     #[test]
     fn test_compatibility_filter() -> Result<(), Error> {
-        let compatible_tags = compatible_tags(
+        let compatible_tags = CompatibleTags::new(
             (3, 8),
             &Os::Manylinux {
                 major: 2,
@@ -790,7 +800,7 @@ mod test {
     fn ubuntu_20_04_compatible() -> Result<(), Error> {
         let tags = get_ubuntu_20_04_tags();
         for tag in tags {
-            let compatible_tags = compatible_tags(
+            let compatible_tags = CompatibleTags::new(
                 (3, 8),
                 &Os::Manylinux {
                     major: 2,
@@ -814,7 +824,7 @@ mod test {
     #[test]
     fn ubuntu_20_04_list() -> Result<(), Error> {
         let expected_tags = get_ubuntu_20_04_tags();
-        let actual_tags: Vec<String> = compatible_tags(
+        let actual_tags: Vec<String> = CompatibleTags::new(
             (3, 8),
             &Os::Manylinux {
                 major: 2,
@@ -833,7 +843,7 @@ mod test {
 
     #[test]
     fn test_precedence() {
-        let tags = compatible_tags(
+        let tags = CompatibleTags::new(
             (3, 8),
             &Os::Manylinux {
                 major: 2,
