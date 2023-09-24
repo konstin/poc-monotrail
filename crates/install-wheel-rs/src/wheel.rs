@@ -26,9 +26,9 @@ use zip::{ZipArchive, ZipWriter};
 
 pub const MONOTRAIL_SCRIPT_SHEBANG: &str = "#!/usr/bin/env python";
 
-pub const LAUNCHER_T32: &[u8] = include_bytes!("../../../resources/t32.exe");
-pub const LAUNCHER_T64: &[u8] = include_bytes!("../../../resources/t64.exe");
-pub const LAUNCHER_T64_ARM: &[u8] = include_bytes!("../../../resources/t64-arm.exe");
+pub const LAUNCHER_T32: &[u8] = include_bytes!("../windows-launcher/t32.exe");
+pub const LAUNCHER_T64: &[u8] = include_bytes!("../windows-launcher/t64.exe");
+pub const LAUNCHER_T64_ARM: &[u8] = include_bytes!("../windows-launcher/t64-arm.exe");
 
 /// Line in a RECORD file
 /// <https://www.python.org/dev/peps/pep-0376/#record>
