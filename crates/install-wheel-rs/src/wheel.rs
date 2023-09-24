@@ -2,7 +2,7 @@
 
 use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::{CompatibleTags, WheelFilename};
-use crate::{normalize_name, Arch, Error, Os};
+use crate::{normalize_name, Error};
 use base64::Engine;
 use configparser::ini::Ini;
 use fs_err as fs;
@@ -1036,11 +1036,12 @@ pub fn install_wheel(
     let name = &filename.distribution;
     let _my_span = span!(Level::DEBUG, "install_wheel", name = name.as_str());
 
-    let os = Os::current()?;
-    let arch = Arch::current()?;
-    let compatible_tags = CompatibleTags::new(location.get_python_version(), &os, &arch)?;
+    let compatible_tags = CompatibleTags::current(location.get_python_version())?;
     if filename.compatibility(&compatible_tags).is_none() {
-        return Err(Error::IncompatibleWheel { os, arch });
+        return Err(Error::IncompatibleWheel {
+            os: compatible_tags.os,
+            arch: compatible_tags.arch,
+        });
     }
 
     let (temp_dir_final_location, base_location) = match location {

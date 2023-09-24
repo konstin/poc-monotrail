@@ -14,9 +14,7 @@ use crate::utils::{cache_dir, get_dir_content};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
-use install_wheel_rs::{
-    Arch, CompatibleTags, InstallLocation, Os, Script, MONOTRAIL_SCRIPT_SHEBANG,
-};
+use install_wheel_rs::{CompatibleTags, InstallLocation, Script, MONOTRAIL_SCRIPT_SHEBANG};
 use pep508_rs::MarkerEnvironment;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
@@ -254,7 +252,7 @@ pub fn install_missing(
     python_version: (u8, u8),
 ) -> anyhow::Result<(String, Vec<InstalledPackage>)> {
     let monotrail_root = monotrail_root()?;
-    let compatible_tags = CompatibleTags::new(python_version, &Os::current()?, &Arch::current()?)?;
+    let compatible_tags = CompatibleTags::current(python_version)?;
 
     // Lock install directory to prevent races between multiple monotrail processes. We need to
     // lock before determining which packages to install because another process might install

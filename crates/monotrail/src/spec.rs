@@ -218,7 +218,7 @@ mod test {
         };
         let arch = Arch::X86_64;
         let python_version = (3, 7);
-        let compatible_tags = CompatibleTags::new(python_version, &os, &arch).unwrap();
+        let compatible_tags = CompatibleTags::new(python_version, os, arch).unwrap();
         let pep508_env = marker_environment_from_json_str(
             r##"{
                 "implementation_name": "cpython", 

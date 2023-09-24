@@ -80,24 +80,33 @@ impl WheelFilename {
     }
 }
 
-/// List of wheel tags that define compatibility to the current platform
-pub struct CompatibleTags(pub Vec<(String, String, String)>);
+/// A platform, defined by the list of compatible wheel tags in order
+pub struct CompatibleTags {
+    pub os: Os,
+    pub arch: Arch,
+    pub tags: Vec<(String, String, String)>,
+}
 
 impl Deref for CompatibleTags {
     type Target = [(String, String, String)];
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.tags
     }
 }
 
 /// Returns the compatible tags in a (python_tag, abi_tag, platform_tag) format, ordered from
 /// highest precedence to lowest precedence
 impl CompatibleTags {
-    pub fn new(python_version: (u8, u8), os: &Os, arch: &Arch) -> Result<CompatibleTags, Error> {
+    /// Compatible tags for the current operating system and architecture
+    pub fn current(python_version: (u8, u8)) -> Result<CompatibleTags, Error> {
+        Self::new(python_version, Os::current()?, Arch::current()?)
+    }
+
+    pub fn new(python_version: (u8, u8), os: Os, arch: Arch) -> Result<CompatibleTags, Error> {
         assert_eq!(python_version.0, 3);
         let mut tags = Vec::new();
-        let platform_tags = compatible_platform_tags(os, arch)?;
+        let platform_tags = compatible_platform_tags(&os, &arch)?;
         // 1. This exact c api version
         for platform_tag in &platform_tags {
             tags.push((
@@ -159,7 +168,7 @@ impl CompatibleTags {
             "none".to_string(),
             "any".to_string(),
         ));
-        Ok(CompatibleTags(tags))
+        Ok(CompatibleTags { os, arch, tags })
     }
 }
 
@@ -746,7 +755,7 @@ mod test {
         ];
 
         for (filename, (python_version, os, arch)) in filenames {
-            let compatible_tags = CompatibleTags::new(python_version, &os, &arch)?;
+            let compatible_tags = CompatibleTags::new(python_version, os, arch)?;
             assert!(
                 WheelFilename::from_str(filename)?
                     .compatibility(&compatible_tags)
@@ -763,11 +772,11 @@ mod test {
     fn test_compatibility_filter() -> Result<(), Error> {
         let compatible_tags = CompatibleTags::new(
             (3, 8),
-            &Os::Manylinux {
+            Os::Manylinux {
                 major: 2,
                 minor: 31,
             },
-            &Arch::X86_64,
+            Arch::X86_64,
         )?;
 
         let compatible: Vec<&str> = FILENAMES
@@ -802,11 +811,11 @@ mod test {
         for tag in tags {
             let compatible_tags = CompatibleTags::new(
                 (3, 8),
-                &Os::Manylinux {
+                Os::Manylinux {
                     major: 2,
                     minor: 31,
                 },
-                &Arch::X86_64,
+                Arch::X86_64,
             )?;
 
             assert!(
@@ -826,11 +835,11 @@ mod test {
         let expected_tags = get_ubuntu_20_04_tags();
         let actual_tags: Vec<String> = CompatibleTags::new(
             (3, 8),
-            &Os::Manylinux {
+            Os::Manylinux {
                 major: 2,
                 minor: 31,
             },
-            &Arch::X86_64,
+            Arch::X86_64,
         )?
         .iter()
         .map(|(python_tag, abi_tag, platform_tag)| {
@@ -845,11 +854,11 @@ mod test {
     fn test_precedence() {
         let tags = CompatibleTags::new(
             (3, 8),
-            &Os::Manylinux {
+            Os::Manylinux {
                 major: 2,
                 minor: 31,
             },
-            &Arch::X86_64,
+            Arch::X86_64,
         )
         .unwrap();
         let pairs = [

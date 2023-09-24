@@ -12,7 +12,7 @@ use crate::venv_parser::get_venv_python_version;
 use crate::verify_installation::verify_installation;
 use anyhow::{bail, Context};
 use clap::Parser;
-use install_wheel_rs::{Arch, CompatibleTags, Error, InstallLocation, Os};
+use install_wheel_rs::{CompatibleTags, Error, InstallLocation};
 use monotrail_utils::RequirementsTxt;
 use pep440_rs::Operator;
 use pep508_rs::VersionOrUrl;
@@ -213,11 +213,7 @@ fn poetry_install(
     venv_canon: &Path,
     options: &PoetryOptions,
 ) -> anyhow::Result<()> {
-    let compatible_tags = CompatibleTags::new(
-        get_venv_python_version(venv)?,
-        &Os::current()?,
-        &Arch::current()?,
-    )?;
+    let compatible_tags = CompatibleTags::current(get_venv_python_version(venv)?)?;
     // TODO: don't parse this from a subprocess but do it like maturin
     let pep508_env = marker_environment_from_python(Path::new("python"));
     let dir = if let Some(root) = &options.root {
@@ -368,7 +364,7 @@ pub fn install(
             .collect::<Result<_, _>>()?
     };
 
-    let compatible_tags = CompatibleTags::new(python_version, &Os::current()?, &Arch::current()?)?;
+    let compatible_tags = CompatibleTags::current(python_version)?;
     let location = location.acquire_lock()?;
 
     install_all(
@@ -498,11 +494,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             let python_version = get_venv_python_version(&venv)?;
             let venv_canon = venv.canonicalize()?;
 
-            let compatible_tags = CompatibleTags::new(
-                get_venv_python_version(&venv)?,
-                &Os::current()?,
-                &Arch::current()?,
-            )?;
+            let compatible_tags = CompatibleTags::current(get_venv_python_version(&venv)?)?;
             let location = InstallLocation::Venv {
                 venv_base: venv_canon,
                 python_version,
