@@ -58,6 +58,7 @@ pub fn filename_and_url(
         .filter_map(|(filename, parsed)| {
             parsed
                 .compatibility(compatible_tags)
+                .ok()
                 .map(|index| (index, filename, parsed))
         })
         // Pick the most recent manylinux

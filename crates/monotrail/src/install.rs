@@ -11,13 +11,15 @@ use fs_err::{DirEntry, File};
 use git2::{Direction, Repository};
 use indicatif::{ProgressBar, ProgressStyle};
 use install_wheel_rs::{
-    install_wheel, normalize_name, parse_key_value_file, CompatibleTags, InstallLocation, LockedDir,
+    install_wheel, normalize_name, parse_key_value_file, CompatibleTags, InstallLocation,
+    LockedDir, WheelFilename,
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
 use std::io;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -362,7 +364,7 @@ fn download_and_install(
     let spec = requested_spec.resolve(PYPI_HOST, compatible_tags)?;
     trace!("requested: {:?}, resolved: {:?}", requested_spec, spec);
 
-    let (wheel_path, distribution_type) = match spec.location.clone() {
+    let (wheel, distribution_type) = match spec.location.clone() {
         FileOrUrl::File(file_path) => {
             if file_path.as_os_str().to_string_lossy().ends_with(".whl") {
                 (file_path, DistributionType::Wheel)
@@ -376,11 +378,11 @@ fn download_and_install(
             }
         }
         FileOrUrl::Url { url, filename } => {
-            let wheel_path =
+            let wheel =
                 download_distribution_cached(&spec.name, &spec.unique_version, &filename, &url)
                     .with_context(|| format!("Failed to download {} from pypi", spec.requested))?;
 
-            (wheel_path, spec.distribution_type.clone())
+            (wheel, spec.distribution_type.clone())
         }
         FileOrUrl::Git { url, revision } => {
             let temp_dir = TempDir::new()?;
@@ -392,7 +394,7 @@ fn download_and_install(
                 "Building {} {} from source distribution to wheel",
                 spec.name, spec.unique_version
             );
-            let wheel_path = build_source_distribution_to_wheel_cached(
+            let wheel = build_source_distribution_to_wheel_cached(
                 &spec.name,
                 &spec.unique_version,
                 &repo_dir,
@@ -405,12 +407,12 @@ fn download_and_install(
                 )
             })?;
 
-            (wheel_path, DistributionType::Wheel)
+            (wheel, DistributionType::Wheel)
         }
     };
 
-    let wheel_path = if distribution_type == DistributionType::Wheel {
-        wheel_path
+    let wheel = if distribution_type == DistributionType::Wheel {
+        wheel
     } else {
         // If we got an sdist until now, build it into a wheel
         debug!(
@@ -420,20 +422,26 @@ fn download_and_install(
         build_source_distribution_to_wheel_cached(
             &spec.name,
             &spec.unique_version,
-            &wheel_path,
+            &wheel,
             compatible_tags,
         )
         .with_context(|| {
             format!(
                 "Failed to build wheel from source distribution for {}",
-                wheel_path.display()
+                wheel.display()
             )
         })?
     };
     debug!("Installing {} {}", spec.name, spec.unique_version);
+    let filename = wheel
+        .file_name()
+        .ok_or_else(|| install_wheel_rs::Error::InvalidWheel("Expected a file".to_string()))?
+        .to_string_lossy();
+    let filename = WheelFilename::from_str(&filename)?;
     let tag = install_wheel(
         location,
-        &wheel_path,
+        File::open(wheel)?,
+        filename,
         compile,
         &spec.extras,
         &spec.unique_version,

@@ -53,7 +53,7 @@ impl WheelFilename {
     /// Returns Some(precedence) is the wheels are compatible, otherwise none
     ///
     /// Precedence is e.g. used to install newer manylinux wheels over older manylinux wheels
-    pub fn compatibility(&self, compatible_tags: &CompatibleTags) -> Option<usize> {
+    pub fn compatibility(&self, compatible_tags: &CompatibleTags) -> Result<usize, Error> {
         compatible_tags
             .iter()
             .enumerate()
@@ -68,6 +68,10 @@ impl WheelFilename {
                 }
             })
             .next()
+            .ok_or_else(|| Error::IncompatibleWheel {
+                os: compatible_tags.os.clone(),
+                arch: compatible_tags.arch,
+            })
     }
 
     /// effectively undoes the wheel filename parsing step
@@ -764,7 +768,7 @@ mod test {
             assert!(
                 WheelFilename::from_str(filename)?
                     .compatibility(&compatible_tags)
-                    .is_some(),
+                    .is_ok(),
                 "{}",
                 filename
             );
@@ -790,7 +794,7 @@ mod test {
                 WheelFilename::from_str(filename)
                     .unwrap()
                     .compatibility(&compatible_tags)
-                    .is_some()
+                    .is_ok()
             })
             .cloned()
             .collect();
@@ -826,7 +830,7 @@ mod test {
             assert!(
                 WheelFilename::from_str(&format!("foo-1.0-{}.whl", tag))?
                     .compatibility(&compatible_tags)
-                    .is_some(),
+                    .is_ok(),
                 "{}",
                 tag
             )

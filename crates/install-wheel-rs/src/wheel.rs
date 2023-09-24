@@ -1,12 +1,13 @@
 #![allow(clippy::needless_borrow)]
 
 use crate::install_location::{InstallLocation, LockedDir};
-use crate::wheel_tags::{CompatibleTags, WheelFilename};
+use crate::wheel_tags::WheelFilename;
 use crate::{normalize_name, Error};
 use base64::Engine;
 use configparser::ini::Ini;
 use fs_err as fs;
 use fs_err::{DirEntry, File};
+use mailparse::MailHeaderMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,7 +16,6 @@ use std::ffi::OsString;
 use std::io::{BufRead, BufReader, BufWriter, Cursor, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::str::FromStr;
 use std::{env, io, iter};
 use tempfile::{tempdir, TempDir};
 use tracing::{debug, error, span, warn, Level};
@@ -165,10 +165,10 @@ fn read_scripts_from_section(
 /// Extras are supposed to be ignored, which happens if you pass None for extras
 fn parse_scripts<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
-    dist_info_dir: &str,
+    dist_info_prefix: &str,
     extras: Option<&[String]>,
 ) -> Result<(Vec<Script>, Vec<Script>), Error> {
-    let entry_points_path = format!("{}/entry_points.txt", dist_info_dir);
+    let entry_points_path = format!("{dist_info_prefix}.dist-info/entry_points.txt");
     let entry_points_mapping = match archive.by_name(&entry_points_path) {
         Ok(mut file) => {
             let mut ini_text = String::new();
@@ -929,20 +929,23 @@ fn write_file_recorded(
 /// Adds INSTALLER, REQUESTED and direct_url.json to the .dist-info dir
 fn extra_dist_info(
     site_packages: &Path,
-    dist_info: &Path,
-    // https://github.com/python-poetry/poetry/issues/6356
-    #[allow(unused_variables)] wheel_path: &Path,
+    dist_info_prefix: &str,
     requested: bool,
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), Error> {
     write_file_recorded(
         site_packages,
-        &dist_info.join("INSTALLER"),
+        &PathBuf::from(format!("{dist_info_prefix}.dist-info")).join("INSTALLER"),
         env!("CARGO_PKG_NAME"),
         record,
     )?;
     if requested {
-        write_file_recorded(site_packages, &dist_info.join("REQUESTED"), "", record)?;
+        write_file_recorded(
+            site_packages,
+            &PathBuf::from(format!("{dist_info_prefix}.dist-info")).join("REQUESTED"),
+            "",
+            record,
+        )?;
     }
 
     // https://github.com/python-poetry/poetry/issues/6356
@@ -1020,7 +1023,8 @@ pub fn parse_key_value_file(
 /// Wheel 1.0: <https://www.python.org/dev/peps/pep-0427/>
 pub fn install_wheel(
     location: &InstallLocation<LockedDir>,
-    wheel: &Path,
+    reader: impl Read + Seek,
+    filename: WheelFilename,
     compile: bool,
     // initially used to the console scripts, currently unused. Keeping it because we likely need
     // it for validation later
@@ -1028,23 +1032,8 @@ pub fn install_wheel(
     unique_version: &str,
     sys_executable: &Path,
 ) -> Result<String, Error> {
-    // TODO: A valid metadata parse should be given to this function, at least in two cases
-    // we have already done it anyway earlier. Neither should we have to return the tag
-    let filename = wheel
-        .file_name()
-        .ok_or_else(|| Error::InvalidWheel("Expected a file".to_string()))?
-        .to_string_lossy();
-    let filename = WheelFilename::from_str(&filename)?;
     let name = &filename.distribution;
     let _my_span = span!(Level::DEBUG, "install_wheel", name = name.as_str());
-
-    let compatible_tags = CompatibleTags::current(location.get_python_version())?;
-    if filename.compatibility(&compatible_tags).is_none() {
-        return Err(Error::IncompatibleWheel {
-            os: compatible_tags.os.clone(),
-            arch: compatible_tags.arch.clone(),
-        });
-    }
 
     let (temp_dir_final_location, base_location) = match location {
         InstallLocation::Venv { venv_base, .. } => (None, venv_base.to_path_buf()),
@@ -1090,40 +1079,17 @@ pub fn install_wheel(
             .join("site-packages")
     };
 
-    debug!(name = name.as_str(), "Getting wheel metadata");
-    let dist = python_pkginfo::Distribution::new(&wheel)?;
-    let metadata_name = Regex::new(r"[^\w\d.]+")
-        .unwrap()
-        .replace_all(&dist.metadata().name, "_")
-        .to_string();
-    if metadata_name.to_lowercase() != name.to_lowercase() {
-        return Err(Error::InvalidWheel(format!(
-            "Inconsistent package name: {} (wheel metadata, from {}) vs {} (filename)",
-            metadata_name.to_lowercase(),
-            dist.metadata().name,
-            name
-        )));
-    }
-    let version = &dist.metadata().version;
-
     debug!(name = name.as_str(), "Opening zip");
     // No BufReader: https://github.com/zip-rs/zip/issues/381
-    let mut archive = ZipArchive::new(File::open(&wheel)?)
-        .map_err(|err| Error::Zip(wheel.to_string_lossy().to_string(), err))?;
+    let mut archive = ZipArchive::new(reader)
+        .map_err(|err| Error::Zip(": Failed to open the archive".to_string(), err))?;
 
-    debug!(name = name.as_str(), "Reading RECORD and WHEEL");
-    // The metadata name may be uppercase, while the wheel and dist info names are lowercase, or
-    // the metadata name and the dist info name are lowercase, while the wheel name is uppercase
-    let dist_info_dir = if archive
-        .by_name(&format!("{}-{}.dist-info/RECORD", name, version))
-        .is_err_and(|err| matches!(err, ZipError::FileNotFound))
-    {
-        format!("{}-{}.dist-info", metadata_name, version)
-    } else {
-        format!("{}-{}.dist-info", name, version)
-    };
-    let record_path = format!("{}/RECORD", dist_info_dir);
+    debug!(name = name.as_str(), "Getting wheel metadata");
+    let dist_info_prefix = find_dist_info(&filename, &mut archive)?;
+    let (name, _version) = read_metadata(&dist_info_prefix, &mut archive)?;
+    // TODO: Check that name and version match
 
+    let record_path = format!("{dist_info_prefix}.dist-info/RECORD");
     let mut record = read_record_file(
         &mut archive
             .by_name(&record_path)
@@ -1134,7 +1100,7 @@ pub fn install_wheel(
     // https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl
     // > 1.a Parse distribution-1.0.dist-info/WHEEL.
     // > 1.b Check that installer is compatible with Wheel-Version. Warn if minor version is greater, abort if major version is greater.
-    let wheel_file_path = format!("{}/WHEEL", dist_info_dir);
+    let wheel_file_path = format!("{dist_info_prefix}.dist-info/WHEEL");
     let mut wheel_text = String::new();
     archive
         .by_name(&wheel_file_path)
@@ -1154,11 +1120,11 @@ pub fn install_wheel(
     );
 
     debug!(name = name.as_str(), "Writing entrypoints");
-    let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_dir, None)?;
+    let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_prefix, None)?;
     write_script_entrypoints(&site_packages, &location, &console_scripts, &mut record)?;
     write_script_entrypoints(&site_packages, &location, &gui_scripts, &mut record)?;
 
-    let data_dir = site_packages.join(format!("{}-{}.data", name, version));
+    let data_dir = site_packages.join(format!("{dist_info_prefix}.data"));
     // 2.a Unpacked archive includes distribution-1.0.dist-info/ and (if there is data) distribution-1.0.data/.
     // 2.b Move each subtree of distribution-1.0.data/ onto its destination path. Each subdirectory of distribution-1.0.data/ is a key into a dict of destination directories, such as distribution-1.0.data/(purelib|platlib|headers|scripts|data). The initially supported paths are taken from distutils.command.install.
     if data_dir.is_dir() {
@@ -1167,7 +1133,7 @@ pub fn install_wheel(
             &base_location,
             &site_packages,
             &data_dir,
-            name,
+            &name,
             &location,
             &console_scripts,
             &gui_scripts,
@@ -1198,13 +1164,7 @@ pub fn install_wheel(
 
     debug!(name = name.as_str(), "Writing extra metadata");
 
-    extra_dist_info(
-        &site_packages,
-        Path::new(&dist_info_dir),
-        wheel,
-        true,
-        &mut record,
-    )?;
+    extra_dist_info(&site_packages, &dist_info_prefix, true, &mut record)?;
 
     debug!(name = name.as_str(), "Writing record");
     let mut record_writer = csv::WriterBuilder::new()
@@ -1225,14 +1185,99 @@ pub fn install_wheel(
     Ok(filename.get_tag())
 }
 
+/// From https://github.com/PyO3/python-pkginfo-rs
+///
+/// The metadata name may be uppercase, while the wheel and dist info names are lowercase, or
+/// the metadata name and the dist info name are lowercase, while the wheel name is uppercase.
+/// Either way, we just search the wheel for the name
+fn find_dist_info(
+    filename: &WheelFilename,
+    archive: &mut ZipArchive<impl Read + Seek + Sized>,
+) -> Result<String, Error> {
+    let dist_info_matcher =
+        format!("{}-{}", filename.distribution, filename.version).to_lowercase();
+    let dist_infos: Vec<_> = archive
+        .file_names()
+        .filter_map(|name| name.split_once('/'))
+        .filter_map(|(dir, file)| Some((dir.strip_suffix(".dist-info")?, file)))
+        .filter(|(dir, file)| dir.to_lowercase() == dist_info_matcher && *file == "METADATA")
+        .map(|(dir, _file)| dir)
+        .collect();
+    let dist_info = match dist_infos.as_slice() {
+        [] => {
+            return Err(Error::InvalidWheel(
+                "Missing .dist-info directory".to_string(),
+            ))
+        }
+        [dist_info] => dist_info.to_string(),
+        _ => {
+            return Err(Error::InvalidWheel(format!(
+                "Multiple .dist-info directories: {}",
+                dist_infos.join(", ")
+            )));
+        }
+    };
+    Ok(dist_info)
+}
+
+/// Adapted from https://github.com/PyO3/python-pkginfo-rs
+fn read_metadata(
+    dist_info_prefix: &str,
+    archive: &mut ZipArchive<impl Read + Seek + Sized>,
+) -> Result<(String, String), Error> {
+    let mut content = Vec::new();
+    let metadata_file = format!("{dist_info_prefix}.dist-info/METADATA");
+    archive
+        .by_name(&metadata_file)
+        .map_err(|err| Error::Zip(metadata_file.to_string(), err))?
+        .read_to_end(&mut content)?;
+    // HACK: trick mailparse to parse as UTF-8 instead of ASCII
+    let mut mail = b"Content-Type: text/plain; charset=utf-8\n".to_vec();
+    mail.extend_from_slice(&content);
+    let msg = mailparse::parse_mail(&mail)
+        .map_err(|err| Error::InvalidWheel(format!("Invalid {}: {}", metadata_file, err)))?;
+    let headers = msg.get_headers();
+    let metadata_version =
+        headers
+            .get_first_value("Metadata-Version")
+            .ok_or(Error::InvalidWheel(format!(
+                "No Metadata-Version field in {}",
+                metadata_file
+            )))?;
+    // Crude but it should do https://packaging.python.org/en/latest/specifications/core-metadata/#metadata-version
+    // At time of writing:
+    // > Version of the file format; legal values are “1.0”, “1.1”, “1.2”, “2.1”, “2.2”, and “2.3”.
+    if !(metadata_version.starts_with("1.") || metadata_version.starts_with("2.")) {
+        return Err(Error::InvalidWheel(format!(
+            "Metadata-Version field has unsupported value {}",
+            metadata_version
+        )));
+    }
+    let name = headers
+        .get_first_value("Name")
+        .ok_or(Error::InvalidWheel(format!(
+            "No Name field in {}",
+            metadata_file
+        )))?;
+    let version = headers
+        .get_first_value("Version")
+        .ok_or(Error::InvalidWheel(format!(
+            "No Version field in {}",
+            metadata_file
+        )))?;
+    Ok((name, version))
+}
+
 #[cfg(test)]
 mod test {
     use super::parse_wheel_version;
     use crate::wheel::{read_record_file, relative_to};
-    use crate::{install_wheel, parse_key_value_file, InstallLocation, Script};
+    use crate::{install_wheel, parse_key_value_file, InstallLocation, Script, WheelFilename};
     use fs_err as fs;
     use indoc::{formatdoc, indoc};
+    use std::fs::File;
     use std::path::{Path, PathBuf};
+    use std::str::FromStr;
     use tempfile::TempDir;
 
     #[test]
@@ -1294,7 +1339,8 @@ mod test {
     #[test]
     fn installed_paths_relative() {
         println!("{}", std::env::current_dir().unwrap().display());
-        let wheel = Path::new("../../test-data/wheels/colander-0.9.9-py2.py3-none-any.whl");
+        let filename = "colander-0.9.9-py2.py3-none-any.whl";
+        let wheel = Path::new("../../test-data/wheels").join(filename);
         let temp_dir = TempDir::new().unwrap();
         // TODO: Would be nicer to pick the default python here, but i don't want to launch a
         //  subprocess
@@ -1310,7 +1356,16 @@ mod test {
         }
         .acquire_lock()
         .unwrap();
-        install_wheel(&install_location, wheel, true, &[], "0.9.9", &python).unwrap();
+        install_wheel(
+            &install_location,
+            File::open(wheel).unwrap(),
+            WheelFilename::from_str(&filename).unwrap(),
+            true,
+            &[],
+            "0.9.9",
+            &python,
+        )
+        .unwrap();
 
         let base = temp_dir
             .path()

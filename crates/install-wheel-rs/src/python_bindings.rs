@@ -1,11 +1,13 @@
 #![allow(clippy::format_push_string)] // I will not replace clear and infallible with fallible, io looking code
 
-use crate::{install_wheel, Error, InstallLocation, LockedDir};
+use crate::{install_wheel, CompatibleTags, Error, InstallLocation, LockedDir, WheelFilename};
 use pyo3::create_exception;
 use pyo3::types::PyModule;
 use pyo3::{pyclass, pymethods, pymodule, PyErr, PyResult, Python};
 use std::env;
+use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 create_exception!(
     install_wheel_rs,
@@ -48,13 +50,22 @@ impl LockedVenv {
         let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
 
         // TODO: Pass those options on to the user
-        // unique_version can be anything since it's only used to monotrail
         py.allow_threads(|| {
+            let filename = wheel
+                .file_name()
+                .ok_or_else(|| Error::InvalidWheel("Expected a file".to_string()))?
+                .to_string_lossy();
+            let filename = WheelFilename::from_str(&filename)?;
+            let compatible_tags = CompatibleTags::current(self.location.get_python_version())?;
+            filename.compatibility(&compatible_tags)?;
+
             install_wheel(
                 &self.location,
-                &wheel,
+                File::open(wheel)?,
+                filename,
                 true,
                 &[],
+                // unique_version can be anything since it's only used to monotrail
                 "",
                 Path::new(&sys_executable),
             )

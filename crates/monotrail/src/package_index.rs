@@ -59,6 +59,7 @@ fn matching_package_for_version(
         .filter_map(|(filename, wheel)| {
             filename
                 .compatibility(compatible_tags)
+                .ok()
                 .map(|index| (index, wheel))
         })
         // Pick the most recent manylinux

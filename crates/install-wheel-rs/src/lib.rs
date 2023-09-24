@@ -1,10 +1,12 @@
 //! Takes a wheel and installs it, either in a venv or for monotrail
 
+use std::fs::File;
 // The pub ones are reused by monotrail
 pub use install_location::{normalize_name, InstallLocation, LockedDir};
 use platform_info::PlatformInfoError;
 use std::io;
 use std::path::Path;
+use std::str::FromStr;
 use thiserror::Error;
 pub use wheel::{
     get_script_launcher, install_wheel, parse_key_value_file, read_record_file, relative_to,
@@ -38,9 +40,6 @@ pub enum Error {
     /// Doesn't follow file name schema
     #[error("The wheel filename \"{0}\" is invalid: {1}")]
     InvalidWheelFileName(String, String),
-    /// The wheel is broken, but in python pkginfo
-    #[error("The wheel is broken")]
-    PkgInfo(#[from] python_pkginfo::Error),
     #[error("Failed to read the wheel file {0}")]
     Zip(String, #[source] ZipError),
     #[error("Failed to run python subcommand")]
@@ -78,9 +77,18 @@ pub fn install_wheel_in_venv(
     };
     let locked_dir = location.acquire_lock()?;
 
+    let filename = wheel
+        .file_name()
+        .ok_or_else(|| Error::InvalidWheel("Expected a file".to_string()))?
+        .to_string_lossy();
+    let filename = WheelFilename::from_str(&filename)?;
+    let compatible_tags = CompatibleTags::current(location.get_python_version())?;
+    filename.compatibility(&compatible_tags)?;
+
     install_wheel(
         &locked_dir,
-        wheel,
+        File::open(wheel)?,
+        filename,
         false,
         &[],
         // Only relevant for monotrail style installation

@@ -27,7 +27,7 @@ pub fn build_source_distribution_to_wheel_cached(
                 continue;
             }
             if let Ok(true) = WheelFilename::from_str(entry.file_name().to_string_lossy().as_ref())
-                .map(|filename| filename.compatibility(compatible_tags).is_some())
+                .map(|filename| filename.compatibility(compatible_tags).is_ok())
             {
                 return Ok(entry.path());
             }
@@ -77,7 +77,7 @@ pub fn build_to_wheel(
         if filename.ends_with(".whl") {
             if WheelFilename::from_str(&filename)?
                 .compatibility(compatible_tags)
-                .is_none()
+                .is_err()
             {
                 bail!(
                     "pip wrote out an incompatible wheel. \
