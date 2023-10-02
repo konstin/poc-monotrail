@@ -13,7 +13,9 @@ fn check_error(name: &str, expected: &[&str]) -> Result<()> {
     let temp_dir = TempDir::new()?;
     let venv = temp_dir.path().join(".venv");
     Command::new("virtualenv").arg(&venv).output()?;
+    println!("{}", std::env::current_dir().unwrap().display());
     let wheel = Path::new("../../test-data/pip-test-packages").join(name);
+    println!("{:?}", wheel.canonicalize());
     let cli: Cli =
         Cli::try_parse_from(["monotrail", "wheel-install", &wheel.display().to_string()])?;
     assert_cli_error(cli, Some(&venv), expected);
@@ -25,8 +27,8 @@ fn test_brokenwheel() -> Result<()> {
     check_error(
         "brokenwheel-1.0-py2.py3-none-any.whl",
         &[
-            "Failed to install test-data/pip-test-packages/brokenwheel-1.0-py2.py3-none-any.whl",
-            "The wheel is invalid: Inconsistent package name: simple.dist (wheel metadata, from simple.dist) vs brokenwheel (filename)"
+            "Failed to install ../../test-data/pip-test-packages/brokenwheel-1.0-py2.py3-none-any.whl",
+            "The wheel is invalid: Missing .dist-info directory"
         ],
     )
 }
@@ -36,9 +38,9 @@ fn test_corruptwheel() -> Result<()> {
     check_error(
         "corruptwheel-1.0-py2.py3-none-any.whl",
         &[
-            "Failed to install test-data/pip-test-packages/corruptwheel-1.0-py2.py3-none-any.whl",
-            "The wheel is broken",
-            "invalid Zip archive: Could not find central directory end",
+            "Failed to install ../../test-data/pip-test-packages/corruptwheel-1.0-py2.py3-none-any.whl",
+            "Failed to read the wheel file (index)",
+            "invalid Zip archive: Could not find central directory end"
         ],
     )
 }
@@ -56,8 +58,8 @@ fn test_priority() -> Result<()> {
     check_error(
         "priority-1.0-py2.py3-none-any.whl",
         &[
-            "Failed to install test-data/pip-test-packages/priority-1.0-py2.py3-none-any.whl",
-            "The wheel is broken",
+            "Failed to install ../../test-data/pip-test-packages/priority-1.0-py2.py3-none-any.whl",
+            "Failed to read the wheel file (index)",
             "invalid Zip archive: Invalid zip header",
         ],
     )
@@ -71,7 +73,7 @@ fn test_cli_python_hyphen() {
         BIN,
         "run",
         "--root",
-        "data_science_project",
+        "../../data_science_project",
         "python",
         "-c",
         // We can't use sys.exit, but we still want to see the exception

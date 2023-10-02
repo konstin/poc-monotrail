@@ -178,7 +178,7 @@ fn parse_scripts<R: Read + Seek>(
             })?
         }
         Err(ZipError::FileNotFound) => return Ok((Vec::new(), Vec::new())),
-        Err(err) => return Err(Error::Zip(entry_points_path, err)),
+        Err(err) => return Err(Error::from_zip_error(entry_points_path, err)),
     };
 
     // TODO: handle extras
@@ -245,7 +245,7 @@ fn unpack_wheel_files<R: Read + Seek>(
     for i in 0..archive.len() {
         let mut file = archive
             .by_index(i)
-            .map_err(|err| Error::Zip(format!("with index {i}"), err))?;
+            .map_err(|err| Error::from_zip_error(format!("(index {i})"), err))?;
         // enclosed_name takes care of evil zip paths
         let relative = match file.enclosed_name() {
             Some(path) => path.to_owned(),
@@ -1067,8 +1067,8 @@ pub fn install_wheel(
 
     debug!(name = name.as_str(), "Opening zip");
     // No BufReader: https://github.com/zip-rs/zip/issues/381
-    let mut archive = ZipArchive::new(reader)
-        .map_err(|err| Error::Zip(": Failed to open the archive".to_string(), err))?;
+    let mut archive =
+        ZipArchive::new(reader).map_err(|err| Error::from_zip_error("(index)".to_string(), err))?;
 
     debug!(name = name.as_str(), "Getting wheel metadata");
     let dist_info_prefix = find_dist_info(&filename, &mut archive)?;
@@ -1079,7 +1079,7 @@ pub fn install_wheel(
     let mut record = read_record_file(
         &mut archive
             .by_name(&record_path)
-            .map_err(|err| Error::Zip(record_path.clone(), err))?,
+            .map_err(|err| Error::from_zip_error(record_path.clone(), err))?,
     )?;
 
     // We're going step by step though
@@ -1090,7 +1090,7 @@ pub fn install_wheel(
     let mut wheel_text = String::new();
     archive
         .by_name(&wheel_file_path)
-        .map_err(|err| Error::Zip(wheel_file_path, err))?
+        .map_err(|err| Error::from_zip_error(wheel_file_path, err))?
         .read_to_string(&mut wheel_text)?;
     parse_wheel_version(&wheel_text)?;
     // > 1.c If Root-Is-Purelib == ‘true’, unpack archive into purelib (site-packages).
@@ -1215,7 +1215,7 @@ fn read_metadata(
     let metadata_file = format!("{dist_info_prefix}.dist-info/METADATA");
     archive
         .by_name(&metadata_file)
-        .map_err(|err| Error::Zip(metadata_file.to_string(), err))?
+        .map_err(|err| Error::from_zip_error(metadata_file.to_string(), err))?
         .read_to_end(&mut content)?;
     // HACK: trick mailparse to parse as UTF-8 instead of ASCII
     let mut mail = b"Content-Type: text/plain; charset=utf-8\n".to_vec();

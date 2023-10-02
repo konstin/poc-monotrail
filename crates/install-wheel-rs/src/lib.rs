@@ -60,6 +60,15 @@ pub enum Error {
     Pep440,
 }
 
+impl Error {
+    pub(crate) fn from_zip_error(file: String, value: ZipError) -> Self {
+        match value {
+            ZipError::Io(io_error) => Self::IO(io_error),
+            _ => Self::Zip(file, value),
+        }
+    }
+}
+
 /// High level API: Install a wheel in a virtualenv
 ///
 /// Returns the tag of the wheel
