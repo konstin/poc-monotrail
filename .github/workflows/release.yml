@@ -1,122 +1,191 @@
+# Copyright 2022-2023, axodotdev
+# SPDX-License-Identifier: MIT or Apache-2.0
+#
+# CI that:
+#
+# * checks for a Git Tag that looks like a release
+# * builds artifacts with cargo-dist (archives, installers, hashes)
+# * uploads those artifacts to temporary workflow zip
+# * on success, uploads the artifacts to a Github Release™
+#
+# Note that the Github Release™ will be created with a generated
+# title/body based on your changelogs.
 name: Release
 
+permissions:
+  contents: write
+
+# This task will run whenever you push a git tag that looks like a version
+# like "1.0.0", "v0.1.0-prerelease.1", "my-app/0.1.0", "releases/v1.0.0", etc.
+# Various formats will be parsed into a VERSION and an optional PACKAGE_NAME, where
+# PACKAGE_NAME must be the name of a Cargo package in your workspace, and VERSION
+# must be a Cargo-style SemVer Version (must have at least major.minor.patch).
+#
+# If PACKAGE_NAME is specified, then the release will be for that
+# package (erroring out if it doesn't have the given version or isn't cargo-dist-able).
+#
+# If PACKAGE_NAME isn't specified, then the release will be for all
+# (cargo-dist-able) packages in the workspace with that version (this mode is
+# intended for workspaces with only one dist-able package, or with all dist-able
+# packages versioned/released in lockstep).
+#
+# If you push multiple tags at once, separate instances of this workflow will
+# spin up, creating an independent Github Release™ for each one. However Github
+# will hard limit this to 3 tags per commit, as it will assume more tags is a
+# mistake.
+#
+# If there's a prerelease-style suffix to the version, then the Github Release™
+# will be marked as a prerelease.
 on:
   push:
-    tags: [ 'v*' ]
+    tags:
+      - '**[0-9]+.[0-9]+.[0-9]+*'
+  pull_request:
 
 jobs:
-  build-wheels:
-    name: Build Wheels
+  # Run 'cargo dist plan' to determine what tasks we need to do
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      val: ${{ steps.plan.outputs.manifest }}
+      tag: ${{ !github.event.pull_request && github.ref_name || '' }}
+      tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
+      publishing: ${{ !github.event.pull_request }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install cargo-dist
+        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.3.1/cargo-dist-installer.sh | sh"
+      - id: plan
+        run: |
+          cargo dist plan ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }} --output-format=json > dist-manifest.json
+          echo "cargo dist plan ran successfully"
+          cat dist-manifest.json
+          echo "manifest=$(jq -c "." dist-manifest.json)" >> "$GITHUB_OUTPUT"
+      - name: "Upload dist-manifest.json"
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifacts
+          path: dist-manifest.json
+
+  # Build and packages all the platform-specific things
+  upload-local-artifacts:
+    # Let the initial task tell us to not run (currently very blunt)
+    needs: plan
+    if: ${{ fromJson(needs.plan.outputs.val).releases != null && (needs.plan.outputs.publishing == 'true' || fromJson(needs.plan.outputs.val).ci.github.pr_run_mode == 'upload') }}
     strategy:
       fail-fast: false
-      matrix:
-        os: [ "ubuntu-latest", "windows-latest", "macos-latest" ]
-    runs-on: ${{ matrix.os }}
+      # Target platforms/runners are computed by cargo-dist in create-release.
+      # Each member of the matrix has the following arguments:
+      #
+      # - runner: the github runner
+      # - dist-args: cli flags to pass to cargo dist
+      # - install-dist: expression to run to install cargo-dist on the runner
+      #
+      # Typically there will be:
+      # - 1 "global" task that builds universal installers
+      # - N "local" tasks that build each platform's binaries and platform-specific installers
+      matrix: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v3
-      - name: Cache cargo build
-        uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@v4
         with:
-          cache-on-failure: true
-      - name: Build wheel
-        uses: messense/maturin-action@v1
-        with:
-          command: build
-          args: --release --strip --universal2 -m crates/monotrail/Cargo.toml
-          manylinux: auto
-      - name: Upload wheel
+          submodules: recursive
+      - uses: swatinem/rust-cache@v2
+      - name: Install cargo-dist
+        run: ${{ matrix.install_dist }}
+      - name: Build artifacts
+        run: |
+          # Actually do builds and make zips and whatnot
+          cargo dist build ${{ needs.plan.outputs.tag-flag }} --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
+          echo "cargo dist ran successfully"
+      - id: cargo-dist
+        name: Post-build
+        # We force bash here just because github makes it really hard to get values up
+        # to "real" actions without writing to env-vars, and writing to env-vars has
+        # inconsistent syntax between shell and powershell.
+        shell: bash
+        run: |
+          # Parse out what we just built and upload it to the Github Release™
+          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
+          jq --raw-output ".artifacts[]?.path | select( . != null )" dist-manifest.json >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: "Upload artifacts"
         uses: actions/upload-artifact@v3
         with:
-          name: wheels
-          path: target/wheels
+          name: artifacts
+          path: ${{ steps.cargo-dist.outputs.paths }}
 
-  build-sdist:
-    name: Release sdist
-    runs-on: "ubuntu-latest"
+  # Build and package all the platform-agnostic(ish) things
+  upload-global-artifacts:
+    needs: [plan, upload-local-artifacts]
+    runs-on: "ubuntu-20.04"
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v3
-      - name: Build sdist
-        uses: messense/maturin-action@v1
+      - uses: actions/checkout@v4
         with:
-          command: sdist -m crates/monotrail/Cargo.toml
-      - name: Upload sdist
-        uses: actions/upload-artifact@v3
-        with:
-          name: wheels
-          path: target/wheels
-
-  upload:
-    name: Release Upload
-    runs-on: ubuntu-latest
-    needs: [ build-wheels, build-sdist ]
-    steps:
-      - name: Download wheels
+          submodules: recursive
+      - name: Install cargo-dist
+        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.3.1/cargo-dist-installer.sh | sh"
+      # Get all the local artifacts for the global tasks to use (for e.g. checksums)
+      - name: Fetch local artifacts
         uses: actions/download-artifact@v3
         with:
-          name: wheels
-      - name: Publish to PyPi
-        uses: messense/maturin-action@v1
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        with:
-          command: upload
-          args: --skip-existing *
-
-  build-binaries:
-    name: Build Binaries
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [
-          { os: "ubuntu-latest", bin: "monotrail", release: "monotrail-x86_64-unknown-linux-gnu.tar.gz" },
-          { os: "windows-latest", bin: "monotrail", release: "monotrail-x86_64-pc-windows-msvc.zip" },
-          { os: "macos-latest", bin: "monotrail", release: "monotrail-x86_64-apple-darwin.tar.gz" },
-        ]
-    runs-on: ${{ matrix.platform.os }}
-    steps:
-      - uses: actions/checkout@v3
-      - name: Cache cargo build
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - name: cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
-
-      - name: Archive binary (windows)
-        if: matrix.platform.os == 'windows-latest'
+          name: artifacts
+          path: target/distrib/
+      - id: cargo-dist
+        shell: bash
         run: |
-          cd target/release
-          7z a ../../${{ matrix.platform.release }} ${{ matrix.platform.bin }}.exe
-          cd -
-      - name: Archive binary (linux and macOS)
-        if: matrix.platform.os != 'windows-latest'
-        run: |
-          cd target/release
-          ls
-          tar czvf ../../${{ matrix.platform.release }} ${{ matrix.platform.bin }}
-          cd -
-      - name: Upload Binary
+          cargo dist build ${{ needs.plan.outputs.tag-flag }} --output-format=json "--artifacts=global" > dist-manifest.json
+          echo "cargo dist ran successfully"
+
+          # Parse out what we just built and upload it to the Github Release™
+          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
+          jq --raw-output ".artifacts[]?.path | select( . != null )" dist-manifest.json >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: "Upload artifacts"
         uses: actions/upload-artifact@v3
         with:
-          name: binaries
-          path: ${{ matrix.platform.release }}
+          name: artifacts
+          path: ${{ steps.cargo-dist.outputs.paths }}
 
-  release-binaries-github:
-    name: Publish to GitHub releases
+  should-publish:
+    needs:
+      - plan
+      - upload-local-artifacts
+      - upload-global-artifacts
+    if: ${{ needs.plan.outputs.publishing == 'true' }}
     runs-on: ubuntu-latest
-    needs: [ build-binaries ]
     steps:
-      - uses: actions/download-artifact@v3
+      - name: print tag
+        run: echo "ok we're publishing!"
+
+  # Create a Github Release with all the results once everything is done,
+  publish-release:
+    needs: [plan, should-publish]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: binaries
-          path: binaries
-      - name: Release
-        uses: softprops/action-gh-release@v1
+          submodules: recursive
+      - name: "Download artifacts"
+        uses: actions/download-artifact@v3
         with:
-          files: |
-            binaries/*.tar.gz
-            binaries/*.zip
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          name: artifacts
+          path: artifacts
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.plan.outputs.tag }}
+          name: ${{ fromJson(needs.plan.outputs.val).announcement_title }}
+          body: ${{ fromJson(needs.plan.outputs.val).announcement_github_body }}
+          prerelease: ${{ fromJson(needs.plan.outputs.val).announcement_is_prerelease }}
+          artifacts: "artifacts/*"
