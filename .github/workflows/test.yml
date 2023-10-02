@@ -8,18 +8,20 @@ on:
   pull_request:
 
 jobs:
-  fmt:
+  lint:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - name: Cache cargo build
-        uses: Swatinem/rust-cache@v2
       - name: Rustfmt
         run: cargo fmt --all -- --check
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      # TODO: Put ruff in pyproject.toml dev dependencies and use lockfile version
+      # or ruff github action
+      - run: pipx run ruff==0.0.291 .
+      - uses: psf/black@23.9.1
 
   clippy:
     name: Clippy
@@ -31,28 +33,6 @@ jobs:
           components: clippy
       - name: Clippy
         run: cargo clippy --tests --all-features --workspace -- -D warnings
-
-  black:
-    name: Black
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-      - uses: psf/black@23.1.0
-
-  ruff:
-    name: ruff
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-      # TODO: Put ruff in pyproject.toml dev dependencies and use lockfile version
-      # or ruff github action
-      - run: pipx run ruff==0.0.291 .
 
   test-cargo:
     name: Test Cargo
@@ -102,12 +82,15 @@ jobs:
         run: pip download -d test-data/popular-wheels -r test-data/popular.txt
 
       - name: cargo test
-        run: cargo test --workspace --release
+        run: cargo test --workspace --release --features cli
         env:
           RUST_LOG: monotrail=trace # For debugging ci failures
 
-      - name: pytest test/install
-        run: pytest test/install
+      - name: pytest test/install_wheel_rs
+        run: pytest test/install_wheel_rs
+
+      - name: pytest test/monotrail_bin
+        run: pytest test/monotrail_bin
 
       - name: Install hyperfine (linux)
         if: matrix.os == 'ubuntu-latest-skip-for-slowness'

@@ -10,8 +10,8 @@ from shutil import rmtree
 from subprocess import check_call, DEVNULL, CalledProcessError
 from typing import List, Optional
 
-from test.install.test_compare_pip import diff_envs
-from test.install.utils import get_bin, get_root
+from test.install_wheel_rs.test_compare_pip import diff_envs
+from test.install_wheel_rs.utils import get_bin, get_root
 
 
 def compare_with_poetry(
