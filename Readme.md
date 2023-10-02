@@ -1,13 +1,6 @@
 # Proof Of Concept: Monotrail
 
-This proof of concept shows how to use python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml`/`poetry.lock` in the directory.  Download the binary from [release](https://github.com/konstin/poc-monotrail/releases/latest) or [main](https://konstin.github.io/poc-monotrail/) and put it in PATH (e.g. via `.local/bin`):
-
-```shell
-curl -L https://github.com/konstin/poc-monotrail/releases/download/v0.1.0/monotrail-x86_64-unknown-linux-gnu.tar.gz | tar xz -C ~/.local/bin/
-```
-
-or install with pipx/pipx (`pip install monotrail`):
-
+This proof of concept shows how to use python packages without virtualenvs. It will install both python itself and your dependencies, given a `requirement.txt` or a `pyproject.toml`/`poetry.lock` in the directory.  User the installer from the [latest release](https://github.com/konstin/poc-monotrail/releases/latest), download a binary from [main](https://konstin.github.io/poc-monotrail/) and put it in PATH (e.g. via `.local/bin`) or install with pipx/pipx (`pip install monotrail`):
 
 ```
 monotrail run python my_script.py
