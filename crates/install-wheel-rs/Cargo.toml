@@ -47,3 +47,6 @@ cli = ["clap", "rayon"]
 
 [dev-dependencies]
 indoc = { workspace = true }
+
+[package.metadata.dist]
+dist = false
