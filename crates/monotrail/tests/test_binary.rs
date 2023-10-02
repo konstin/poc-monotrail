@@ -41,7 +41,7 @@ fn test_datascience() {
                 "-p",
                 version,
                 "python",
-                "data_science_project/import_pandas.py",
+                "../../data_science_project/import_pandas.py",
             ])
             .output();
         let output = handle_output(output).unwrap();
@@ -55,7 +55,7 @@ fn test_datascience() {
 #[test]
 fn test_flipstring() {
     let output = Command::new(BIN)
-        .args(["run", "python", "flipstring/flip.py", "hello world!"])
+        .args(["run", "python", "../../flipstring/flip.py", "hello world!"])
         // windows uses the cp encoding otherwise and then printing utf8 characters fails
         .env("PYTHONIOENCODING", "utf8")
         .output();
@@ -80,7 +80,7 @@ fn test_tox() {
             "python",
             "numpy_version.py",
         ])
-        .current_dir("data_science_project")
+        .current_dir("../../data_science_project")
         .output();
     let output = handle_output(output).unwrap();
     let hellos: Vec<&str> = output
@@ -140,7 +140,7 @@ fn test_srcery() {
             "python",
             "-c",
             "from srcery import satanarchaeolidealcohellish_notion_potion; print(satanarchaeolidealcohellish_notion_potion())",
-        ]).current_dir("srcery")
+        ]).current_dir("../../srcery")
         .output();
     let output: Vec<String> = handle_output(output).unwrap();
     assert_eq!(
