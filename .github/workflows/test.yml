@@ -20,7 +20,9 @@ jobs:
           python-version: '3.x'
       # TODO: Put ruff in pyproject.toml dev dependencies and use lockfile version
       # or ruff github action
-      - run: pipx run ruff==0.0.291 .
+      - uses: chartboost/ruff-action@v1
+        with:
+          version: 0.0.292
       - uses: psf/black@23.9.1
 
   clippy:
