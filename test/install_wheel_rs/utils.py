@@ -2,11 +2,10 @@ import platform
 from pathlib import Path
 
 
-def get_bin() -> Path:
+def get_bin(bin_filename: str = "monotrail") -> Path:
     if platform.system() == "Windows":
-        bin_filename = "monotrail.exe"
-    else:
-        bin_filename = "monotrail"
+        bin_filename = f"{bin_filename}.exe"
+
     release_bin = (
         get_root().joinpath("target").joinpath("release").joinpath(bin_filename)
     )

@@ -3,7 +3,7 @@ import platform
 import shutil
 from subprocess import check_call, SubprocessError, DEVNULL, CalledProcessError
 
-from test.install.utils import get_bin, get_root
+from test.install_wheel_rs.utils import get_bin, get_root
 
 
 def test_tqdm():
@@ -48,7 +48,7 @@ def test_tqdm():
             python,
             get_root()
             .joinpath("test")
-            .joinpath("install")
+            .joinpath("install_wheel_rs")
             .joinpath("test_tqdm_impl.py"),
         ],
         env=env,

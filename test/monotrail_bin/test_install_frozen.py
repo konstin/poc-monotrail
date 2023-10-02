@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from test.install.test_compare_pip import compare_with_pip_args
+from test.install_wheel_rs.test_compare_pip import compare_with_pip_args
+from test.install_wheel_rs.utils import get_bin
 
 
 def test_pydantic(pytestconfig):
@@ -20,6 +21,7 @@ def test_pydantic(pytestconfig):
         ),
     }
     compare_with_pip_args(
+        bin_name=get_bin("monotrail"),
         env_name="monotrail_install_frozen_pydantic",
         pip_args=["--no-deps", "--no-compile", "-r", requirements_all_txt],
         monotrail_args=["install", "--frozen", "-r", requirements_all_txt],

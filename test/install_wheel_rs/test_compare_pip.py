@@ -14,33 +14,36 @@ from typing import List, Union, Optional, Set
 
 import pytest
 
-from test.install.utils import get_bin, get_root
+from test.install_wheel_rs.utils import get_bin, get_root
+
+major = 3
+minor = 8
 
 
 def compare_with_pip_wheels(
     env_name: str,
     wheels: List[Union[str, Path]],
     *,
-    monotrail: Optional[Path] = None,
+    bin_name: Path = get_bin("install-wheel-rs"),
     clear_rs: bool = True,
     clear_pip: bool = False,
 ):
     compare_with_pip_args(
+        bin_name,
         env_name,
         ["--no-deps", *wheels],
-        ["wheel-install", *wheels],
-        monotrail=monotrail,
+        ["--major", str(major), "--minor", str(minor), *wheels],
         clear_rs=clear_rs,
         clear_pip=clear_pip,
     )
 
 
 def compare_with_pip_args(
+    bin_name: Path,
     env_name: str,
     pip_args: List[Union[str, Path]],
     monotrail_args: List[Union[str, Path]],
     *,
-    monotrail: Optional[Path] = None,
     clear_rs: bool = True,
     clear_pip: bool = False,
     cwd: Optional[Path] = None,
@@ -56,7 +59,9 @@ def compare_with_pip_args(
     if clear_pip and env_py.exists():
         rmtree(env_py)
     if not env_py.exists():
-        check_call(["virtualenv", "-p", "3.8", env], stdout=DEVNULL, cwd=cwd)
+        check_call(
+            ["virtualenv", "-p", f"{major}.{minor}", env], stdout=DEVNULL, cwd=cwd
+        )
         start_pip = time.time()
         if platform.system() == "Windows":
             pip = env.joinpath("Scripts").joinpath("pip.exe")
@@ -71,11 +76,10 @@ def compare_with_pip_args(
     # rust install
     if env_rs.exists():
         rmtree(env_rs)
-    check_call(["virtualenv", "-p", "3.8", env], stdout=DEVNULL)
-    monotrail = monotrail or get_bin()
+    check_call(["virtualenv", "-p", f"{major}.{minor}", env], stdout=DEVNULL)
     start_rs = time.time()
     check_call(
-        [monotrail, *monotrail_args],
+        [bin_name, *monotrail_args],
         env=dict(os.environ, VIRTUAL_ENV=str(env)),
         cwd=cwd,
     )
