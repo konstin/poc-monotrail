@@ -85,7 +85,9 @@ jobs:
       - name: pytest test/monotrail_bin
         run: pytest test/monotrail_bin
 
-      - uses: taiki-e/install-action@hyperfine
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: hyperfine
       - name: Benchmark plotly and tqdm
         #if: matrix.os == 'ubuntu-latest'
         if: matrix.os == 'skip-for-slowness'
