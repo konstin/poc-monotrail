@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
       - name: Clippy
-        run: cargo clippy --tests --all-features --workspace -- -D warnings
+        run: cargo clippy --tests --all-features -- -D warnings
 
   test-cargo:
     name: Test Cargo
@@ -55,18 +55,13 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements-test.txt'
       - run: pip install pytest virtualenv
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       # We need normal poetry as reference; Pin to a specific version since we diff against the output
       - name: Install poetry
         run: pipx install poetry==1.6.1
 
-      - name: Cache cargo build
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
       - name: cargo build
-        run: cargo build --release
+        run: cargo build --release --features cli
 
       - name: Cache popular wheels
         id: cache-popular-wheels
@@ -80,7 +75,7 @@ jobs:
         run: pip download -d test-data/popular-wheels -r test-data/popular.txt
 
       - name: cargo test
-        run: cargo test --workspace --release --features cli
+        run: cargo test --release --features cli
         env:
           RUST_LOG: monotrail=trace # For debugging ci failures
 
@@ -90,17 +85,7 @@ jobs:
       - name: pytest test/monotrail_bin
         run: pytest test/monotrail_bin
 
-      - name: Install hyperfine (linux)
-        if: matrix.os == 'ubuntu-latest-skip-for-slowness'
-        run: |
-          mkdir -p $HOME/.local/bin
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          hyperfine_version="v1.12.0"
-          hyperfine_url="https://github.com/sharkdp/hyperfine/releases/download/$hyperfine_version/hyperfine-$hyperfine_version-x86_64-unknown-linux-musl.tar.gz"
-          curl -L $hyperfine_url | tar -zxv --strip-components 1 -C $HOME/.local/bin hyperfine-$hyperfine_version-x86_64-unknown-linux-musl/hyperfine
-      - name: Install hyperfine (mac)
-        if: matrix.os == 'macos-latest-skip-for-slowness'
-        run: brew install hyperfine
+      - uses: taiki-e/install-action@hyperfine
       - name: Benchmark plotly and tqdm
         #if: matrix.os == 'ubuntu-latest'
         if: matrix.os == 'skip-for-slowness'
