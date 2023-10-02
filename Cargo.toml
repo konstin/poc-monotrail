@@ -51,3 +51,8 @@ debug = 1
 [profile.dev.package.adler]
 opt-level = 3
 
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
