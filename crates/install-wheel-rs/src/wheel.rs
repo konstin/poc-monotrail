@@ -3,8 +3,8 @@
 use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::WheelFilename;
 use crate::{normalize_name, Error};
-use base64::Engine;
 use configparser::ini::Ini;
+use data_encoding::BASE64URL_NOPAD;
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use mailparse::MailHeaderMap;
@@ -220,14 +220,7 @@ pub fn copy_and_hash(reader: &mut impl Read, writer: &mut impl Write) -> io::Res
     }
     Ok((
         written,
-        format!(
-            "sha256={}",
-            base64::engine::GeneralPurpose::new(
-                &base64::alphabet::URL_SAFE,
-                base64::engine::general_purpose::NO_PAD
-            )
-            .encode(&hasher.finalize())
-        ),
+        format!("sha256={}", BASE64URL_NOPAD.encode(&hasher.finalize())),
     ))
 }
 
@@ -910,14 +903,7 @@ fn write_file_recorded(
 ) -> Result<(), Error> {
     File::create(site_packages.join(relative_path))?.write_all(content.as_ref())?;
     let hash = Sha256::new().chain_update(content.as_ref()).finalize();
-    let encoded_hash = format!(
-        "sha256={}",
-        base64::engine::GeneralPurpose::new(
-            &base64::alphabet::URL_SAFE,
-            base64::engine::general_purpose::NO_PAD
-        )
-        .encode(&hash)
-    );
+    let encoded_hash = format!("sha256={}", BASE64URL_NOPAD.encode(&hash));
     record.push(RecordEntry {
         path: relative_path.display().to_string(),
         hash: Some(encoded_hash),
@@ -1338,7 +1324,6 @@ mod test {
     /// Previously `__pycache__` paths were erroneously absolute
     #[test]
     fn installed_paths_relative() {
-        println!("{}", std::env::current_dir().unwrap().display());
         let filename = "colander-0.9.9-py2.py3-none-any.whl";
         let wheel = Path::new("../../test-data/wheels").join(filename);
         let temp_dir = TempDir::new().unwrap();

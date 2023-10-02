@@ -840,10 +840,10 @@ checksum = "1e186cfbae8084e513daff4240b4797e342f988cecda4fb6c939150f96315fd8"
 name = "install-wheel-rs"
 version = "0.0.1"
 dependencies = [
- "base64 0.21.4",
  "clap",
  "configparser",
  "csv",
+ "data-encoding",
  "fs-err",
  "fs2",
  "glibc_version",
@@ -1089,9 +1089,9 @@ name = "monotrail"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.21.4",
  "clap",
  "cpufeatures",
+ "data-encoding",
  "dirs",
  "fs-err",
  "fs2",

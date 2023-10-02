@@ -13,10 +13,10 @@ name = "install_wheel_rs"
 #crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-base64 = { workspace = true }
 clap = { version = "4.4.6", optional = true, features = ["derive", "env"] }
 configparser = "3.0.2"
 csv = "1.2.2"
+data-encoding = "2.4.0"
 fs-err = { workspace = true }
 fs2 = { workspace = true }
 glibc_version = "0.1.2"
