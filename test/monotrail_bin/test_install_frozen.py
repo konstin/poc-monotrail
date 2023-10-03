@@ -1,7 +1,6 @@
 from pathlib import Path
 
-from test.install_wheel_rs.test_compare_pip import compare_with_pip_args
-from test.install_wheel_rs.utils import get_bin
+from test.install_wheel_rs.utils import get_bin, compare_with_pip_args
 
 
 def test_pydantic(pytestconfig):

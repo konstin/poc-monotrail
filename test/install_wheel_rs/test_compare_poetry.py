@@ -10,8 +10,7 @@ from shutil import rmtree
 from subprocess import check_call, DEVNULL, CalledProcessError
 from typing import List, Optional
 
-from test.install_wheel_rs.test_compare_pip import diff_envs
-from test.install_wheel_rs.utils import get_bin, get_root
+from test.install_wheel_rs.utils import get_bin, get_root, diff_envs
 
 
 def compare_with_poetry(
@@ -66,7 +65,7 @@ def compare_with_poetry(
     if env_rs.exists():
         rmtree(env_rs)
     check_call(["virtualenv", "-p", "3.8", env], stdout=DEVNULL)
-    monotrail = monotrail or get_bin()
+    monotrail = monotrail or get_bin("monotrail")
     start_rs = time.time()
     call = [monotrail, "poetry-install"]
     if no_dev:

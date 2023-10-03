@@ -4,8 +4,7 @@ Test with the top 100 pypi wheels and some more
 """
 from subprocess import check_call
 
-from test.install_wheel_rs.test_compare_pip import compare_with_pip_wheels
-from test.install_wheel_rs.utils import get_root
+from test.install_wheel_rs.utils import get_root, compare_with_pip_wheels
 
 
 def test_popular():
