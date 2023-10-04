@@ -41,9 +41,10 @@ walkdir = { workspace = true }
 zip = { version = "0.6.6", default-features = false, features = ["deflate"] } # no default features for zstd
 
 [features]
-default = ["cli"]
+default = ["cli", "parallel"]
 python_bindings = ["pyo3", "tracing-subscriber"]
-cli = ["clap", "rayon"]
+cli = ["clap"]
+parallel = ["rayon"]
 
 [dev-dependencies]
 indoc = { workspace = true }

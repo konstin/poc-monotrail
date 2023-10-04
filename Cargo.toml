@@ -42,7 +42,7 @@ pr-run-mode = "plan"
 [profile.release]
 lto = "thin"
 
-[profile.perf]
+[profile.profiling]
 inherits = "release"
 debug = 1
 

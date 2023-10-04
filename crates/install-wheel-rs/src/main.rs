@@ -1,6 +1,7 @@
 use clap::Parser;
 use fs_err::File;
 use install_wheel_rs::{install_wheel, CompatibleTags, Error, InstallLocation, WheelFilename};
+#[cfg(feature = "rayon")]
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -18,6 +19,9 @@ struct Args {
     /// The minor version of the current python interpreter
     #[clap(long)]
     minor: u8,
+    /// Compile .py files to .pyc (errors are ignored)
+    #[clap(long)]
+    compile: bool,
 }
 
 fn main() -> Result<(), Error> {
@@ -44,14 +48,23 @@ fn main() -> Result<(), Error> {
         })
         .collect::<Result<_, Error>>()?;
 
+    let wheels = {
+        #[cfg(feature = "rayon")]
+        {
+            wheels.into_par_iter()
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            wheels.into_iter()
+        }
+    };
     wheels
-        .into_par_iter()
         .map(|(wheel, filename)| {
             install_wheel(
                 &locked_dir,
                 File::open(wheel)?,
                 filename,
-                false,
+                args.compile,
                 &[],
                 // Only relevant for monotrail style installation
                 "",
