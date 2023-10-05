@@ -14,6 +14,36 @@ use std::process::{Command, Stdio};
 use std::str::FromStr;
 use tracing::trace;
 
+/// The name of a wheel split into its parts ([PEP 491](https://peps.python.org/pep-0491/))
+///
+/// Ignores the build tag atm.
+///
+/// ```
+/// use std::str::FromStr;
+/// use install_wheel_rs::WheelFilename;
+///
+/// let filename = WheelFilename::from_str("foo-1.0-py32-none-any.whl").unwrap();
+/// assert_eq!(filename, WheelFilename {
+///     distribution: "foo".to_string(),
+///     version: "1.0".to_string(),
+///     python_tag: vec!["py32".to_string()],
+///     abi_tag: vec!["none".to_string()],
+///     platform_tag: vec!["any".to_string()]
+/// });
+/// let filename = WheelFilename::from_str(
+///     "numpy-1.26.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+/// ).unwrap();
+/// assert_eq!(filename, WheelFilename {
+///     distribution: "numpy".to_string(),
+///     version: "1.26.0".to_string(),
+///     python_tag: vec!["cp312".to_string()],
+///     abi_tag: vec!["cp312".to_string()],
+///     platform_tag: vec![
+///         "manylinux_2_17_aarch64".to_string(),
+///         "manylinux2014_aarch64".to_string()
+///     ]
+/// });
+/// ```
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WheelFilename {
     pub distribution: String,
@@ -74,7 +104,7 @@ impl WheelFilename {
             })
     }
 
-    /// effectively undoes the wheel filename parsing step
+    /// Effectively undoes the wheel filename parsing step
     pub fn get_tag(&self) -> String {
         format!(
             "{}-{}-{}",

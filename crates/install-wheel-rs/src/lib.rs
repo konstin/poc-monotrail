@@ -1,19 +1,31 @@
 //! Takes a wheel and installs it, either in a venv or for monotrail
+//!
+//! ```no_run
+//! use std::path::Path;
+//! use install_wheel_rs::install_wheel_in_venv;
+//!
+//! install_wheel_in_venv(
+//!     "Django-4.2.6-py3-none-any.whl",
+//!     ".venv",
+//!     ".venv/bin/python",
+//!     (3, 8),
+//! ).unwrap();
+//! ```
 
-use std::fs::File;
-// The pub ones are reused by monotrail
-pub use install_location::{normalize_name, InstallLocation, LockedDir};
 use platform_info::PlatformInfoError;
+use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::str::FromStr;
 use thiserror::Error;
+use zip::result::ZipError;
+
+pub use install_location::{normalize_name, InstallLocation, LockedDir};
 pub use wheel::{
     get_script_launcher, install_wheel, parse_key_value_file, read_record_file, relative_to,
-    Script, MONOTRAIL_SCRIPT_SHEBANG,
+    Script, SHEBANG_PYTHON,
 };
 pub use wheel_tags::{Arch, CompatibleTags, Os, WheelFilename};
-use zip::result::ZipError;
 
 mod install_location;
 #[cfg(feature = "python_bindings")]
@@ -71,22 +83,25 @@ impl Error {
 
 /// High level API: Install a wheel in a virtualenv
 ///
+/// The python interpreter is used for compiling to byte code, the python version for computing
+/// the site packages path on unix.
+///
 /// Returns the tag of the wheel
 pub fn install_wheel_in_venv(
-    wheel: &Path,
-    venv: &Path,
-    interpreter: &Path,
-    major: u8,
-    minor: u8,
+    wheel: impl AsRef<Path>,
+    venv: impl AsRef<Path>,
+    interpreter: impl AsRef<Path>,
+    major_minor: (u8, u8),
 ) -> Result<String, Error> {
-    let venv_base = venv.canonicalize()?;
+    let venv_base = venv.as_ref().canonicalize()?;
     let location = InstallLocation::Venv {
         venv_base,
-        python_version: (major, minor),
+        python_version: major_minor,
     };
     let locked_dir = location.acquire_lock()?;
 
     let filename = wheel
+        .as_ref()
         .file_name()
         .ok_or_else(|| Error::InvalidWheel("Expected a file".to_string()))?
         .to_string_lossy();

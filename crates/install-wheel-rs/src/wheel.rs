@@ -24,7 +24,8 @@ use zip::result::ZipError;
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-pub const MONOTRAIL_SCRIPT_SHEBANG: &str = "#!/usr/bin/env python";
+/// `#!/usr/bin/env python`
+pub const SHEBANG_PYTHON: &str = "#!/usr/bin/env python";
 
 pub const LAUNCHER_T32: &[u8] = include_bytes!("../windows-launcher/t32.exe");
 pub const LAUNCHER_T64: &[u8] = include_bytes!("../windows-launcher/t64.exe");
@@ -55,7 +56,8 @@ struct DirectUrl {
     url: String,
 }
 
-/// A script from pyproject.toml
+/// A script defining the name of the runnable entrypoint and the module and function that should be
+/// run.
 #[cfg(feature = "python_bindings")]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[pyo3::pyclass(dict)]
@@ -68,6 +70,8 @@ pub struct Script {
     pub function: String,
 }
 
+/// A script defining the name of the runnable entrypoint and the module and function that should be
+/// run.
 #[cfg(not(feature = "python_bindings"))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Script {
@@ -361,7 +365,7 @@ fn get_shebang(location: &InstallLocation<LockedDir>) -> String {
     } else {
         // This will use the monotrail binary moonlighting as python. `python` alone doesn't,
         // we need env to find the python link we put in PATH
-        MONOTRAIL_SCRIPT_SHEBANG.to_string()
+        SHEBANG_PYTHON.to_string()
     }
 }
 
@@ -1016,7 +1020,7 @@ pub fn install_wheel(
     // it for validation later
     _extras: &[String],
     unique_version: &str,
-    sys_executable: &Path,
+    sys_executable: impl AsRef<Path>,
 ) -> Result<String, Error> {
     let name = &filename.distribution;
     let _my_span = span!(Level::DEBUG, "install_wheel", name = name.as_str());
@@ -1142,7 +1146,7 @@ pub fn install_wheel(
             &site_packages,
             unpacked_paths,
             location.get_python_version(),
-            &sys_executable,
+            sys_executable.as_ref(),
             name.as_str(),
             &mut record,
         )?;

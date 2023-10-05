@@ -68,7 +68,7 @@ fn main() -> Result<(), Error> {
                 &[],
                 // Only relevant for monotrail style installation
                 "",
-                &location.get_python(),
+                location.get_python(),
             )?;
             Ok(())
         })

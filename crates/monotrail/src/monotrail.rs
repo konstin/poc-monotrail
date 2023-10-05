@@ -14,7 +14,7 @@ use crate::utils::{cache_dir, get_dir_content};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
-use install_wheel_rs::{CompatibleTags, InstallLocation, Script, MONOTRAIL_SCRIPT_SHEBANG};
+use install_wheel_rs::{CompatibleTags, InstallLocation, Script, SHEBANG_PYTHON};
 use pep508_rs::MarkerEnvironment;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
@@ -658,9 +658,9 @@ pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
         .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
     // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
     let mut start = Vec::new();
-    start.resize(MONOTRAIL_SCRIPT_SHEBANG.as_bytes().len(), 0);
+    start.resize(SHEBANG_PYTHON.as_bytes().len(), 0);
     executable_file.read_exact(&mut start)?;
-    let is_python_script = start == MONOTRAIL_SCRIPT_SHEBANG.as_bytes();
+    let is_python_script = start == SHEBANG_PYTHON.as_bytes();
     Ok(is_python_script)
 }
 

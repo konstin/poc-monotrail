@@ -5,7 +5,7 @@ use crate::standalone_python::provision_python;
 use crate::DEFAULT_PYTHON_VERSION;
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
-use install_wheel_rs::{get_script_launcher, Script, MONOTRAIL_SCRIPT_SHEBANG};
+use install_wheel_rs::{get_script_launcher, Script, SHEBANG_PYTHON};
 use libc::{c_int, c_void, wchar_t};
 use libloading::Library;
 use std::collections::BTreeMap;
@@ -529,8 +529,7 @@ pub fn prepare_execve_environment(
     // install the root project, we also didn't install the root scripts and never generated the
     // wrapper scripts. We add them here instead.
     for (script_name, script) in root_scripts {
-        let launcher =
-            get_script_launcher(&script.module, &script.function, MONOTRAIL_SCRIPT_SHEBANG);
+        let launcher = get_script_launcher(&script.module, &script.function, SHEBANG_PYTHON);
         fs::write(path_dir.join(script_name), &launcher)
             .with_context(|| format!("Failed to write launcher for {}", script_name))?;
     }
