@@ -443,6 +443,7 @@ fn download_and_install(
         File::open(wheel)?,
         filename,
         compile,
+        true,
         &spec.extras,
         &spec.unique_version,
         &sys_executable,

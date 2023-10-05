@@ -1016,6 +1016,7 @@ pub fn install_wheel(
     reader: impl Read + Seek,
     filename: WheelFilename,
     compile: bool,
+    check_hashes: bool,
     // initially used to the console scripts, currently unused. Keeping it because we likely need
     // it for validation later
     _extras: &[String],
@@ -1101,8 +1102,13 @@ pub fn install_wheel(
     // > 1.d Else unpack archive into platlib (site-packages).
     // We always install in the same virtualenv site packages
     debug!(name = name.as_str(), "Extracting file");
-    let unpacked_paths =
-        unpack_wheel_files(&site_packages, &record_path, &mut archive, &record, true)?;
+    let unpacked_paths = unpack_wheel_files(
+        &site_packages,
+        &record_path,
+        &mut archive,
+        &record,
+        check_hashes,
+    )?;
     debug!(
         name = name.as_str(),
         "Extracted {} files",
@@ -1349,6 +1355,7 @@ mod test {
             &install_location,
             File::open(wheel).unwrap(),
             WheelFilename::from_str(&filename).unwrap(),
+            true,
             true,
             &[],
             "0.9.9",

@@ -22,6 +22,9 @@ struct Args {
     /// Compile .py files to .pyc (errors are ignored)
     #[clap(long)]
     compile: bool,
+    /// Don't check the hashes in RECORD
+    #[clap(long)]
+    skip_hashes: bool,
 }
 
 fn main() -> Result<(), Error> {
@@ -65,6 +68,7 @@ fn main() -> Result<(), Error> {
                 File::open(wheel)?,
                 filename,
                 args.compile,
+                !args.skip_hashes,
                 &[],
                 // Only relevant for monotrail style installation
                 "",

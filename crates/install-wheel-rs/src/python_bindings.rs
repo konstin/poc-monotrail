@@ -64,6 +64,7 @@ impl LockedVenv {
                 File::open(wheel)?,
                 filename,
                 true,
+                true,
                 &[],
                 // unique_version can be anything since it's only used to monotrail
                 "",

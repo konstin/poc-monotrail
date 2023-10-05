@@ -114,6 +114,7 @@ pub fn install_wheel_in_venv(
         File::open(wheel)?,
         filename,
         false,
+        true,
         &[],
         // Only relevant for monotrail style installation
         "",
