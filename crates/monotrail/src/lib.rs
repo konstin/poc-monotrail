@@ -16,7 +16,8 @@
 //!    installations.
 
 pub use cli::{run_cli, Cli};
-pub use inject_and_run::{parse_major_minor, run_python_args};
+pub use inject_and_run::run_python_args;
+pub use monotrail_utils::parse_cpython_args::parse_major_minor;
 use poetry_integration::read_dependencies::read_poetry_specs;
 #[doc(hidden)]
 pub use utils::assert_cli_error;

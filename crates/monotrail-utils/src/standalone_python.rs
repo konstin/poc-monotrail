@@ -189,7 +189,11 @@ fn provision_python_inner(
     Ok(())
 }
 
-pub fn provision_python(python_version: (u8, u8), cache_dir: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
+/// Returns `(python_binary, python_home)`
+pub fn provision_python(
+    python_version: (u8, u8),
+    cache_dir: &Path,
+) -> anyhow::Result<(PathBuf, PathBuf)> {
     let python_parent_dir = cache_dir.join("python-build-standalone");
     // We need this here for the locking logic
     fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
@@ -286,15 +290,14 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
         .unwrap()
 }
 
-
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
-    use tempfile::tempdir;
-    use mockito::{Mock, ServerGuard};
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     use crate::standalone_python::provision_python;
     use crate::standalone_python::{find_python, PYTHON_STANDALONE_LATEST_RELEASE};
+    use mockito::{Mock, ServerGuard};
+    use std::path::PathBuf;
+    use tempfile::tempdir;
 
     pub fn zstd_json_mock(url: &str, fixture: impl Into<PathBuf>) -> (ServerGuard, Mock) {
         use fs_err::File;

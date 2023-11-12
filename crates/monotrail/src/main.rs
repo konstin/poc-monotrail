@@ -2,7 +2,8 @@
 
 use anyhow::Context;
 use clap::Parser;
-use monotrail::{parse_major_minor, run_cli, run_python_args, Cli};
+use monotrail::{run_cli, run_python_args, Cli};
+use monotrail_utils::parse_cpython_args::parse_major_minor;
 use std::env;
 use std::env::args;
 use std::path::{Path, PathBuf};

@@ -1,20 +1,23 @@
 use crate::inject_and_run::{
-    determine_python_version, inject_and_run_python, prepare_execve_environment,
-    run_python_args_finder_data,
+    inject_and_run_python, prepare_execve_environment, run_python_args_finder_data,
 };
 use crate::install::{install_all, InstalledPackage};
+use crate::markers::marker_environment_from_python;
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::{
     poetry_spec_from_dir, read_requirements_for_poetry, specs_from_git,
 };
-use crate::read_poetry_specs;
 use crate::spec::RequestedSpec;
 use crate::utils::{cache_dir, get_dir_content};
+use crate::{read_poetry_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use install_wheel_rs::{CompatibleTags, InstallLocation, Script, SHEBANG_PYTHON};
+use monotrail_utils::parse_cpython_args::determine_python_version;
+use monotrail_utils::standalone_python::provision_python;
 use pep508_rs::MarkerEnvironment;
+use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env::{current_dir, current_exe};
 #[cfg(unix)]
@@ -25,9 +28,6 @@ use std::process::Command;
 use std::{env, io};
 use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
-use monotrail_utils::standalone_python::provision_python;
-use crate::markers::marker_environment_from_python;
-use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum LockfileType {
@@ -672,7 +672,8 @@ pub fn run_command(
     command: &str,
     args: &[String],
 ) -> anyhow::Result<i32> {
-    let (args, python_version) = determine_python_version(args, python_version)?;
+    let (args, python_version) =
+        determine_python_version(args, python_version, DEFAULT_PYTHON_VERSION)?;
     let (python_context, python_home) = provision_python_env(python_version)?;
     let (specs, root_scripts, lockfile, root) = load_specs(root, extras, &python_context)?;
     let finder_data = install(&specs, root_scripts, lockfile, Some(root), &python_context)?;
@@ -807,8 +808,11 @@ pub fn cli_from_git(
     args: &[String],
 ) -> anyhow::Result<Option<i32>> {
     let trail_args = args[1..].to_vec();
-    let (trail_args, python_version) =
-        determine_python_version(&trail_args, python_version.as_deref())?;
+    let (trail_args, python_version) = determine_python_version(
+        &trail_args,
+        python_version.as_deref(),
+        DEFAULT_PYTHON_VERSION,
+    )?;
     let (python_context, python_home) = provision_python_env(python_version)?;
 
     let (specs, repo_dir, lockfile) =

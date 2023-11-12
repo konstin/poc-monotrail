@@ -1,13 +1,14 @@
+use crate::monotrail::provision_python_env;
 use crate::monotrail::{install, run_command_finder_data, PythonContext};
 use crate::poetry_integration::lock::poetry_resolve_from_dir;
 use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::poetry_integration::read_dependencies::read_toml_files;
-use crate::monotrail::provision_python_env;
 use crate::utils::data_local_dir;
-use crate::{parse_major_minor, read_poetry_specs, DEFAULT_PYTHON_VERSION};
+use crate::{read_poetry_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::Context;
 use fs_err as fs;
+use monotrail_utils::parse_cpython_args::parse_major_minor;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::TempDir;

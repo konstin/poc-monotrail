@@ -2,6 +2,6 @@
 
 pub use requirements_txt::RequirementsTxt;
 
-mod requirements_txt;
 pub mod parse_cpython_args;
+mod requirements_txt;
 pub mod standalone_python;

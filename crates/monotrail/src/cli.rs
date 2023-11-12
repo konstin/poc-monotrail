@@ -1,4 +1,4 @@
-use crate::inject_and_run::{parse_plus_arg, run_python_args};
+use crate::inject_and_run::run_python_args;
 use crate::install::{filter_installed, install_all};
 use crate::markers::marker_environment_from_python;
 use crate::monotrail::{cli_from_git, monotrail_root, run_command};
@@ -13,6 +13,7 @@ use crate::verify_installation::verify_installation;
 use anyhow::{bail, Context};
 use clap::Parser;
 use install_wheel_rs::{CompatibleTags, Error, InstallLocation};
+use monotrail_utils::parse_cpython_args::parse_plus_arg;
 use monotrail_utils::RequirementsTxt;
 use pep440_rs::Operator;
 use pep508_rs::VersionOrUrl;

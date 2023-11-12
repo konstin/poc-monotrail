@@ -1,14 +1,14 @@
 //! Communication with libpython
 
-use monotrail_utils::parse_cpython_args::naive_python_arg_parser;
-use crate::monotrail::{find_scripts, install, load_specs, FinderData, InjectData, PythonContext};
 use crate::monotrail::provision_python_env;
+use crate::monotrail::{find_scripts, install, load_specs, FinderData, InjectData, PythonContext};
 use crate::DEFAULT_PYTHON_VERSION;
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
 use install_wheel_rs::{get_script_launcher, Script, SHEBANG_PYTHON};
 use libc::{c_int, c_void, wchar_t};
 use libloading::Library;
+use monotrail_utils::parse_cpython_args::{determine_python_version, naive_python_arg_parser};
 use std::collections::BTreeMap;
 use std::env;
 use std::env::current_exe;
@@ -97,7 +97,6 @@ unsafe fn pre_init(lib: &Library) -> anyhow::Result<()> {
     }
     Ok(())
 }
-
 
 /// The way we're using to load symbol by symbol with the type generic is really ugly and cumbersome
 /// If you know how to do this with `extern` or even pyo3-ffi directly please tell me.
@@ -277,35 +276,6 @@ pub fn inject_and_run_python(
     }
 }
 
-/// Allows linking monotrail as python and then doing `python +3.10 -m say.hello`
-#[allow(clippy::type_complexity)]
-pub fn parse_plus_arg(python_args: &[String]) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
-    if let Some(first_arg) = python_args.get(0) {
-        if first_arg.starts_with('+') {
-            let python_version = parse_major_minor(first_arg)?;
-            return Ok((python_args[1..].to_vec(), Some(python_version)));
-        }
-    }
-    Ok((python_args.to_vec(), None))
-}
-
-/// Parses "3.8" to (3, 8)
-pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
-    let python_version =
-        if let Some((major, minor)) = version.trim_start_matches('+').split_once('.') {
-            let major = major
-                .parse::<u8>()
-                .with_context(|| format!("Could not parse value of version_major: {}", major))?;
-            let minor = minor
-                .parse::<u8>()
-                .with_context(|| format!("Could not parse value of version_minor: {}", minor))?;
-            (major, minor)
-        } else {
-            bail!("Expect +x.y as first argument (missing dot)");
-        };
-    Ok(python_version)
-}
-
 /// `monotrail run python` implementation. Injects the dependencies and runs the python interpreter
 /// with the specified arguments.
 pub fn run_python_args(
@@ -314,7 +284,8 @@ pub fn run_python_args(
     root: Option<&Path>,
     extras: &[String],
 ) -> anyhow::Result<i32> {
-    let (args, python_version) = determine_python_version(args, python_version)?;
+    let (args, python_version) =
+        determine_python_version(args, python_version, DEFAULT_PYTHON_VERSION)?;
     let (python_context, python_home) = provision_python_env(python_version)?;
 
     let script = if let Some(root) = root {
@@ -377,48 +348,6 @@ pub fn run_python_args_finder_data(
         debug!("Python didn't exit with code 0: {}", exit_code);
     }
     Ok(exit_code)
-}
-
-/// There are three possible sources of a python version:
-///  - explicitly as cli argument
-///  - as +x.y in the python args
-///  - through MONOTRAIL_PYTHON_VERSION, as forwarding through calling our python hook (TODO: give
-///    version info to the python hook, maybe with /usr/bin/env, but i don't know how)
-/// We ensure that only one is set a time  
-pub fn determine_python_version(
-    python_args: &[String],
-    python_version: Option<&str>,
-) -> anyhow::Result<(Vec<String>, (u8, u8))> {
-    let (args, python_version_plus) = parse_plus_arg(&python_args)?;
-    let python_version_arg = python_version.map(parse_major_minor).transpose()?;
-    let env_var = format!("{}_PYTHON_VERSION", env!("CARGO_PKG_NAME").to_uppercase());
-    let python_version_env = env::var_os(&env_var)
-        .map(|x| parse_major_minor(x.to_string_lossy().as_ref()))
-        .transpose()
-        .with_context(|| format!("Couldn't parse {}", env_var))?;
-    trace!(
-        "python versions: as argument: {:?}, with plus: {:?}, with {}: {:?}",
-        python_version_plus,
-        python_version_arg,
-        env_var,
-        python_version_env
-    );
-    let python_version = match (python_version_plus, python_version_arg, python_version_env) {
-        (None, None, None) => DEFAULT_PYTHON_VERSION,
-        (Some(python_version_plus), None, None) => python_version_plus,
-        (None, Some(python_version_arg), None) => python_version_arg,
-        (None, None, Some(python_version_env)) => python_version_env,
-        (python_version_plus, python_version_arg, python_version_env) => {
-            bail!(
-                "Conflicting python versions: as argument {:?}, with plus: {:?}, with {}: {:?}",
-                python_version_plus,
-                python_version_arg,
-                env_var,
-                python_version_env
-            );
-        }
-    };
-    Ok((args, python_version))
 }
 
 /// On unix, we can just symlink to the binary, on windows we need to use a batch file as redirect
