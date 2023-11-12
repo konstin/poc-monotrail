@@ -13,9 +13,10 @@ use crate::monotrail::{
 };
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
-use crate::{inject_and_run, read_poetry_specs, PEP508_QUERY_ENV};
+use crate::{read_poetry_specs, PEP508_QUERY_ENV};
 use anyhow::{bail, Context};
 use install_wheel_rs::Script;
+use monotrail_utils::parse_cpython_args::naive_python_arg_parser;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyModule;
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
@@ -91,7 +92,7 @@ fn get_python_context(py: Python) -> PyResult<PythonContext> {
 pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<InjectData> {
     // We parse the python args even if we take MONOTRAIL_CWD as a validation
     // step
-    let script = inject_and_run::naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
+    let script = naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
     let script = if let Some(script) =
         env::var_os(&format!("{}_CWD", env!("CARGO_PKG_NAME").to_uppercase()))
     {
