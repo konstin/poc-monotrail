@@ -1,6 +1,28 @@
-use anyhow::{bail, Context};
 use std::env;
+use std::num::ParseIntError;
+use thiserror::Error;
 use tracing::trace;
+
+#[derive(Debug, Error)]
+pub enum ParsePythonVersionError {
+    #[error("Could not parse number in version '{input}'")]
+    ParseInt {
+        input: String,
+        source: ParseIntError,
+    },
+    #[error("Missing dot in python version argument '{input}'")]
+    MissingDot { input: String },
+    #[error(
+        "Conflicting python versions: as argument {python_version_arg:?}, with plus: \
+        {python_version_plus:?}, with {env_var}: {python_version_env:?}"
+    )]
+    ConflictingPythonVersion {
+        python_version_arg: Option<(u8, u8)>,
+        python_version_plus: Option<(u8, u8)>,
+        env_var: String,
+        python_version_env: Option<(u8, u8)>,
+    },
+}
 
 /// python has idiosyncratic cli options that are hard to replicate with clap, so we roll our own.
 /// Takes args without the first-is-current-program (i.e. python) convention.
@@ -46,7 +68,9 @@ pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<Strin
 
 /// Allows linking monotrail as python and then doing `python +3.10 -m say.hello`
 #[allow(clippy::type_complexity)]
-pub fn parse_plus_arg(python_args: &[String]) -> anyhow::Result<(Vec<String>, Option<(u8, u8)>)> {
+pub fn parse_plus_arg(
+    python_args: &[String],
+) -> Result<(Vec<String>, Option<(u8, u8)>), ParsePythonVersionError> {
     if let Some(first_arg) = python_args.get(0) {
         if first_arg.starts_with('+') {
             let python_version = parse_major_minor(first_arg)?;
@@ -57,20 +81,26 @@ pub fn parse_plus_arg(python_args: &[String]) -> anyhow::Result<(Vec<String>, Op
 }
 
 /// Parses "3.8" to (3, 8)
-pub fn parse_major_minor(version: &str) -> anyhow::Result<(u8, u8)> {
-    let python_version =
-        if let Some((major, minor)) = version.trim_start_matches('+').split_once('.') {
-            let major = major
-                .parse::<u8>()
-                .with_context(|| format!("Could not parse value of version_major: {}", major))?;
-            let minor = minor
-                .parse::<u8>()
-                .with_context(|| format!("Could not parse value of version_minor: {}", minor))?;
-            (major, minor)
-        } else {
-            bail!("Expect +x.y as first argument (missing dot)");
-        };
-    Ok(python_version)
+pub fn parse_major_minor(version: &str) -> Result<(u8, u8), ParsePythonVersionError> {
+    let Some((major, minor)) = version.trim_start_matches('+').split_once('.') else {
+        return Err(ParsePythonVersionError::MissingDot {
+            input: version.to_string(),
+        });
+    };
+    let major = major
+        .parse::<u8>()
+        .map_err(|err| ParsePythonVersionError::ParseInt {
+            input: version.to_string(),
+            source: err,
+        })?;
+    let minor = minor
+        .parse::<u8>()
+        .map_err(|err| ParsePythonVersionError::ParseInt {
+            input: version.to_string(),
+            source: err,
+        })?;
+
+    Ok((major, minor))
 }
 
 /// There are three possible sources of a python version:
@@ -83,14 +113,13 @@ pub fn determine_python_version(
     python_args: &[String],
     python_version: Option<&str>,
     default_python_version: (u8, u8),
-) -> anyhow::Result<(Vec<String>, (u8, u8))> {
+) -> Result<(Vec<String>, (u8, u8)), ParsePythonVersionError> {
     let (args, python_version_plus) = parse_plus_arg(python_args)?;
     let python_version_arg = python_version.map(parse_major_minor).transpose()?;
     let env_var = format!("{}_PYTHON_VERSION", env!("CARGO_PKG_NAME").to_uppercase());
     let python_version_env = env::var_os(&env_var)
         .map(|x| parse_major_minor(x.to_string_lossy().as_ref()))
-        .transpose()
-        .with_context(|| format!("Couldn't parse {}", env_var))?;
+        .transpose()?;
     trace!(
         "python versions: as argument: {:?}, with plus: {:?}, with {}: {:?}",
         python_version_plus,
@@ -104,13 +133,12 @@ pub fn determine_python_version(
         (None, Some(python_version_arg), None) => python_version_arg,
         (None, None, Some(python_version_env)) => python_version_env,
         (python_version_plus, python_version_arg, python_version_env) => {
-            bail!(
-                "Conflicting python versions: as argument {:?}, with plus: {:?}, with {}: {:?}",
+            return Err(ParsePythonVersionError::ConflictingPythonVersion {
                 python_version_plus,
                 python_version_arg,
                 env_var,
-                python_version_env
-            );
+                python_version_env,
+            });
         }
     };
     Ok((args, python_version))
