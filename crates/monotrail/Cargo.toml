@@ -11,7 +11,7 @@ name = "monotrail"
 [dependencies]
 anyhow = { workspace = true }
 clap = { version = "4.4.4", features = ["derive"] }
-cpufeatures = "0.2.9"
+cpufeatures = { workspace = true }
 data-encoding = "2.4.0"
 dirs = "5.0.1"
 fs-err = { workspace = true }
@@ -21,8 +21,7 @@ indicatif = "0.17.7"
 install-wheel-rs = { version = "0.0.1", path = "../install-wheel-rs" }
 libc = "0.2.148"
 libloading = "0.8.0"
-# For the zig build
-libz-sys = { version = "1.1.12", features = ["static"] }
+libz-sys = { version = "1.1.12", features = ["static"] } # For the zig build
 monotrail-utils = { version = "0.0.1", path = "../monotrail-utils" }
 nix = { version = "0.27.1", features = ["process"] }
 pep440_rs = "0.3.11"
@@ -33,7 +32,7 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-tar = "0.4.40"
+tar = { workspace = true }
 target-lexicon = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
@@ -41,10 +40,10 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 unscanny = { workspace = true }
-ureq = { version = "2.7.1", features = ["json"] }
+ureq = { workspace = true }
 walkdir = { workspace = true }
-widestring = "1.0.2"
-zstd = "0.12.4"
+widestring = { workspace = true }
+zstd = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }

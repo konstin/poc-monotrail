@@ -1,9 +1,6 @@
 //! Download and install standalone python builds (PyOxy) from
 //! <https://github.com/indygreg/python-build-standalone>
 
-use crate::markers::marker_environment_from_python;
-use crate::monotrail::{LaunchType, PythonContext};
-use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs2::FileExt;
 use fs_err as fs;
@@ -117,7 +114,7 @@ fn download_and_unpack_python(url: &str, target_dir: &Path) -> anyhow::Result<()
         .into_reader();
     let tar = zstd::Decoder::new(tar_zstd)?;
     let mut archive = tar::Archive::new(tar);
-    fs::create_dir_all(&target_dir)?;
+    fs::create_dir_all(target_dir)?;
     archive.unpack(target_dir)?;
     Ok(())
 }
@@ -165,7 +162,7 @@ fn provision_python_inner(
         )
     })?;
     // atomic installation by tempdir & rename
-    let temp_dir = tempdir_in(&python_parent_dir)
+    let temp_dir = tempdir_in(python_parent_dir)
         .context("Failed to create temporary directory for unpacking")?;
     match download_and_unpack_python(&url, temp_dir.path()) {
         Ok(()) => {}
@@ -187,15 +184,13 @@ fn provision_python_inner(
         }
     }
     // we can use fs::rename here because we stay in the same directory
-    fs::rename(temp_dir, &unpack_dir).context("Failed to move installed python into place")?;
+    fs::rename(temp_dir, unpack_dir).context("Failed to move installed python into place")?;
     debug!("Installed python {}.{}", python_version.0, python_version.1);
     Ok(())
 }
 
-/// If a downloaded python version exists, return this, otherwise download and unpack a matching one
-/// from indygreg/python-build-standalone
-pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonContext, PathBuf)> {
-    let python_parent_dir = cache_dir()?.join("python-build-standalone");
+pub fn provision_python(python_version: (u8, u8), cache_dir: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
+    let python_parent_dir = cache_dir.join("python-build-standalone");
     // We need this here for the locking logic
     fs::create_dir_all(&python_parent_dir).context("Failed to create cache dir")?;
     let unpack_dir =
@@ -243,17 +238,8 @@ pub fn provision_python(python_version: (u8, u8)) -> anyhow::Result<(PythonConte
             .join("bin")
             .join("python3")
     };
-    // TODO: Already init and use libpython here
-    let pep508_env = marker_environment_from_python(&python_binary);
-    let python_context = PythonContext {
-        sys_executable: python_binary,
-        version: python_version,
-        pep508_env,
-        launch_type: LaunchType::Binary,
-    };
-
     let python_home = unpack_dir.join("python").join("install");
-    Ok((python_context, python_home))
+    Ok((python_binary, python_home))
 }
 
 /// Returns a regex matching a compatible optimized build from the indygreg/python-build-standalone
@@ -300,14 +286,27 @@ pub fn filename_regex(major: u8, minor: u8) -> Regex {
         .unwrap()
 }
 
+
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+    use tempfile::tempdir;
     use mockito::{Mock, ServerGuard};
-
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     use crate::standalone_python::provision_python;
     use crate::standalone_python::{find_python, PYTHON_STANDALONE_LATEST_RELEASE};
-    use crate::utils::zstd_json_mock;
+
+    pub fn zstd_json_mock(url: &str, fixture: impl Into<PathBuf>) -> (ServerGuard, Mock) {
+        use fs_err::File;
+
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("GET", url)
+            .with_header("content-type", "application/json")
+            .with_body(zstd::stream::decode_all(File::open(fixture).unwrap()).unwrap())
+            .create();
+        (server, mock)
+    }
 
     fn mock() -> (ServerGuard, Mock) {
         zstd_json_mock(
@@ -336,7 +335,8 @@ mod test {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn test_provision_nonexistent_version() {
         let _mocks = mock();
-        let err = provision_python((3, 0)).unwrap_err();
+        let tempdir = tempdir().unwrap();
+        let err = provision_python((3, 0), tempdir.path()).unwrap_err();
         let expected = vec![
             r"Couldn't find a matching python 3.0 to download",
             r"Failed to find a matching python-build-standalone download: /^cpython-3\.0\.(\d+)\+(\d+)-x86_64\-unknown\-linux\-gnu-pgo\+lto-full\.tar\.zst$/. Searched in https://github.com/indygreg/python-build-standalone/releases/latest and https://github.com/indygreg/python-build-standalone/releases/tag/20220502",

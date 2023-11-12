@@ -33,7 +33,6 @@ mod ppipx;
 mod python_bindings;
 mod source_distribution;
 mod spec;
-mod standalone_python;
 mod utils;
 mod venv_parser;
 mod verify_installation;

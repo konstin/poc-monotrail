@@ -5,7 +5,7 @@ use crate::monotrail::install;
 use crate::poetry_integration::poetry_lock::PoetryLock;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::read_poetry_specs;
-use crate::standalone_python::provision_python;
+use crate::monotrail::provision_python_env;
 use anyhow::Context;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 /// argument
 pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Result<i32> {
     let (args, python_version) = determine_python_version(&args, python_version)?;
-    let (python_context, python_home) = provision_python(python_version)?;
+    let (python_context, python_home) = provision_python_env(python_version)?;
 
     let pyproject_toml = include_str!("../../../../resources/poetry_boostrap_lock/pyproject.toml");
     let poetry_toml: PoetryPyprojectToml = toml::from_str(pyproject_toml).unwrap();

@@ -776,8 +776,7 @@ fn install_script(
     // (#!/usr/bin/env python) for injection monotrail as python into PATH later
     let placeholder_python = b"#!python";
     // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
-    let mut start = Vec::new();
-    start.resize(placeholder_python.len(), 0);
+    let mut start = vec![0; placeholder_python.len()];
     script.read_exact(&mut start)?;
     let size_and_encoded_hash = if start == placeholder_python {
         let start = get_shebang(&location).as_bytes().to_vec();
@@ -1011,6 +1010,7 @@ pub fn parse_key_value_file(
 /// <https://packaging.python.org/en/latest/specifications/binary-distribution-format/#installing-a-wheel-distribution-1-0-py32-none-any-whl>
 ///
 /// Wheel 1.0: <https://www.python.org/dev/peps/pep-0427/>
+#[allow(clippy::too_many_arguments)]
 pub fn install_wheel(
     location: &InstallLocation<LockedDir>,
     reader: impl Read + Seek,

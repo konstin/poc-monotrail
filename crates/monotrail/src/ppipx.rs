@@ -3,7 +3,7 @@ use crate::poetry_integration::lock::poetry_resolve_from_dir;
 use crate::poetry_integration::poetry_toml;
 use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::poetry_integration::read_dependencies::read_toml_files;
-use crate::standalone_python::provision_python;
+use crate::monotrail::provision_python_env;
 use crate::utils::data_local_dir;
 use crate::{parse_major_minor, read_poetry_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::Context;
@@ -29,7 +29,7 @@ pub fn ppipx(
         .transpose()?
         .unwrap_or(DEFAULT_PYTHON_VERSION);
 
-    let (python_context, python_home) = provision_python(python_version)?;
+    let (python_context, python_home) = provision_python_env(python_version)?;
     let package = package.unwrap_or(command);
     let package_extras = if extras.is_empty() {
         package.to_string()

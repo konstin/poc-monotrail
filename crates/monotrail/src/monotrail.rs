@@ -9,14 +9,12 @@ use crate::poetry_integration::read_dependencies::{
 };
 use crate::read_poetry_specs;
 use crate::spec::RequestedSpec;
-use crate::standalone_python::provision_python;
 use crate::utils::{cache_dir, get_dir_content};
 use anyhow::{bail, Context};
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use install_wheel_rs::{CompatibleTags, InstallLocation, Script, SHEBANG_PYTHON};
 use pep508_rs::MarkerEnvironment;
-use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env::{current_dir, current_exe};
 #[cfg(unix)]
@@ -27,6 +25,9 @@ use std::process::Command;
 use std::{env, io};
 use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
+use monotrail_utils::standalone_python::provision_python;
+use crate::markers::marker_environment_from_python;
+use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum LockfileType {
@@ -657,8 +658,7 @@ pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
     let mut executable_file = File::open(&executable)
         .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
     // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
-    let mut start = Vec::new();
-    start.resize(SHEBANG_PYTHON.as_bytes().len(), 0);
+    let mut start = vec![0; SHEBANG_PYTHON.as_bytes().len()];
     executable_file.read_exact(&mut start)?;
     let is_python_script = start == SHEBANG_PYTHON.as_bytes();
     Ok(is_python_script)
@@ -673,7 +673,7 @@ pub fn run_command(
     args: &[String],
 ) -> anyhow::Result<i32> {
     let (args, python_version) = determine_python_version(args, python_version)?;
-    let (python_context, python_home) = provision_python(python_version)?;
+    let (python_context, python_home) = provision_python_env(python_version)?;
     let (specs, root_scripts, lockfile, root) = load_specs(root, extras, &python_context)?;
     let finder_data = install(&specs, root_scripts, lockfile, Some(root), &python_context)?;
 
@@ -760,20 +760,21 @@ pub fn run_command_finder_data(
         {
             // Sorry for the to_string_lossy all over the place
             // https://stackoverflow.com/a/38948854/3549270
-            let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes())
-                .context("Failed to convert executable path")?;
+            // unwrap safety: Strings can never contain internal null bytes
+            let executable_c_str = CString::new(script_path.to_string_lossy().as_bytes()).unwrap();
             let args_c_string = args
                 .iter()
                 .map(|arg| {
-                    CString::new(arg.as_bytes()).context("Failed to convert executable argument")
+                    // unwrap safety: Strings can never contain internal null bytes
+                    CString::new(arg.as_bytes()).unwrap()
                 })
-                .collect::<anyhow::Result<Vec<CString>>>()?;
+                .collect::<Vec<CString>>();
 
             // We replace the current process with the new process is it's like actually just running
             // the real thing.
             // Note the that this may launch a python script, a native binary or anything else
-            nix::unistd::execv(&executable_c_str, &args_c_string)
-                .context("Failed to launch process")?;
+            // unwrap safety: Infallible (that's the actual type)
+            nix::unistd::execv(&executable_c_str, &args_c_string).unwrap();
             unreachable!()
         }
         #[cfg(windows)]
@@ -808,7 +809,7 @@ pub fn cli_from_git(
     let trail_args = args[1..].to_vec();
     let (trail_args, python_version) =
         determine_python_version(&trail_args, python_version.as_deref())?;
-    let (python_context, python_home) = provision_python(python_version)?;
+    let (python_context, python_home) = provision_python_env(python_version)?;
 
     let (specs, repo_dir, lockfile) =
         specs_from_git(git_url, revision, &extras, None, &python_context)?;
@@ -840,4 +841,21 @@ pub fn cli_from_git(
         other => bail!("invalid command `{}`, must be 'python' or 'command'", other),
     };
     Ok(Some(exit_code))
+}
+
+/// If a downloaded python version exists, return this, otherwise download and unpack a matching one
+/// from indygreg/python-build-standalone
+pub fn provision_python_env(python_version: (u8, u8)) -> anyhow::Result<(PythonContext, PathBuf)> {
+    let (python_binary, python_home) = provision_python(python_version, cache_dir()?.as_path())?;
+
+    // TODO: Already init and use libpython here
+    let pep508_env = marker_environment_from_python(&python_binary);
+    let python_context = PythonContext {
+        sys_executable: python_binary,
+        version: python_version,
+        pep508_env,
+        launch_type: LaunchType::Binary,
+    };
+
+    Ok((python_context, python_home))
 }
