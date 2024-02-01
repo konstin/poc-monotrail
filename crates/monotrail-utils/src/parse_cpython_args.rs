@@ -71,7 +71,7 @@ pub fn naive_python_arg_parser<T: AsRef<str>>(args: &[T]) -> Result<Option<Strin
 pub fn parse_plus_arg(
     python_args: &[String],
 ) -> Result<(Vec<String>, Option<(u8, u8)>), ParsePythonVersionError> {
-    if let Some(first_arg) = python_args.get(0) {
+    if let Some(first_arg) = python_args.first() {
         if first_arg.starts_with('+') {
             let python_version = parse_major_minor(first_arg)?;
             return Ok((python_args[1..].to_vec(), Some(python_version)));

@@ -292,7 +292,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
             Ok(repo) => Some(repo),
             Err(err) => {
                 warn!("Repository directory {} exists, but can't be opened as a git repository, recreating: {}", repo_dir.display(), err);
-                fs::remove_dir_all(&repo_dir).context("Failed to remove old repo dir")?;
+                fs::remove_dir_all(repo_dir).context("Failed to remove old repo dir")?;
                 None
             }
         }
@@ -323,7 +323,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
         // https://stackoverflow.com/q/3489173/3549270
         let mut tries = 1;
         loop {
-            let result = Repository::clone(url, &repo_dir);
+            let result = Repository::clone(url, repo_dir);
             let backoff = Duration::from_secs(1);
             tries -= 1;
             match result {
@@ -336,7 +336,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
                         backoff.as_secs()
                     );
                     if repo_dir.is_dir() {
-                        fs::remove_dir_all(&repo_dir)
+                        fs::remove_dir_all(repo_dir)
                             .context("Failed to remove broken repo dir")?;
                     }
                     sleep(backoff);
@@ -446,7 +446,7 @@ fn download_and_install(
         true,
         &spec.extras,
         &spec.unique_version,
-        &sys_executable,
+        sys_executable,
     )
     .with_context(|| format!("Failed to install {}", spec.requested))?;
     Ok((spec.python_version, spec.unique_version, tag))

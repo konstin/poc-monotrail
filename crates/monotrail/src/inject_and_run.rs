@@ -258,7 +258,7 @@ pub fn inject_and_run_python(
         // is an even bigger mess
         let args_cstring: Vec<WideCString> = args
             .iter()
-            .map(|arg| WideCString::from_str(&arg).unwrap())
+            .map(|arg| WideCString::from_str(arg).unwrap())
             .collect();
         let mut args_c_char: Vec<*const wchar_t> = args_cstring
             .iter()

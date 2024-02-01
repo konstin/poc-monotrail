@@ -94,7 +94,7 @@ pub fn monotrail_from_args(py: Python, args: Vec<String>) -> PyResult<InjectData
     // step
     let script = naive_python_arg_parser(&args).map_err(PyRuntimeError::new_err)?;
     let script = if let Some(script) =
-        env::var_os(&format!("{}_CWD", env!("CARGO_PKG_NAME").to_uppercase()))
+        env::var_os(format!("{}_CWD", env!("CARGO_PKG_NAME").to_uppercase()))
     {
         Some(PathBuf::from(script))
     } else {

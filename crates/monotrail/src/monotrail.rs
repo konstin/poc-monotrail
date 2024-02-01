@@ -655,7 +655,7 @@ pub fn find_scripts(
 
 pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
     // Check whether we're launching a monotrail python script
-    let mut executable_file = File::open(&executable)
+    let mut executable_file = File::open(executable)
         .context("the executable file was right there and is now unreadable ಠ_ಠ")?;
     // scripts might be binaries, so we read an exact number of bytes instead of the first line as string
     let mut start = vec![0; SHEBANG_PYTHON.as_bytes().len()];

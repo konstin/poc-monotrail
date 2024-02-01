@@ -265,7 +265,7 @@ fn unpack_wheel_files<R: Read + Seek>(
 
         if let Some(p) = out_path.parent() {
             if !created_dirs.contains(p) {
-                fs::create_dir_all(&p)?;
+                fs::create_dir_all(p)?;
                 created_dirs.insert(p.to_path_buf());
             }
         }
@@ -424,7 +424,7 @@ fn write_script_entrypoints(
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), Error> {
     // for monotrail
-    fs::create_dir_all(site_packages.join(&bin_rel()))?;
+    fs::create_dir_all(site_packages.join(bin_rel()))?;
     for entrypoint in entrypoints {
         let entrypoint_relative = if cfg!(windows) {
             // On windows we actually build an .exe wrapper
@@ -628,7 +628,7 @@ fn bytecode_compile_inner(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
-        .current_dir(&site_packages)
+        .current_dir(site_packages)
         .spawn()
         .map_err(Error::PythonSubcommand)?;
 
@@ -708,14 +708,14 @@ fn move_folder_recorded(
     record: &mut [RecordEntry],
 ) -> Result<(), Error> {
     if !dest_dir.is_dir() {
-        fs::create_dir_all(&dest_dir)?;
+        fs::create_dir_all(dest_dir)?;
     }
-    for entry in WalkDir::new(&src_dir) {
+    for entry in WalkDir::new(src_dir) {
         let entry = entry?;
         let src = entry.path();
         // This is the base path for moving to the actual target for the data
         // e.g. for data it's without <..>.data/data/
-        let relative_to_data = src.strip_prefix(&src_dir).expect("Prefix must no change");
+        let relative_to_data = src.strip_prefix(src_dir).expect("Prefix must no change");
         // This is the path stored in RECORD
         // e.g. for data it's with .data/data/
         let relative_to_site_packages = src
@@ -787,7 +787,7 @@ fn install_script(
     } else {
         // reading and writing is slow especially for large binaries, so we move them instead
         drop(script);
-        fs::rename(&path, &site_packages.join(&target_path))?;
+        fs::rename(&path, site_packages.join(&target_path))?;
         None
     };
     #[cfg(unix)]
@@ -1377,7 +1377,7 @@ mod test {
             .join("site-packages")
             .join("colander-0.9.9.dist-info")
             .join("RECORD");
-        let record = fs::read_to_string(&record).unwrap();
+        let record = fs::read_to_string(record).unwrap();
         for line in record.lines() {
             assert!(!line.starts_with('/'), "{}", line);
         }

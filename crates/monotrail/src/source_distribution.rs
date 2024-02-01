@@ -52,7 +52,7 @@ pub fn build_to_wheel(
 ) -> Result<PathBuf> {
     let output = Command::new("pip")
         .current_dir(build_dir)
-        .args(&["wheel", "--no-deps"])
+        .args(["wheel", "--no-deps"])
         .arg(sdist_or_dir)
         .output()
         .context("Failed to invoke pip")?;

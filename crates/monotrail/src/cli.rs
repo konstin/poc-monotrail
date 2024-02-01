@@ -188,7 +188,7 @@ pub fn download_distribution_cached(
     url: &str,
 ) -> anyhow::Result<PathBuf> {
     let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
-    let target_file = target_dir.join(&filename);
+    let target_file = target_dir.join(filename);
 
     if target_file.is_file() {
         debug!(
@@ -433,7 +433,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
                     // extended to run this in parallel.
                     // Would be nicer to use a fork wrapper here
                     let status = Command::new(env::current_exe()?)
-                        .args(&["run", "-p", &version, "python"])
+                        .args(["run", "-p", &version, "python"])
                         .args(&trail_args)
                         .status()
                         .context("Failed to start child process for python version")?;

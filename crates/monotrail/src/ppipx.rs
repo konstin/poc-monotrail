@@ -132,7 +132,7 @@ fn generate_ppipx_entry(
         build_system: None,
     };
 
-    fs::create_dir_all(&resolution_dir).context("Failed to create ppipx resolution dir")?;
+    fs::create_dir_all(resolution_dir).context("Failed to create ppipx resolution dir")?;
     let resolve_dir = TempDir::new()?;
     fs::write(
         resolve_dir.path().join("pyproject.toml"),

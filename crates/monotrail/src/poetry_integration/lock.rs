@@ -73,7 +73,7 @@ pub fn poetry_resolve(
     //   and minimize the resolution work
     let poetry_lock_path = resolve_dir.path().join("poetry.lock");
     if let Some(lockfile) = lockfile {
-        fs::write(&poetry_lock_path, &lockfile)?;
+        fs::write(&poetry_lock_path, lockfile)?;
     }
 
     poetry_resolve_from_dir(&resolve_dir, &python_context)?;
@@ -149,7 +149,7 @@ pub fn poetry_resolve_from_dir(
             let result = Command::new(&current_exe)
                 .args(&args)
                 // This will make poetry-resolve find the pyproject.toml we want to resolve
-                .current_dir(&resolve_dir)
+                .current_dir(resolve_dir)
                 .status();
             (result, current_exe, args)
         }
@@ -170,7 +170,7 @@ pub fn poetry_resolve_from_dir(
                     &poetry_boostrap_lock,
                 )
                 // This will make poetry lock the right deps
-                .current_dir(&resolve_dir)
+                .current_dir(resolve_dir)
                 .status();
             (result, python_context.sys_executable.clone(), args)
         }
