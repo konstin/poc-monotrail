@@ -136,8 +136,8 @@ pub(crate) fn download_distribution(
     debug!("Downloading wheel to {}", target_file.display());
     fs::create_dir_all(target_dir).context("Couldn't create cache dir")?;
     // temp file so we don't clash with other processes running in parallel
-    let mut temp_file = tempfile::NamedTempFile::new_in(target_dir)
-        .context("Couldn't create file for download")?;
+    let mut temp_file =
+        tempfile::NamedTempFile::new_in(target_dir).context("Couldn't create file for download")?;
     let request_for_file = ureq::get(url)
         .set("User-Agent", "monotrail (konstin@mailbox.org)")
         .call()

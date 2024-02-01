@@ -297,7 +297,6 @@ mod test {
     use crate::standalone_python::{find_python, PYTHON_STANDALONE_LATEST_RELEASE};
     use mockito::{Mock, ServerGuard};
     use std::path::PathBuf;
-    
 
     pub fn zstd_json_mock(url: &str, fixture: impl Into<PathBuf>) -> (ServerGuard, Mock) {
         use fs_err::File;

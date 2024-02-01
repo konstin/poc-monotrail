@@ -336,8 +336,7 @@ pub fn repo_at_revision(url: &str, revision: &str, repo_dir: &Path) -> anyhow::R
                         backoff.as_secs()
                     );
                     if repo_dir.is_dir() {
-                        fs::remove_dir_all(repo_dir)
-                            .context("Failed to remove broken repo dir")?;
+                        fs::remove_dir_all(repo_dir).context("Failed to remove broken repo dir")?;
                     }
                     sleep(backoff);
                     continue;
