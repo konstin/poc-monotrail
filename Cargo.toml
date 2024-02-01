@@ -11,7 +11,7 @@ indoc = "2.0.4"
 logtest = "2.0.0"
 mockito = "1.2.0"
 pep508_rs = { version = "0.2.1", features = ["serde"] }
-pyo3 = { version = "0.19.2", features = ["extension-module", "abi3-py37"] }
+pyo3 = { version = "0.20.2", features = ["extension-module", "abi3-py37"] }
 regex = "1.9.5"
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"
@@ -26,9 +26,9 @@ tracing-subscriber = "0.3.17"
 unscanny = "0.1.0"
 ureq = { version = "2.7.1", features = ["json"] }
 walkdir = "2.4.0"
-which = "4.4.2"
+which = "6.0.0"
 widestring = "1.0.2"
-zstd = "0.12.4"
+zstd = "0.13.0"
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
