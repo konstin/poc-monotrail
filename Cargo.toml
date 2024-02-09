@@ -10,7 +10,7 @@ fs2 = "0.4.3"
 indoc = "2.0.4"
 logtest = "2.0.0"
 mockito = "1.2.0"
-pep508_rs = { version = "0.2.1", features = ["serde"] }
+pep508_rs = { version = "0.3.0", features = ["serde"] }
 pyo3 = { version = "0.20.2", features = ["extension-module", "abi3-py37"] }
 regex = "1.9.5"
 serde = { version = "1.0.188", features = ["derive"] }
