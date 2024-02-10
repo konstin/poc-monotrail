@@ -337,7 +337,7 @@ mod test {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn test_provision_nonexistent_version() {
         let _mocks = mock();
-        let tempdir = tempdir().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
         let err = provision_python((3, 0), tempdir.path()).unwrap_err();
         let expected = vec![
             r"Couldn't find a matching python 3.0 to download",
