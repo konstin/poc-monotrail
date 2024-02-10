@@ -20,7 +20,7 @@ data-encoding = "2.4.0"
 fs-err = { workspace = true }
 fs2 = { workspace = true }
 glibc_version = "0.1.2"
-goblin = "0.7.1"
+goblin = "0.8.0"
 mailparse = "0.14.0"
 once_cell = "1.18.0"
 platform-info = "2.0.2"
