@@ -8,6 +8,7 @@ use fs_err as fs;
 use fs_err::File;
 use indicatif::ProgressBar;
 use install_wheel_rs::{read_record_file, relative_to};
+use pep508_rs::PackageName;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -19,12 +20,12 @@ use walkdir::WalkDir;
 /// Checks a single package in `root` against its RECORD
 fn verify_package(
     root: &Path,
-    name: &str,
+    name: &PackageName,
     unique_version: &str,
     tag: &str,
 ) -> anyhow::Result<Vec<String>> {
     let mut failing = Vec::new();
-    let package_root = root.join(name).join(unique_version).join(tag);
+    let package_root = root.join(name.to_string()).join(unique_version).join(tag);
     let site_packages = if cfg!(windows) {
         package_root.join("Lib").join("site-packages")
     } else {
@@ -46,7 +47,7 @@ fn verify_package(
                 // normalize package name
                 .to_lowercase()
                 .replace('-', "_")
-                .starts_with(name)
+                .starts_with(&name.to_string())
                 && dir.file_name().to_string_lossy().ends_with(".dist-info")
         })
         .map(|entry| entry.path())

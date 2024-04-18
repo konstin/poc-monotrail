@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 /// If we launch from python, we can call the python code from python with no overhead, but
 /// still need to parse into Self here
-#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+#[cfg_attr(not(feature = "pyo3"), allow(dead_code))]
 pub fn marker_environment_from_json_str(pep508_env_data: &str) -> MarkerEnvironment {
     serde_json::from_str(pep508_env_data).unwrap()
 }

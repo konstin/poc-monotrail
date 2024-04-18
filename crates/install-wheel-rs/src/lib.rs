@@ -12,6 +12,7 @@
 //! ).unwrap();
 //! ```
 
+use pep508_rs::InvalidNameError;
 use platform_info::PlatformInfoError;
 use std::fs::File;
 use std::io;
@@ -20,7 +21,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use zip::result::ZipError;
 
-pub use install_location::{normalize_name, InstallLocation, LockedDir};
+pub use install_location::{InstallLocation, LockedDir};
 pub use wheel::{
     get_script_launcher, install_wheel, parse_key_value_file, read_record_file, relative_to,
     Script, SHEBANG_PYTHON,
@@ -28,7 +29,7 @@ pub use wheel::{
 pub use wheel_tags::{Arch, CompatibleTags, Os, WheelFilename};
 
 mod install_location;
-#[cfg(feature = "python_bindings")]
+#[cfg(feature = "pyo3")]
 mod python_bindings;
 mod wheel;
 mod wheel_tags;
@@ -70,6 +71,8 @@ pub enum Error {
     PlatformInfo(#[source] PlatformInfoError),
     #[error("Invalid version specification, only none or == is supported")]
     Pep440,
+    #[error("Wheel has an unsupported package name")]
+    InvalidNameError(#[from] InvalidNameError),
 }
 
 impl Error {

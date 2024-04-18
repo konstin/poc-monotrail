@@ -4,6 +4,7 @@ use crate::spec::DistributionType;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use install_wheel_rs::{CompatibleTags, Error, WheelFilename};
+use pep508_rs::PackageName;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io;
@@ -91,7 +92,7 @@ fn matching_package_for_version(
 /// <https://warehouse.pypa.io/api-reference/json.html>
 pub fn search_release(
     host: &str,
-    name: &str,
+    name: &PackageName,
     version: Option<String>,
     compatible_tags: &CompatibleTags,
 ) -> Result<(PypiRelease, DistributionType, String)> {

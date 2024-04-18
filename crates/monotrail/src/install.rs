@@ -11,9 +11,10 @@ use fs_err::{DirEntry, File};
 use git2::{Direction, Repository};
 use indicatif::{ProgressBar, ProgressStyle};
 use install_wheel_rs::{
-    install_wheel, normalize_name, parse_key_value_file, CompatibleTags, InstallLocation,
-    LockedDir, WheelFilename,
+    install_wheel, parse_key_value_file, CompatibleTags, InstallLocation, LockedDir, WheelFilename,
 };
+use itertools::Itertools;
+use pep508_rs::PackageName;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
 use std::io;
@@ -27,10 +28,10 @@ use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
 
 /// what we communicate back to python
-#[cfg_attr(feature = "python_bindings", pyo3::pyclass(get_all))]
+#[cfg_attr(feature = "pyo3", pyo3::pyclass)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct InstalledPackage {
-    pub name: String,
+    pub name: PackageName,
     pub python_version: String,
     pub unique_version: String,
     /// The compatibility tag like "py3-none-any" or
@@ -38,12 +39,12 @@ pub struct InstalledPackage {
     pub tag: String,
 }
 
-#[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
+#[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 impl InstalledPackage {
     /// PathBuf for pyo3
     pub fn monotrail_location(&self, sprawl_root: PathBuf) -> PathBuf {
         sprawl_root
-            .join(&self.name)
+            .join(self.name.to_string())
             .join(&self.unique_version)
             .join(&self.tag)
     }
@@ -65,6 +66,30 @@ impl InstalledPackage {
                 .join("python")
                 .join("site-packages")
         }
+    }
+
+    #[cfg(feature = "pyo3")]
+    #[getter]
+    fn name(&self) -> String {
+        self.name.to_string()
+    }
+
+    #[cfg(feature = "pyo3")]
+    #[getter]
+    fn python_version(&self) -> &str {
+        &self.python_version
+    }
+
+    #[cfg(feature = "pyo3")]
+    #[getter]
+    fn unique_version(&self) -> &str {
+        &self.unique_version
+    }
+
+    #[cfg(feature = "pyo3")]
+    #[getter]
+    fn tag(&self) -> &str {
+        &self.tag
     }
 }
 
@@ -93,7 +118,7 @@ pub fn filter_installed_venv(
         .filter_map(|entry| {
             let filename = entry.file_name().to_string_lossy().to_string();
             let (name, version) = filename.strip_suffix(".dist-info")?.split_once('-')?;
-            let name = normalize_name(&name.to_lowercase());
+            let name = PackageName::from_str(name).ok()?;
             Some((entry, name, version.to_string()))
         })
         .map(|(entry, name, version)| {
@@ -189,7 +214,7 @@ pub fn install_all(
                 start.elapsed().as_secs_f32()
             );
             let installed_package = InstalledPackage {
-                name: spec.normalized_name(),
+                name: spec.name.clone(),
                 python_version,
                 unique_version,
                 tag,
@@ -202,10 +227,17 @@ pub fn install_all(
                     .template("Installing {bar} {pos:>3}/{len:3} {wide_msg}")
                     .unwrap(), // We know the template, it's correct
             );
-            let current: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let current: Arc<Mutex<Vec<PackageName>>> = Arc::new(Mutex::new(Vec::new()));
             let install_closure = |spec: &RequestedSpec| {
                 current.lock().unwrap().push(spec.name.clone());
-                pb.set_message(current.lock().unwrap().join(","));
+                pb.set_message(
+                    current
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(ToString::to_string)
+                        .join(","),
+                );
                 if pb.is_hidden() {
                     if let Some(source) = &spec.source {
                         info!(
@@ -234,12 +266,12 @@ pub fn install_all(
                 {
                     let mut current = current.lock().unwrap();
                     current.retain(|x| x != &spec.name);
-                    pb.set_message(current.join(", "));
+                    pb.set_message(current.iter().map(ToString::to_string).join(","));
                     pb.inc(1);
                 }
 
                 let installed_package = InstalledPackage {
-                    name: spec.normalized_name(),
+                    name: spec.name.clone(),
                     python_version,
                     unique_version,
                     tag,
@@ -385,10 +417,10 @@ fn download_and_install(
         }
         FileOrUrl::Git { url, revision } => {
             let temp_dir = TempDir::new()?;
-            let repo_dir = temp_dir.path().join(&spec.name);
+            let repo_dir = temp_dir.path().join(spec.name.to_string());
             repo_at_revision(&url, &revision, &repo_dir)?;
 
-            // If we got an sdist until now, build it into a wheel
+            // If we got a source dist until now, build it into a wheel
             debug!(
                 "Building {} {} from source distribution to wheel",
                 spec.name, spec.unique_version

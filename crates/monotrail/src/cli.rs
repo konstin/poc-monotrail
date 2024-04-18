@@ -16,9 +16,8 @@ use install_wheel_rs::{CompatibleTags, Error, InstallLocation};
 use monotrail_utils::parse_cpython_args::parse_plus_arg;
 use monotrail_utils::RequirementsTxt;
 use pep440_rs::Operator;
-use pep508_rs::VersionOrUrl;
+use pep508_rs::{ExtraName, PackageName, VersionOrUrl};
 use std::env;
-use std::env::current_dir;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info};
@@ -30,7 +29,7 @@ pub struct PoetryOptions {
     no_dev: bool,
     /// The extras for which the dependencies should be installed
     #[clap(long, short = 'E')]
-    extras: Vec<String>,
+    extras: Vec<ExtraName>,
     /// Whether to install in a venv or the monotrail cache
     #[clap(long)]
     monotrail: bool,
@@ -81,7 +80,7 @@ pub enum Cli {
     Run {
         /// Install those extras from pyproject.toml
         #[clap(long, short = 'E')]
-        extras: Vec<String>,
+        extras: Vec<ExtraName>,
         /// Run this python version x.y. If you pass multiple versions it will run one after
         /// the other, just like tox
         #[clap(long, short)]
@@ -98,7 +97,7 @@ pub enum Cli {
     Ppipx {
         /// name of the pypi package that contains the command
         #[clap(long)]
-        package: Option<String>,
+        package: Option<PackageName>,
         /// Run this python version x.y
         #[clap(long, short)]
         python_version: Option<String>,
@@ -107,7 +106,7 @@ pub enum Cli {
         version: Option<String>,
         /// extras to enable on the package e.g. `jupyter` for `black` to get `black[jupyter]`
         #[clap(long)]
-        extras: Vec<String>,
+        extras: Vec<ExtraName>,
         /// This contains first the command to run (e.g. `black` or `pytest`), which will also be
         /// used as package name unless --package is set, and then the arguments to be passed
         /// verbatim to the command. This is just `args` and not `command` and `args` due to
@@ -123,7 +122,7 @@ pub enum Cli {
         revision: String,
         /// extras to enable on the package e.g. `jupyter` for `black` to get `black[jupyter]`
         #[clap(long)]
-        extras: Vec<String>,
+        extras: Vec<ExtraName>,
         /// Run this python version x.y
         #[clap(long, short)]
         python_version: Option<String>,
@@ -182,12 +181,15 @@ pub enum Cli {
 
 /// Builds cache filename, downloads if not present, returns cache filename
 pub fn download_distribution_cached(
-    name: &str,
+    name: &PackageName,
     version: &str,
     filename: &str,
     url: &str,
 ) -> anyhow::Result<PathBuf> {
-    let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
+    let target_dir = cache_dir()?
+        .join("artifacts")
+        .join(name.to_string())
+        .join(version);
     let target_file = target_dir.join(filename);
 
     if target_file.is_file() {
@@ -288,7 +290,7 @@ pub fn install(
     }
     let venv = find_venv(venv)?;
     let working_dir = match working_dir {
-        None => current_dir().context("Couldn't get current directory ಠ_ಠ")?,
+        None => env::current_dir().context("Couldn't get current directory ಠ_ಠ")?,
         Some(working_dir) => working_dir.to_path_buf(),
     };
     let python_version = get_venv_python_version(&venv)?;
@@ -451,7 +453,7 @@ pub fn run_cli(cli: Cli, venv: Option<&Path>) -> anyhow::Result<Option<i32>> {
             extras,
             args,
         } => Ok(Some(ppipx::ppipx(
-            package.as_deref(),
+            package.as_ref(),
             python_version.as_deref(),
             version.as_deref(),
             &extras,

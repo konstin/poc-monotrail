@@ -2,6 +2,7 @@
 Loading this module will run monotrail, installing all required packages and making
 them loadable
 """
+
 import os
 import sys
 from typing import Optional, List

@@ -9,9 +9,11 @@ use crate::read_poetry_specs;
 use crate::utils::cache_dir;
 use anyhow::{bail, format_err, Context};
 use fs_err as fs;
+use pep508_rs::PackageName;
 use std::collections::BTreeMap;
 use std::default::Default;
 use std::process::Command;
+use std::str::FromStr;
 use std::time::Instant;
 use std::{env, io};
 use tempfile::{tempdir, TempDir};
@@ -19,13 +21,13 @@ use tracing::{debug, span, Level};
 
 /// Minimal dummy pyproject.toml with the user requested deps for poetry to resolve
 pub fn dummy_poetry_pyproject_toml(
-    dependencies: &BTreeMap<String, poetry_toml::Dependency>,
+    dependencies: &BTreeMap<PackageName, poetry_toml::Dependency>,
     python_version: (u8, u8),
 ) -> PoetryPyprojectToml {
     let mut dependencies = dependencies.clone();
     // Add python entry with current version; resolving will otherwise fail with complaints
     dependencies.insert(
-        "python".to_string(),
+        PackageName::from_str("python").unwrap(),
         // For some reason on github actions 3.8.12 is not 3.8 compatible, so we name the range explicitly
         poetry_toml::Dependency::Compact(format!(
             ">={}.{},<{}.{}",
@@ -55,7 +57,7 @@ pub fn dummy_poetry_pyproject_toml(
 /// Calls poetry to resolve the user specified dependencies into a set of locked consistent
 /// dependencies. Produces a poetry.lock in the process
 pub fn poetry_resolve(
-    dependencies: &BTreeMap<String, poetry_toml::Dependency>,
+    dependencies: &BTreeMap<PackageName, poetry_toml::Dependency>,
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(PoetrySection, PoetryLock, String)> {

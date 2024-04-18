@@ -14,15 +14,18 @@ use crate::monotrail::{
 use crate::poetry_integration::lock::poetry_resolve;
 use crate::poetry_integration::read_dependencies::specs_from_git;
 use crate::{read_poetry_specs, PEP508_QUERY_ENV};
-use anyhow::{bail, Context};
+use anyhow::Context;
 use install_wheel_rs::Script;
 use monotrail_utils::parse_cpython_args::naive_python_arg_parser;
+use pep508_rs::ExtraName;
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::PyAnyMethods;
 use pyo3::types::PyModule;
-use pyo3::{pyfunction, pymodule, wrap_pyfunction, Py, PyAny, PyErr, PyResult, Python};
+use pyo3::{pyfunction, pymodule, wrap_pyfunction, Bound, Py, PyAny, PyErr, PyResult, Python};
 use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Once;
 use tracing::{debug, trace};
 
@@ -52,7 +55,7 @@ fn injectable(
 /// Uses the python C API to run a code snippet that json encodes the PEP508 env
 fn get_pep508_env(py: Python) -> PyResult<String> {
     let fun: Py<PyAny> =
-        PyModule::from_code(py, PEP508_QUERY_ENV, "get_pep508_env.py", "get_pep508_env")?
+        PyModule::from_code_bound(py, PEP508_QUERY_ENV, "get_pep508_env.py", "get_pep508_env")?
             .getattr("get_pep508_env")?
             .into();
 
@@ -75,7 +78,7 @@ fn get_python_context(py: Python) -> PyResult<PythonContext> {
         });
     }
     // Would be nicer through https://docs.python.org/3/c-api/init.html#c.Py_GetProgramFullPath
-    let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
+    let sys_executable: String = py.import_bound("sys")?.getattr("executable")?.extract()?;
     let python_context = PythonContext {
         sys_executable: PathBuf::from(sys_executable),
         version: (py.version_info().major, py.version_info().minor),
@@ -154,6 +157,16 @@ pub fn monotrail_from_git(
     let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
 
+    let extras: Option<Vec<ExtraName>> = extras
+        .map(|extras| {
+            extras
+                .iter()
+                .map(|extra| ExtraName::from_str(extra))
+                .collect()
+        })
+        .transpose()
+        .map_err(format_monotrail_error)?;
+
     let (specs, repo_dir, lockfile) = specs_from_git(
         &git_url,
         &revision,
@@ -180,6 +193,12 @@ pub fn monotrail_from_dir(py: Python, dir: PathBuf, extras: Vec<String>) -> PyRe
     debug!("monotrail_from_dir script: {:?}", dir);
     let python_context = get_python_context(py)?;
     debug!("extras: {:?}", extras);
+
+    let extras = extras
+        .iter()
+        .map(|extra| ExtraName::from_str(extra))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(format_monotrail_error)?;
 
     let (specs, scripts, lockfile, project_dir) =
         load_specs(Some(&dir), &extras, &python_context).map_err(format_monotrail_error)?;
@@ -221,26 +240,16 @@ pub fn monotrail_find_scripts(
     find_scripts(&sprawl_packages, &sprawl_root).map_err(format_monotrail_error)
 }
 
-fn parse_extras() -> anyhow::Result<Vec<String>> {
+fn parse_extras() -> anyhow::Result<Vec<ExtraName>> {
     let extras_env_var = format!("{}_EXTRAS", env!("CARGO_PKG_NAME").to_uppercase());
     let extras = if let Some(extras) = env::var_os(&extras_env_var) {
-        let extras: Vec<String> = extras
+        extras
             .into_string()
             .ok() // can't use the original OsString
             .with_context(|| format!("{} must only contain utf-8 characters", extras_env_var))?
             .split(',')
-            .map(ToString::to_string)
-            .collect();
-        for extra in &extras {
-            let allowed = |x: char| x.is_alphanumeric() || x == '-' || x == '_';
-            if !extra.chars().all(allowed) {
-                bail!(
-                    "Invalid extra name '{}', allowed are underscore, minus, letters and digits",
-                    extra
-                );
-            }
-        }
-        extras
+            .map(ExtraName::from_str)
+            .collect::<Result<Vec<_>, _>>()?
     } else {
         Vec::new()
     };
@@ -248,7 +257,7 @@ fn parse_extras() -> anyhow::Result<Vec<String>> {
 }
 
 #[pymodule]
-pub fn monotrail(_py: Python, m: &PyModule) -> PyResult<()> {
+pub fn monotrail(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     // Good enough for now
     if env::var_os("RUST_LOG").is_some() {
         tracing_subscriber::fmt::init();

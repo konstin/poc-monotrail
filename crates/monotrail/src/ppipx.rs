@@ -8,9 +8,12 @@ use crate::utils::data_local_dir;
 use crate::{read_poetry_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::Context;
 use fs_err as fs;
+use itertools::Itertools;
 use monotrail_utils::parse_cpython_args::parse_major_minor;
+use pep508_rs::{ExtraName, PackageName};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 use tempfile::TempDir;
 use tracing::{debug, info};
 
@@ -18,10 +21,10 @@ use tracing::{debug, info};
 ///
 /// Resolves one package, saving it in .local and runs one command from it
 pub fn ppipx(
-    package: Option<&str>,
+    package: Option<&PackageName>,
     python_version: Option<&str>,
     version: Option<&str>,
-    extras: &[String],
+    extras: &[ExtraName],
     command: &str,
     args: &[String],
 ) -> anyhow::Result<i32> {
@@ -31,11 +34,19 @@ pub fn ppipx(
         .unwrap_or(DEFAULT_PYTHON_VERSION);
 
     let (python_context, python_home) = provision_python_env(python_version)?;
-    let package = package.unwrap_or(command);
+    let package = if let Some(package) = package {
+        package.clone()
+    } else {
+        PackageName::from_str(command).context("Command name is not a valid package name")?
+    };
     let package_extras = if extras.is_empty() {
         package.to_string()
     } else {
-        format!("{}[{}]", package, extras.join(","))
+        format!(
+            "{}[{}]",
+            package,
+            extras.iter().map(ToString::to_string).join(",")
+        )
     };
 
     let resolution_dir = data_local_dir()?
@@ -54,7 +65,7 @@ pub fn ppipx(
             extras,
             python_version,
             &python_context,
-            package,
+            &package,
             &resolution_dir,
         )?;
     } else {
@@ -80,16 +91,16 @@ pub fn ppipx(
 /// Writes a pyproject.toml for the ppipx command and calls poetry to resolve it to a poetry.lock
 fn generate_ppipx_entry(
     version: Option<&str>,
-    extras: &[String],
+    extras: &[ExtraName],
     python_version: (u8, u8),
     python_context: &PythonContext,
-    package: &str,
+    package: &PackageName,
     resolution_dir: &PathBuf,
 ) -> anyhow::Result<()> {
     let mut dependencies = BTreeMap::new();
     // Add python entry with current version; resolving will otherwise fail with complaints
     dependencies.insert(
-        "python".to_string(),
+        PackageName::from_str("python")?,
         // For some reason on github actions 3.8.12 is not 3.8 compatible, so we name the range explicitly
         poetry_toml::Dependency::Compact(format!(
             ">={}.{},<{}.{}",
@@ -101,12 +112,12 @@ fn generate_ppipx_entry(
     );
     if extras.is_empty() {
         dependencies.insert(
-            package.to_string(),
+            package.clone(),
             poetry_toml::Dependency::Compact(version.unwrap_or("*").to_string()),
         );
     } else {
         dependencies.insert(
-            package.to_string(),
+            package.clone(),
             poetry_toml::Dependency::Expanded {
                 version: Some(version.unwrap_or("*").to_string()),
                 optional: None,

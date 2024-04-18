@@ -4,6 +4,7 @@ use crate::utils::cache_dir;
 use anyhow::{bail, Context, Result};
 use fs_err as fs;
 use install_wheel_rs::{CompatibleTags, Error, WheelFilename};
+use pep508_rs::PackageName;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,12 +15,15 @@ use tempfile::TempDir;
 /// Takes a source distribution, checks whether we have already built a matching wheel, and if
 /// not, builds a wheels from the source distribution by invoking `pip wheel --no-deps`
 pub fn build_source_distribution_to_wheel_cached(
-    name: &str,
+    name: &PackageName,
     version: &str,
     sdist: &Path,
     compatible_tags: &CompatibleTags,
 ) -> Result<PathBuf> {
-    let target_dir = cache_dir()?.join("artifacts").join(name).join(version);
+    let target_dir = cache_dir()?
+        .join("artifacts")
+        .join(name.to_string())
+        .join(version);
 
     if let Ok(target_dir) = fs::read_dir(&target_dir) {
         for entry in target_dir.flatten() {
@@ -43,7 +47,7 @@ pub fn build_source_distribution_to_wheel_cached(
     Ok(wheel_in_cache)
 }
 
-/// Builds a wheel from an source distribution or a repo checkout using `pip wheel --no-deps`
+/// Builds a wheel from a source distribution or a repo checkout using `pip wheel --no-deps`
 pub fn build_to_wheel(
     sdist_or_dir: &Path,
     // needs to be passed in or the tempdir will be deleted to early

@@ -1,7 +1,7 @@
 //! Types for poetry.lock
 
 use anyhow::bail;
-use pep508_rs::{MarkerEnvironment, MarkerTree};
+use pep508_rs::{ExtraName, MarkerEnvironment, MarkerTree, PackageName};
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -32,11 +32,11 @@ impl PoetryLock {
     /// its on each package.
     ///
     /// Pass the package name already normalized
-    pub fn get_filenames(&self, package_name: &str) -> Option<&Vec<HashedFile>> {
+    pub fn get_filenames(&self, package_name: &PackageName) -> Option<&Vec<HashedFile>> {
         if let Some(v1_1) = &self.metadata.files {
             return v1_1.get(package_name);
         }
-        if let Some(v2_0) = self.package.iter().find(|p| p.name == package_name) {
+        if let Some(v2_0) = self.package.iter().find(|p| &p.name == package_name) {
             return v2_0.files.as_ref();
         }
         // outdated lockfile, to be handled downstream
@@ -49,7 +49,7 @@ impl PoetryLock {
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 pub struct Package {
-    pub name: String,
+    pub name: PackageName,
     pub version: String,
     pub description: String,
     pub category: Option<String>,
@@ -59,7 +59,7 @@ pub struct Package {
     pub extras: HashMap<String, Vec<String>>,
     // https://github.com/alexcrichton/toml-rs/issues/142#issuecomment-279009115
     #[serde(serialize_with = "toml::ser::tables_last")]
-    pub dependencies: Option<HashMap<String, Dependency>>,
+    pub dependencies: Option<HashMap<PackageName, Dependency>>,
     pub source: Option<Source>,
     // Only in lock file format 2.0/poetry 1.3 or newer
     pub files: Option<Vec<HashedFile>>,
@@ -71,7 +71,7 @@ pub struct Package {
 pub struct DependencyExpanded {
     pub version: String,
     pub markers: Option<String>,
-    pub extras: Option<Vec<String>>,
+    pub extras: Option<Vec<ExtraName>>,
 }
 
 /// `[package.dependencies]`
@@ -96,17 +96,17 @@ pub enum Dependency {
 }
 
 impl Dependency {
-    /// checks if we need to install given the markers and returns the matching version constraint
+    /// Checks if we need to install given the markers and returns the matching version constraint
     ///
     /// For the extras we give in a set of extras the is activated for self to check if we need
     /// self->dep, and return the extras active for self->dep
     pub fn get_version_and_extras(
         &self,
         environment: &MarkerEnvironment,
-        self_extras: &HashSet<String>,
-    ) -> Result<Option<(String, Vec<String>)>, String> {
+        self_extras: &HashSet<ExtraName>,
+    ) -> Result<Option<(String, Vec<ExtraName>)>, String> {
         let extra_re = Regex::new(r#"^extra == "([\w\d_-]+)"$"#).unwrap();
-        let self_extras_vec: Vec<&str> = self_extras.iter().map(|str| str.as_str()).collect();
+        let self_extras_vec: Vec<ExtraName> = self_extras.iter().cloned().collect();
 
         Ok(match self {
             Dependency::Compact(version) => Some((version.to_string(), Vec::new())),
@@ -117,7 +117,9 @@ impl Dependency {
             }) => {
                 if let Some(markers) = markers {
                     if let Some(captures) = extra_re.captures(markers) {
-                        if self_extras.contains(&captures[1].to_string()) {
+                        if self_extras.contains(
+                            &ExtraName::from_str(&captures[1]).map_err(|err| err.to_string())?,
+                        ) {
                             Some((version.to_string(), extras.clone().unwrap_or_default()))
                         } else {
                             None
@@ -138,7 +140,10 @@ impl Dependency {
                 for option in options {
                     if let Some(markers) = &option.markers {
                         if let Some(captures) = extra_re.captures(markers) {
-                            if self_extras.contains(&captures[1].to_string()) {
+                            if self_extras.contains(
+                                &ExtraName::from_str(&captures[1])
+                                    .map_err(|err| err.to_string())?,
+                            ) {
                                 return Ok(Some((
                                     option.version.to_string(),
                                     option.extras.clone().unwrap_or_default(),
@@ -190,7 +195,7 @@ pub struct Metadata {
     pub content_hash: String,
     /// `[metadata.files]`
     /// Only in lock_version 1.1, in version 2.0/poetry 1.3 it's in each package
-    pub files: Option<HashMap<String, Vec<HashedFile>>>,
+    pub files: Option<HashMap<PackageName, Vec<HashedFile>>>,
 }
 
 /// e.g. `{file = "attrs-21.4.0-py2.py3-none-any.whl", hash = "sha256:2d27e3784d7a565d36ab851fe94887c5eccd6a463168875832a1be79c82828b4"}`
@@ -205,14 +210,16 @@ pub struct HashedFile {
 #[cfg(test)]
 mod test {
     use crate::poetry_integration::poetry_lock::PoetryLock;
+    use pep508_rs::PackageName;
     use std::fs;
     use std::path::Path;
+    use std::str::FromStr;
 
     fn get_filenames(filename: &str, package: &str) -> usize {
         let filename = Path::new("../../test-data").join(filename);
         PoetryLock::from_str(&fs::read_to_string(filename).unwrap())
             .unwrap()
-            .get_filenames(package)
+            .get_filenames(&PackageName::from_str(package).unwrap())
             .unwrap()
             .len()
     }

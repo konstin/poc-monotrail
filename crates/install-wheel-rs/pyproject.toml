@@ -2,7 +2,7 @@
 name = "install-wheel-rs"
 
 [tool.maturin]
-features = ["python_bindings"]
+features = ["pyo3"]
 
 [build-system]
 requires = ["maturin>=1.2,<2.0"]

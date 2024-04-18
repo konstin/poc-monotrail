@@ -16,7 +16,7 @@ use fs_err::{DirEntry, File};
 use install_wheel_rs::{CompatibleTags, InstallLocation, Script, SHEBANG_PYTHON};
 use monotrail_utils::parse_cpython_args::determine_python_version;
 use monotrail_utils::standalone_python::provision_python;
-use pep508_rs::MarkerEnvironment;
+use pep508_rs::{ExtraName, MarkerEnvironment, PackageName};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env::{current_dir, current_exe};
@@ -25,6 +25,7 @@ use std::ffi::CString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::str::FromStr;
 use std::{env, io};
 use tempfile::TempDir;
 use tracing::{debug, info, trace, warn};
@@ -60,7 +61,7 @@ pub type SpecPaths = BTreeMap<String, (Option<PathBuf>, Vec<PathBuf>)>;
 
 /// The [FinderData] is made by the installation system, the other fields are made by the inject
 /// system
-#[cfg_attr(feature = "python_bindings", pyo3::pyclass(dict, get_all))]
+#[cfg_attr(feature = "pyo3", pyo3::pyclass(dict, get_all))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct InjectData {
     /// The location of packages and imports
@@ -76,7 +77,7 @@ pub struct InjectData {
 /// The packaging and import data that is resolved by the rust part and deployed by the finder
 ///
 /// Keep in sync with its python counterparts in convert_finder_data.py and monotrail.pyi
-#[cfg_attr(feature = "python_bindings", pyo3::pyclass(dict, get_all))]
+#[cfg_attr(feature = "pyo3", pyo3::pyclass(dict, get_all))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FinderData {
     /// The location where all packages are installed
@@ -97,10 +98,10 @@ pub struct FinderData {
     pub root_scripts: BTreeMap<String, Script>,
 }
 
-#[cfg_attr(feature = "python_bindings", pyo3::pymethods)]
+#[cfg_attr(feature = "pyo3", pyo3::pymethods)]
 impl FinderData {
     /// For debugging
-    #[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+    #[cfg_attr(not(feature = "pyo3"), allow(dead_code))]
     fn to_json(&self) -> String {
         serde_json::to_string(&self).expect("Couldn't convert to json")
     }
@@ -139,7 +140,7 @@ fn find_dep_file(dir_running: &Path) -> Option<(PathBuf, LockfileType)> {
 pub fn list_installed(
     root: &Path,
     compatible_tags: Option<&CompatibleTags>,
-) -> anyhow::Result<Vec<(String, String, String)>> {
+) -> anyhow::Result<Vec<(PackageName, String, String)>> {
     // Behold my monstrous iterator
     // name -> version -> compatible tag
     let mut compatible = Vec::new();
@@ -173,7 +174,8 @@ pub fn list_installed(
                     continue;
                 }
                 compatible.push((
-                    name_dir.file_name().to_string_lossy().to_string(),
+                    PackageName::from_str(name_dir.file_name().to_string_lossy().as_ref())
+                        .expect("TODO(konsti)"),
                     version_dir.file_name().to_string_lossy().to_string(),
                     tag,
                 ))
@@ -203,7 +205,7 @@ pub fn filter_installed_monotrail(
         if let Some(unique_version) = unique_version {
             if let Some((name, installed_version, tag)) =
                 compatible.iter().find(|(name, installed_version, _tag)| {
-                    name == &spec.normalized_name() && installed_version == &unique_version
+                    name == &spec.name && installed_version == &unique_version
                 })
             {
                 installed.push(InstalledPackage {
@@ -223,7 +225,7 @@ pub fn filter_installed_monotrail(
             // This would take proper version resolution to make sense
             if let Some((name, unique_version, _path)) = compatible
                 .iter()
-                .find(|(name, _version, _path)| name == &spec.normalized_name())
+                .find(|(name, _version, _path)| name == &spec.name)
             {
                 installed.push(InstalledPackage {
                     // already normalized
@@ -246,7 +248,7 @@ pub fn filter_installed_monotrail(
 
 /// script can be a manually set working directory or the python script we're running.
 /// Returns a list name, python version, unique version
-#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+#[cfg_attr(not(feature = "pyo3"), allow(dead_code))]
 pub fn install_missing(
     specs: &[RequestedSpec],
     python: &Path,
@@ -318,7 +320,7 @@ pub fn install_missing(
 ///
 /// Returns the name, the main file to import for the spec and the submodule_search_locations
 /// as well as a list of .pth files that need to be executed
-#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+#[cfg_attr(not(feature = "pyo3"), allow(dead_code))]
 pub fn spec_paths(
     sprawl_root: &Path,
     sprawl_packages: &[InstalledPackage],
@@ -434,7 +436,7 @@ pub fn spec_paths(
 #[allow(clippy::type_complexity)]
 pub fn load_specs(
     script: Option<&Path>,
-    extras: &[String],
+    extras: &[ExtraName],
     python_context: &PythonContext,
 ) -> anyhow::Result<(
     Vec<RequestedSpec>,
@@ -532,7 +534,7 @@ pub fn load_specs(
 /// lockfile
 pub fn specs_from_requirements_txt_resolved(
     requirements_txt: &Path,
-    extras: &[String],
+    extras: &[ExtraName],
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, String)> {
@@ -577,7 +579,10 @@ pub fn install(
     // If you want to help this project please make a pull request to jupyter to also make it search
     // relative to the package, based on ipykernel.__file__ or ipykernel.__path__ :)
     // https://docs.jupyter.org/en/latest/use/jupyter-directories.html#data-files
-    if let Some(jupyter) = sprawl_packages.iter().find(|x| x.name == "ipykernel") {
+    if let Some(jupyter) = sprawl_packages
+        .iter()
+        .find(|x| x.name == PackageName::from_str("ipykernel").unwrap())
+    {
         let mut jupyter_path = jupyter
             .monotrail_location(PathBuf::from(&sprawl_root))
             .join("share")
@@ -666,7 +671,7 @@ pub fn is_python_script(executable: &Path) -> anyhow::Result<bool> {
 
 /// Run an installed command
 pub fn run_command(
-    extras: &[String],
+    extras: &[ExtraName],
     python_version: Option<&str>,
     root: Option<&Path>,
     command: &str,
@@ -803,7 +808,7 @@ pub fn run_command_finder_data(
 pub fn cli_from_git(
     git_url: &str,
     revision: &str,
-    extras: &[String],
+    extras: &[ExtraName],
     python_version: Option<String>,
     args: &[String],
 ) -> anyhow::Result<Option<i32>> {

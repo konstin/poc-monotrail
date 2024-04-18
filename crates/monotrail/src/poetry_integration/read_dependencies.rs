@@ -10,9 +10,9 @@ use crate::spec::{DistributionType, RequestedSpec, SpecSource};
 use crate::utils::cache_dir;
 use anyhow::{bail, Context};
 use fs_err as fs;
-use install_wheel_rs::{normalize_name, CompatibleTags, Error, Script, WheelFilename};
+use install_wheel_rs::{CompatibleTags, Error, Script, WheelFilename};
 use monotrail_utils::RequirementsTxt;
-use pep508_rs::{MarkerEnvironment, VersionOrUrl};
+use pep508_rs::{ExtraName, MarkerEnvironment, PackageName, VersionOrUrl};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -69,7 +69,7 @@ pub fn filename_and_url(
         let url = format!(
             "https://files.pythonhosted.org/packages/{}/{}/{}/{}",
             parsed.python_tag.join("."),
-            package.name.chars().next().unwrap(),
+            package.name.to_string().chars().next().unwrap(),
             package.name,
             filename,
         );
@@ -84,7 +84,7 @@ pub fn filename_and_url(
         let url = format!(
             "https://files.pythonhosted.org/packages/{}/{}/{}/{}",
             "source",
-            package.name.chars().next().unwrap(),
+            package.name.to_string().chars().next().unwrap(),
             package.name,
             hashed_file.file,
         );
@@ -120,7 +120,6 @@ fn parse_dep_extra(dep_spec: &str) -> Result<(String, HashSet<String>, Option<St
             .map(|extras| {
                 extras
                     .as_str()
-                    .to_string()
                     .split(',')
                     .map(ToString::to_string)
                     .collect()
@@ -133,21 +132,20 @@ fn parse_dep_extra(dep_spec: &str) -> Result<(String, HashSet<String>, Option<St
 }
 
 fn resolution_to_specs(
-    packages: HashMap<String, poetry_lock::Package>,
-    deps_with_extras: BTreeMap<String, HashSet<String>>,
+    packages: HashMap<PackageName, poetry_lock::Package>,
+    deps_with_extras: BTreeMap<PackageName, HashSet<ExtraName>>,
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     let mut specs = Vec::new();
     for (dep_name, dep_extras) in deps_with_extras {
-        let norm_name = normalize_name(&dep_name);
-        let package = if let Some(package) = packages.get(&norm_name) {
+        let package = if let Some(package) = packages.get(&dep_name) {
             package
-        } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
+        } else if UNSAFE_DEPS.contains(&dep_name.to_string().as_str()) {
             continue;
         } else {
             debug!("Packages: {:?}", packages.keys().collect::<Vec<_>>());
             bail!(
                 "Lockfile outdated (run `poetry update`): {} is missing",
-                norm_name
+                dep_name
             )
         };
         let spec = RequestedSpec {
@@ -174,8 +172,8 @@ fn resolution_to_specs(
 fn get_root_info(
     poetry_section: &PoetrySection,
     no_dev: bool,
-    extras: &[String],
-) -> anyhow::Result<HashMap<String, poetry_toml::Dependency>> {
+    extras: &[ExtraName],
+) -> anyhow::Result<HashMap<PackageName, poetry_toml::Dependency>> {
     let root_deps = if no_dev {
         poetry_section.dependencies.clone()
     } else {
@@ -187,7 +185,7 @@ fn get_root_info(
             .collect()
     };
 
-    let mut root_extra_deps: HashSet<String> = HashSet::new();
+    let mut root_extra_deps: HashSet<PackageName> = HashSet::new();
     for extra_name in extras {
         let packages = poetry_section
             .extras
@@ -201,7 +199,7 @@ fn get_root_info(
         .into_iter()
         .filter(|(dep_name, dep_spec)| {
             // We do not need to install python (oh if we only could, relocatable python a dream)
-            if dep_name == "python" {
+            if dep_name.to_string() == "python" {
                 return false;
             }
             // Use only those optional deps which are activated by a selected extra
@@ -217,15 +215,14 @@ fn get_root_info(
 
 fn get_packages_from_lockfile(
     poetry_lock: &PoetryLock,
-) -> anyhow::Result<HashMap<String, poetry_lock::Package>> {
+) -> anyhow::Result<HashMap<PackageName, poetry_lock::Package>> {
     // keys are normalized names since `[package.dependencies]` also uses normalized names
-    let packages: HashMap<String, poetry_lock::Package> = poetry_lock
+    Ok(poetry_lock
         .package
         .clone()
         .into_iter()
-        .map(|package| (normalize_name(&package.name), package))
-        .collect();
-    Ok(packages)
+        .map(|package| (package.name.clone(), package))
+        .collect())
 }
 
 /// Reads pyproject.toml and poetry.lock, also returns poetry.lock as string
@@ -247,7 +244,7 @@ pub fn read_poetry_specs(
     poetry_section: &PoetrySection,
     poetry_lock: PoetryLock,
     no_dev: bool,
-    extras: &[String],
+    extras: &[ExtraName],
     pep508_env: &MarkerEnvironment,
 ) -> anyhow::Result<Vec<RequestedSpec>> {
     // The deps in pyproject.toml which we need to read explicitly since they aren't marked
@@ -258,19 +255,17 @@ pub fn read_poetry_specs(
 
     // This is the thing we want to build: a list with all transitive dependencies and
     // all their (transitively activated) features
-    let mut deps_with_extras: BTreeMap<String, HashSet<String>> = BTreeMap::new();
+    let mut deps_with_extras: BTreeMap<PackageName, HashSet<ExtraName>> = BTreeMap::new();
     // (dep, dep->extra) combinations we still need to process
-    let mut queue: VecDeque<(String, HashSet<String>)> = VecDeque::new();
+    let mut queue: VecDeque<(PackageName, HashSet<ExtraName>)> = VecDeque::new();
     // Since we have no explicit root package, prime manually
     for (dep_name, dep_spec) in root_deps {
-        let dep_name_norm = normalize_name(&dep_name.to_lowercase());
-
         queue.push_back((
-            dep_name_norm.clone(),
+            dep_name.clone(),
             dep_spec.get_extras().iter().cloned().collect(),
         ));
         deps_with_extras.insert(
-            dep_name_norm.clone(),
+            dep_name.clone(),
             dep_spec.get_extras().iter().cloned().collect(),
         );
     }
@@ -278,24 +273,22 @@ pub fn read_poetry_specs(
     // resolve the dependencies-extras tree
     // (dep, dep->extra)
     while let Some((dep_name, self_extras)) = queue.pop_front() {
-        let norm_name = normalize_name(&dep_name);
         let package = if let Some(package) = packages
             // search by normalized name
-            .get(&norm_name)
+            .get(&dep_name)
         {
             package
-        } else if UNSAFE_DEPS.contains(&dep_name.as_str()) {
+        } else if UNSAFE_DEPS.contains(&dep_name.to_string().as_str()) {
             continue;
         } else {
             debug!("Packages: {:?}", packages.keys().collect::<Vec<_>>());
             bail!(
                 "Lockfile outdated (run `poetry update`): {} is missing",
-                norm_name
+                dep_name
             )
         };
         // descend one level into the dep tree
         for (new_dep_name, new_dep) in package.dependencies.clone().unwrap_or_default() {
-            let new_dep_name_norm = new_dep_name.to_lowercase().replace('-', "_");
             // Check the extras selected on the current dep activate the transitive dependency
             let (_new_dep_version, new_dep_extras) = match new_dep
                 .get_version_and_extras(pep508_env, &self_extras)
@@ -305,7 +298,7 @@ pub fn read_poetry_specs(
                 Some((version, new_dep_extras)) => (version, new_dep_extras),
             };
 
-            let new_dep_extras: HashSet<String> = new_dep_extras.into_iter().collect();
+            let new_dep_extras: HashSet<ExtraName> = new_dep_extras.into_iter().collect();
 
             let new_extras = if let Some(known_extras) = deps_with_extras.get(&new_dep_name) {
                 if new_dep_extras.is_subset(known_extras) {
@@ -319,10 +312,10 @@ pub fn read_poetry_specs(
             };
 
             deps_with_extras
-                .entry(new_dep_name_norm.clone())
+                .entry(new_dep_name.clone())
                 .or_default()
                 .extend(new_extras.clone());
-            queue.push_back((new_dep_name_norm.clone(), new_extras));
+            queue.push_back((new_dep_name.clone(), new_extras));
         }
     }
 
@@ -330,11 +323,11 @@ pub fn read_poetry_specs(
 }
 
 /// Checkouts the specified revision to the cache dir, if not present
-#[cfg_attr(not(feature = "python_bindings"), allow(dead_code))]
+#[cfg_attr(not(feature = "pyo3"), allow(dead_code))]
 pub fn specs_from_git(
     url: &str,
     revision: &str,
-    extras: &[String],
+    extras: &[ExtraName],
     lockfile: Option<&str>,
     python_context: &PythonContext,
 ) -> anyhow::Result<(Vec<RequestedSpec>, PathBuf, String)> {
@@ -411,7 +404,7 @@ pub fn specs_from_git(
 /// the lockfile string
 pub fn poetry_spec_from_dir(
     dep_file_location: &Path,
-    extras: &[String],
+    extras: &[ExtraName],
     pep508_env: &MarkerEnvironment,
 ) -> anyhow::Result<(Vec<RequestedSpec>, BTreeMap<String, Script>, String)> {
     let (poetry_section, poetry_lock, lockfile) = read_toml_files(dep_file_location)?;
@@ -431,7 +424,7 @@ pub fn poetry_spec_from_dir(
 pub fn read_requirements_for_poetry(
     requirements_txt: &Path,
     working_dir: &Path,
-) -> anyhow::Result<BTreeMap<String, poetry_toml::Dependency>> {
+) -> anyhow::Result<BTreeMap<PackageName, poetry_toml::Dependency>> {
     let data = RequirementsTxt::parse(requirements_txt, working_dir)?;
     if !data.constraints.is_empty() {
         bail!(
@@ -439,7 +432,7 @@ pub fn read_requirements_for_poetry(
             requirements_txt.display()
         );
     }
-    let mut poetry_requirements: BTreeMap<String, poetry_toml::Dependency> = BTreeMap::new();
+    let mut poetry_requirements: BTreeMap<PackageName, poetry_toml::Dependency> = BTreeMap::new();
     for requirement_entry in data.requirements {
         let version = match requirement_entry.requirement.version_or_url {
             None => "*".to_string(),
@@ -456,7 +449,7 @@ pub fn read_requirements_for_poetry(
         let dep = poetry_toml::Dependency::Expanded {
             version: Some(version),
             optional: Some(false),
-            extras: requirement_entry.requirement.extras.clone(),
+            extras: Some(requirement_entry.requirement.extras.clone()),
             git: None,
             branch: None,
         };
@@ -472,7 +465,7 @@ mod test {
     };
     use crate::read_poetry_specs;
     use indoc::indoc;
-    use pep508_rs::{MarkerEnvironment, StringVersion};
+    use pep508_rs::{ExtraName, MarkerEnvironment, StringVersion};
     use std::collections::HashSet;
     use std::path::Path;
     use std::str::FromStr;
@@ -528,12 +521,32 @@ mod test {
         let expected = [
             (mst, true, vec![], 95),
             (mst, false, vec![], 130),
-            (mst, true, vec!["import-json".to_string()], 97),
-            (mst, false, vec!["import-json".to_string()], 131),
+            (
+                mst,
+                true,
+                vec![ExtraName::from_str("import-json").unwrap()],
+                97,
+            ),
+            (
+                mst,
+                false,
+                vec![ExtraName::from_str("import-json").unwrap()],
+                131,
+            ),
             (data_science, true, vec![], 15),
             (data_science, false, vec![], 21),
-            (data_science, true, vec!["tqdm_feature".to_string()], 16),
-            (data_science, false, vec!["tqdm_feature".to_string()], 22),
+            (
+                data_science,
+                true,
+                vec![ExtraName::from_str("tqdm_feature").unwrap()],
+                16,
+            ),
+            (
+                data_science,
+                false,
+                vec![ExtraName::from_str("tqdm_feature").unwrap()],
+                22,
+            ),
         ];
 
         for (toml_dir, no_dev, extras, specs_count) in expected {
@@ -556,10 +569,12 @@ mod test {
             [inflection]
             version = "==0.5.1"
             optional = false
+            extras = []
             
             [numpy]
             version = "*"
             optional = false
+            extras = []
 
             [pandas]
             version = ">=1, <2"
@@ -569,6 +584,7 @@ mod test {
             [upsidedown]
             version = "==0.4"
             optional = false
+            extras = []
         "#};
 
         let working_dir = Path::new("../../test-data").join("requirements-txt");

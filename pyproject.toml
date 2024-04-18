@@ -7,7 +7,7 @@ monotrail_python = "monotrail.run_python:main"
 monotrail_script = "monotrail.run_script:main"
 
 [tool.maturin]
-features = ["python_bindings"]
+features = ["pyo3"]
 bindings = "pyo3"
 python-source = "python"
 

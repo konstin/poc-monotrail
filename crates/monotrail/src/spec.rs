@@ -2,8 +2,8 @@
 //! ([ResolvedSpec]).
 
 use crate::package_index::search_release;
-use install_wheel_rs::{normalize_name, CompatibleTags, Error, WheelFilename};
-use regex::Regex;
+use install_wheel_rs::{CompatibleTags, Error, WheelFilename};
+use pep508_rs::{ExtraName, PackageName};
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -35,12 +35,12 @@ pub struct RequestedSpec {
     /// Will be printed with the error message to indicate what was tried to install
     pub requested: String,
     /// The name of the package
-    pub name: String,
+    pub name: PackageName,
     /// The version of the package
     pub python_version: Option<String>,
     pub source: Option<SpecSource>,
     /// The extras of the package to also be installed
-    pub extras: Vec<String>,
+    pub extras: Vec<ExtraName>,
     /// TODO: allow sdist filepath
     pub file_path: Option<(PathBuf, WheelFilename)>,
     /// Url, filename, distribution type
@@ -48,10 +48,6 @@ pub struct RequestedSpec {
 }
 
 impl RequestedSpec {
-    pub fn normalized_name(&self) -> String {
-        normalize_name(&self.name)
-    }
-
     pub fn get_unique_version(&self) -> Option<String> {
         if let Some(source) = &self.source {
             Some(source.resolved_reference.clone())
@@ -61,7 +57,7 @@ impl RequestedSpec {
     }
 
     /// Parses "package_name", "package_name==version" and "some/path/tqdm-4.62.3-py2.py3-none-any.whl"
-    pub fn from_requested(requested: impl AsRef<str>, extras: &[String]) -> Result<Self, Error> {
+    pub fn from_requested(requested: impl AsRef<str>, extras: &[ExtraName]) -> Result<Self, Error> {
         if requested.as_ref().ends_with(".whl") {
             let file_path = PathBuf::from(requested.as_ref());
             let filename = file_path
@@ -79,22 +75,20 @@ impl RequestedSpec {
                 url: None,
             })
         } else {
-            // TODO: check actual naming rules
-            let valid_name = Regex::new(r"[-_a-zA-Z\d.]+").unwrap();
             if let Some((name, version)) = requested.as_ref().split_once("==") {
                 Ok(Self {
                     requested: requested.as_ref().to_string(),
-                    name: name.to_string(),
+                    name: PackageName::from_str(name)?,
                     python_version: Some(version.to_string()),
                     source: None,
                     extras: extras.to_vec(),
                     file_path: None,
                     url: None,
                 })
-            } else if valid_name.is_match(requested.as_ref()) {
+            } else if let Ok(name) = PackageName::from_str(requested.as_ref()) {
                 Ok(Self {
                     requested: requested.as_ref().to_string(),
-                    name: requested.as_ref().to_string(),
+                    name,
                     python_version: None,
                     source: None,
                     extras: extras.to_vec(),
@@ -187,7 +181,7 @@ pub enum FileOrUrl {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ResolvedSpec {
     pub requested: String,
-    pub name: String,
+    pub name: PackageName,
     /// The pep440 version as importlib.metadata sees it
     pub python_version: String,
     /// A (hopefully) unique identifier for that package. This is the same as python_version
@@ -196,7 +190,7 @@ pub struct ResolvedSpec {
     /// We serialize the version to a (hopefully) unique string
     /// TODO: Make sure it's actually unique and document how we do that  
     pub unique_version: String,
-    pub extras: Vec<String>,
+    pub extras: Vec<ExtraName>,
     pub location: FileOrUrl,
     pub distribution_type: DistributionType,
 }
@@ -209,9 +203,12 @@ mod test {
     use crate::utils::zstd_json_mock;
     use install_wheel_rs::{Arch, CompatibleTags, Os};
     use mockito::Server;
+    use pep508_rs::PackageName;
     use std::path::Path;
+    use std::str::FromStr;
 
     fn manylinux_url(host: &str, package: &str) -> anyhow::Result<ResolvedSpec> {
+        let package = PackageName::from_str(package).unwrap();
         let os = Os::Manylinux {
             major: 2,
             minor: 27,

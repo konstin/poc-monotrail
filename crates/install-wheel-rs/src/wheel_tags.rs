@@ -4,6 +4,7 @@ use crate::Error;
 use fs_err as fs;
 use goblin::elf::Elf;
 use once_cell::sync::Lazy;
+use pep508_rs::PackageName;
 use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
 use regex::Regex;
 use serde::Deserialize;
@@ -20,11 +21,12 @@ use tracing::trace;
 ///
 /// ```
 /// use std::str::FromStr;
+/// use pep508_rs::PackageName;
 /// use install_wheel_rs::WheelFilename;
 ///
 /// let filename = WheelFilename::from_str("foo-1.0-py32-none-any.whl").unwrap();
 /// assert_eq!(filename, WheelFilename {
-///     distribution: "foo".to_string(),
+///     distribution: PackageName::from_str("foo").unwrap(),
 ///     version: "1.0".to_string(),
 ///     python_tag: vec!["py32".to_string()],
 ///     abi_tag: vec!["none".to_string()],
@@ -34,7 +36,7 @@ use tracing::trace;
 ///     "numpy-1.26.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
 /// ).unwrap();
 /// assert_eq!(filename, WheelFilename {
-///     distribution: "numpy".to_string(),
+///     distribution: PackageName::from_str("numpy").unwrap(),
 ///     version: "1.26.0".to_string(),
 ///     python_tag: vec!["cp312".to_string()],
 ///     abi_tag: vec!["cp312".to_string()],
@@ -46,7 +48,7 @@ use tracing::trace;
 /// ```
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WheelFilename {
-    pub distribution: String,
+    pub distribution: PackageName,
     pub version: String,
     pub python_tag: Vec<String>,
     pub abi_tag: Vec<String>,
@@ -65,7 +67,7 @@ impl FromStr for WheelFilename {
             // TODO: Build tag precedence
             &[distribution, version, _, python_tag, abi_tag, platform_tag]
             | &[distribution, version, python_tag, abi_tag, platform_tag] => Ok(WheelFilename {
-                distribution: distribution.to_string(),
+                distribution: PackageName::from_str(distribution)?,
                 version: version.to_string(),
                 python_tag: python_tag.split('.').map(String::from).collect(),
                 abi_tag: abi_tag.split('.').map(String::from).collect(),

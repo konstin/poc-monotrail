@@ -2,8 +2,9 @@
 
 use crate::{install_wheel, CompatibleTags, Error, InstallLocation, LockedDir, WheelFilename};
 use pyo3::create_exception;
+use pyo3::prelude::PyAnyMethods;
 use pyo3::types::PyModule;
-use pyo3::{pyclass, pymethods, pymodule, PyErr, PyResult, Python};
+use pyo3::{pyclass, pymethods, pymodule, Bound, PyErr, PyResult, Python};
 use std::env;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -47,7 +48,7 @@ impl LockedVenv {
 
     pub fn install_wheel(&self, py: Python, wheel: PathBuf) -> PyResult<()> {
         // Would be nicer through https://docs.python.org/3/c-api/init.html#c.Py_GetProgramFullPath
-        let sys_executable: String = py.import("sys")?.getattr("executable")?.extract()?;
+        let sys_executable: String = py.import_bound("sys")?.getattr("executable")?.extract()?;
 
         // TODO: Pass those options on to the user
         py.allow_threads(|| {
@@ -76,7 +77,7 @@ impl LockedVenv {
 }
 
 #[pymodule]
-pub fn install_wheel_rs(_py: Python, m: &PyModule) -> PyResult<()> {
+pub fn install_wheel_rs(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     // Good enough for now
     if env::var_os("RUST_LOG").is_some() {
         tracing_subscriber::fmt::init();

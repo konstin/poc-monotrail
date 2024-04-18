@@ -30,7 +30,7 @@ mod monotrail;
 mod package_index;
 mod poetry_integration;
 mod ppipx;
-#[cfg(feature = "python_bindings")]
+#[cfg(feature = "pyo3")]
 mod python_bindings;
 mod source_distribution;
 mod spec;

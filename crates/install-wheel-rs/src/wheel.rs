@@ -2,12 +2,13 @@
 
 use crate::install_location::{InstallLocation, LockedDir};
 use crate::wheel_tags::WheelFilename;
-use crate::{normalize_name, Error};
+use crate::Error;
 use configparser::ini::Ini;
 use data_encoding::BASE64URL_NOPAD;
 use fs_err as fs;
 use fs_err::{DirEntry, File};
 use mailparse::MailHeaderMap;
+use pep508_rs::{ExtraName, PackageName};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -16,6 +17,7 @@ use std::ffi::OsString;
 use std::io::{BufRead, BufReader, BufWriter, Cursor, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::str::FromStr;
 use std::{env, io, iter};
 use tempfile::{tempdir, TempDir};
 use tracing::{debug, error, span, warn, Level};
@@ -58,7 +60,7 @@ struct DirectUrl {
 
 /// A script defining the name of the runnable entrypoint and the module and function that should be
 /// run.
-#[cfg(feature = "python_bindings")]
+#[cfg(feature = "pyo3")]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[pyo3::pyclass(dict)]
 pub struct Script {
@@ -72,7 +74,7 @@ pub struct Script {
 
 /// A script defining the name of the runnable entrypoint and the module and function that should be
 /// run.
-#[cfg(not(feature = "python_bindings"))]
+#[cfg(not(feature = "pyo3"))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Script {
     pub script_name: String,
@@ -533,7 +535,7 @@ fn bytecode_compile(
     python_version: (u8, u8),
     sys_executable: &Path,
     // Only for logging
-    name: &str,
+    name: &PackageName,
     record: &mut Vec<RecordEntry>,
 ) -> Result<(), Error> {
     // https://github.com/pypa/pip/blob/b5457dfee47dd9e9f6ec45159d9d410ba44e5ea1/src/pip/_internal/operations/install/wheel.py#L592-L603
@@ -829,7 +831,7 @@ fn install_data(
     venv_base: &Path,
     site_packages: &Path,
     data_dir: &Path,
-    dist_name: &str,
+    dist_name: &PackageName,
     location: &InstallLocation<LockedDir>,
     console_scripts: &[Script],
     gui_scripts: &[Script],
@@ -875,7 +877,7 @@ fn install_data(
                         location.get_python_version().0,
                         location.get_python_version().1
                     ))
-                    .join(dist_name);
+                    .join(dist_name.to_string());
                 move_folder_recorded(&data_entry.path(), &target_path, site_packages, record)?;
             }
             Some("purelib" | "platlib") => {
@@ -1019,19 +1021,17 @@ pub fn install_wheel(
     check_hashes: bool,
     // initially used to the console scripts, currently unused. Keeping it because we likely need
     // it for validation later
-    _extras: &[String],
+    _extras: &[ExtraName],
     unique_version: &str,
     sys_executable: impl AsRef<Path>,
 ) -> Result<String, Error> {
     let name = &filename.distribution;
-    let _my_span = span!(Level::DEBUG, "install_wheel", name = name.as_str());
+    let _my_span = span!(Level::DEBUG, "install_wheel", name = %name);
 
     let (temp_dir_final_location, base_location) = match location {
         InstallLocation::Venv { venv_base, .. } => (None, venv_base.to_path_buf()),
         InstallLocation::Monotrail { monotrail_root, .. } => {
-            let name_version_dir = monotrail_root
-                .join(normalize_name(name))
-                .join(unique_version);
+            let name_version_dir = monotrail_root.join(name.to_string()).join(unique_version);
             fs::create_dir_all(&name_version_dir)?;
             let final_location = name_version_dir.join(filename.get_tag());
             // temp dir and rename for atomicity
@@ -1070,12 +1070,12 @@ pub fn install_wheel(
             .join("site-packages")
     };
 
-    debug!(name = name.as_str(), "Opening zip");
+    debug!(name = %name, "Opening zip");
     // No BufReader: https://github.com/zip-rs/zip/issues/381
     let mut archive =
         ZipArchive::new(reader).map_err(|err| Error::from_zip_error("(index)".to_string(), err))?;
 
-    debug!(name = name.as_str(), "Getting wheel metadata");
+    debug!(name = %name, "Getting wheel metadata");
     let dist_info_prefix = find_dist_info(&filename, &mut archive)?;
     let (name, _version) = read_metadata(&dist_info_prefix, &mut archive)?;
     // TODO: Check that name and version match
@@ -1101,7 +1101,7 @@ pub fn install_wheel(
     // > 1.c If Root-Is-Purelib == ‘true’, unpack archive into purelib (site-packages).
     // > 1.d Else unpack archive into platlib (site-packages).
     // We always install in the same virtualenv site packages
-    debug!(name = name.as_str(), "Extracting file");
+    debug!(name = %name, "Extracting file");
     let unpacked_paths = unpack_wheel_files(
         &site_packages,
         &record_path,
@@ -1110,12 +1110,12 @@ pub fn install_wheel(
         check_hashes,
     )?;
     debug!(
-        name = name.as_str(),
+        name = %name,
         "Extracted {} files",
         unpacked_paths.len()
     );
 
-    debug!(name = name.as_str(), "Writing entrypoints");
+    debug!(name = %name, "Writing entrypoints");
     let (console_scripts, gui_scripts) = parse_scripts(&mut archive, &dist_info_prefix, None)?;
     write_script_entrypoints(&site_packages, &location, &console_scripts, &mut record)?;
     write_script_entrypoints(&site_packages, &location, &gui_scripts, &mut record)?;
@@ -1124,7 +1124,7 @@ pub fn install_wheel(
     // 2.a Unpacked archive includes distribution-1.0.dist-info/ and (if there is data) distribution-1.0.data/.
     // 2.b Move each subtree of distribution-1.0.data/ onto its destination path. Each subdirectory of distribution-1.0.data/ is a key into a dict of destination directories, such as distribution-1.0.data/(purelib|platlib|headers|scripts|data). The initially supported paths are taken from distutils.command.install.
     if data_dir.is_dir() {
-        debug!(name = name.as_str(), "Installing data");
+        debug!(name = %name, "Installing data");
         install_data(
             &base_location,
             &site_packages,
@@ -1142,27 +1142,27 @@ pub fn install_wheel(
         // 2.e Remove empty distribution-1.0.data directory.
         fs::remove_dir_all(data_dir)?;
     } else {
-        debug!(name = name.as_str(), "No data");
+        debug!(name = %name, "No data");
     }
 
     // 2.f Compile any installed .py to .pyc. (Uninstallers should be smart enough to remove .pyc even if it is not mentioned in RECORD.)
     if compile {
-        debug!(name = name.as_str(), "Bytecode compiling");
+        debug!(name = %name, "Bytecode compiling");
         bytecode_compile(
             &site_packages,
             unpacked_paths,
             location.get_python_version(),
             sys_executable.as_ref(),
-            name.as_str(),
+            &name,
             &mut record,
         )?;
     }
 
-    debug!(name = name.as_str(), "Writing extra metadata");
+    debug!(name = %name, "Writing extra metadata");
 
     extra_dist_info(&site_packages, &dist_info_prefix, true, &mut record)?;
 
-    debug!(name = name.as_str(), "Writing record");
+    debug!(name = %name, "Writing record");
     let mut record_writer = csv::WriterBuilder::new()
         .has_headers(false)
         .escape(b'"')
@@ -1190,8 +1190,12 @@ fn find_dist_info(
     filename: &WheelFilename,
     archive: &mut ZipArchive<impl Read + Seek + Sized>,
 ) -> Result<String, Error> {
-    let dist_info_matcher =
-        format!("{}-{}", filename.distribution, filename.version).to_lowercase();
+    let dist_info_matcher = format!(
+        "{}-{}",
+        filename.distribution.to_string().replace('-', "_"),
+        filename.version
+    )
+    .to_lowercase();
     let dist_infos: Vec<_> = archive
         .file_names()
         .filter_map(|name| name.split_once('/'))
@@ -1220,7 +1224,7 @@ fn find_dist_info(
 fn read_metadata(
     dist_info_prefix: &str,
     archive: &mut ZipArchive<impl Read + Seek + Sized>,
-) -> Result<(String, String), Error> {
+) -> Result<(PackageName, String), Error> {
     let mut content = Vec::new();
     let metadata_file = format!("{dist_info_prefix}.dist-info/METADATA");
     archive
@@ -1249,12 +1253,9 @@ fn read_metadata(
             metadata_version
         )));
     }
-    let name = headers
-        .get_first_value("Name")
-        .ok_or(Error::InvalidWheel(format!(
-            "No Name field in {}",
-            metadata_file
-        )))?;
+    let name = PackageName::from_str(&headers.get_first_value("Name").ok_or(
+        Error::InvalidWheel(format!("No Name field in {}", metadata_file)),
+    )?)?;
     let version = headers
         .get_first_value("Version")
         .ok_or(Error::InvalidWheel(format!(

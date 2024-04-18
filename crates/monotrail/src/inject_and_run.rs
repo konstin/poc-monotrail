@@ -9,6 +9,7 @@ use install_wheel_rs::{get_script_launcher, Script, SHEBANG_PYTHON};
 use libc::{c_int, c_void, wchar_t};
 use libloading::Library;
 use monotrail_utils::parse_cpython_args::{determine_python_version, naive_python_arg_parser};
+use pep508_rs::ExtraName;
 use std::collections::BTreeMap;
 use std::env;
 use std::env::current_exe;
@@ -282,7 +283,7 @@ pub fn run_python_args(
     args: &[String],
     python_version: Option<&str>,
     root: Option<&Path>,
-    extras: &[String],
+    extras: &[ExtraName],
 ) -> anyhow::Result<i32> {
     let (args, python_version) =
         determine_python_version(args, python_version, DEFAULT_PYTHON_VERSION)?;

@@ -10,24 +10,25 @@ name = "monotrail"
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { version = "4.4.4", features = ["derive"] }
+clap = { version = "4.5.4", features = ["derive"] }
 cpufeatures = { workspace = true }
-data-encoding = "2.4.0"
+data-encoding = "2.5.0"
 dirs = "5.0.1"
 fs-err = { workspace = true }
 fs2 = { workspace = true }
-git2 = "0.18.1"
-indicatif = "0.17.7"
+git2 = "0.18.3"
+indicatif = "0.17.8"
 install-wheel-rs = { version = "0.0.1", path = "../install-wheel-rs" }
-libc = "0.2.148"
-libloading = "0.8.0"
-libz-sys = { version = "1.1.12", features = ["static"] } # For the zig build
+itertools = "0.12.1"
+libc = "0.2.153"
+libloading = "0.8.3"
+libz-sys = { version = "1.1.16", features = ["static"] } # For the zig build
 monotrail-utils = { version = "0.0.1", path = "../monotrail-utils" }
-nix = { version = "0.27.1", features = ["process"] }
-pep440_rs = "0.4.0"
+nix = { version = "0.28.0", features = ["process"] }
+pep440_rs = "0.6.0"
 pep508_rs = { workspace = true, features = ["serde"] }
-pyo3 = { workspace = true, features = ["extension-module", "abi3-py37"], optional = true }
-rayon = "1.8.0"
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py38"], optional = true }
+rayon = "1.10.0"
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -54,7 +55,7 @@ which = { workspace = true }
 
 [features]
 default = ["vendored"]
-python_bindings = ["pyo3", "install-wheel-rs/python_bindings"]
+pyo3 = ["dep:pyo3", "install-wheel-rs/pyo3", "pep508_rs/pyo3"]
 vendored = ["git2/vendored-openssl", "git2/vendored-libgit2"]
 
 

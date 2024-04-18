@@ -2,6 +2,7 @@
 """
 Test with the top 100 pypi wheels and some more
 """
+
 from subprocess import check_call
 
 from test.install_wheel_rs.utils import get_root, compare_with_pip_wheels

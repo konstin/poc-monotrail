@@ -8,8 +8,10 @@ use crate::poetry_integration::poetry_toml::PoetryPyprojectToml;
 use crate::{read_poetry_specs, DEFAULT_PYTHON_VERSION};
 use anyhow::Context;
 use monotrail_utils::parse_cpython_args::determine_python_version;
+use pep508_rs::PackageName;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Use the libpython.so to run a poetry command on python 3.8, unless you give +x.y as first
 /// argument
@@ -44,7 +46,7 @@ pub fn poetry_run(args: &[String], python_version: Option<&str>) -> anyhow::Resu
     let poetry_package = finder_data
         .sprawl_packages
         .iter()
-        .find(|package| package.name == "poetry")
+        .find(|package| package.name == PackageName::from_str("poetry").unwrap())
         .context("poetry is missing 🤨")?;
     let base = poetry_package.monotrail_location(PathBuf::from(&finder_data.sprawl_root));
     let launcher = if cfg!(windows) {

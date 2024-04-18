@@ -3,32 +3,36 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.dependencies]
-anyhow = "1.0.75"
-cpufeatures = "0.2.11"
-fs-err = "2.9.0"
+anyhow = "1.0.81"
+cpufeatures = "0.2.12"
+fs-err = "2.11.0"
 fs2 = "0.4.3"
-indoc = "2.0.4"
+indoc = "2.0.5"
 logtest = "2.0.0"
-mockito = "1.2.0"
-pep508_rs = { version = "0.3.0", features = ["serde"] }
-pyo3 = { version = "0.20.2", features = ["extension-module", "abi3-py37"] }
-regex = "1.9.5"
-serde = { version = "1.0.188", features = ["derive"] }
-serde_json = "1.0.107"
-sha2 = "0.10.7"
+mockito = "1.4.0"
+pep508_rs = { version = "0.4.2", features = ["serde"] }
+pyo3 = { version = "0.21.2", features = ["extension-module", "abi3-py38"] }
+regex = "1.10.4"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.115"
+sha2 = "0.10.8"
 tar = "0.4.40"
-target-lexicon = "0.12.11"
-tempfile = "3.8.0"
-thiserror = "1.0.48"
-toml = "0.8.0"
-tracing = "0.1.37"
-tracing-subscriber = "0.3.17"
+target-lexicon = "0.12.14"
+tempfile = "3.10.1"
+thiserror = "1.0.58"
+toml = "0.8.12"
+tracing = { version = "0.1.40", features = ["log"] }
+tracing-subscriber = "0.3.18"
 unscanny = "0.1.0"
-ureq = { version = "2.7.1", features = ["json"] }
-walkdir = "2.4.0"
-which = "6.0.0"
+ureq = { version = "2.9.6", features = ["json"] }
+walkdir = "2.5.0"
+which = "6.0.1"
 widestring = "1.0.2"
-zstd = "0.13.0"
+zstd = "0.13.1"
+
+[patch.crates-io]
+pep508_rs = { git = "https://github.com/konstin/pep508_rs", rev = "e5dea4d041a2a7863074a60b667d04989ba84dcc" }
+pyo3-log = { git = "https://github.com/a1phyr/pyo3-log", rev = "76ff388163dd1100eb70ba164d59a42795829bdb" }
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]

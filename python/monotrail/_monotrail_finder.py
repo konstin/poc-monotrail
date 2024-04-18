@@ -138,7 +138,10 @@ class MonotrailFinder(PathFinder, MetaPathFinder):
 
         This functions patches pkg_resources so it can also find the distributions"""
         # Lazy import because i want to avoid triggering pkg_resources if not required
-        import pkg_resources
+        try:
+            import pkg_resources
+        except ModuleNotFoundError:
+            return
 
         for sprawl_package in finder_data.sprawl_packages:
             site_packages = sprawl_package.monotrail_site_packages(

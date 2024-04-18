@@ -1,5 +1,6 @@
 //! Types for poetry.toml
 
+use pep508_rs::{ExtraName, PackageName};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -57,7 +58,7 @@ pub enum Dependency {
     Expanded {
         version: Option<String>,
         optional: Option<bool>,
-        extras: Option<Vec<String>>,
+        extras: Option<Vec<ExtraName>>,
         git: Option<String>,
         branch: Option<String>,
     },
@@ -71,7 +72,7 @@ impl Dependency {
         }
     }
 
-    pub fn get_extras(&self) -> &[String] {
+    pub fn get_extras(&self) -> &[ExtraName] {
         match self {
             Dependency::Compact(_) => &[],
             Dependency::Expanded { extras, .. } => extras.as_deref().unwrap_or_default(),
@@ -94,8 +95,8 @@ pub struct PoetrySection {
     pub version: String,
     pub description: String,
     pub authors: Vec<String>,
-    pub dependencies: BTreeMap<String, Dependency>,
-    pub dev_dependencies: Option<BTreeMap<String, Dependency>>,
-    pub extras: Option<BTreeMap<String, Vec<String>>>,
+    pub dependencies: BTreeMap<PackageName, Dependency>,
+    pub dev_dependencies: Option<BTreeMap<PackageName, Dependency>>,
+    pub extras: Option<BTreeMap<ExtraName, Vec<PackageName>>>,
     pub scripts: Option<BTreeMap<String, String>>,
 }
