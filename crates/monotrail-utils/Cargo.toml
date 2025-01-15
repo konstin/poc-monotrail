@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
-cpufeatures = { workspace = true }
 fs-err = { workspace = true }
 fs2 = { workspace = true }
 pep508_rs = { workspace = true }
@@ -21,6 +20,9 @@ tracing = { workspace = true }
 unscanny = { workspace = true }
 ureq = { workspace = true }
 zstd = { workspace = true }
+
+[target.'cfg(any(target_arch = "x86_64", target_arch = "x86"))'.dependencies]
+cpufeatures = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }
